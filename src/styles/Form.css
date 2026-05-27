@@ -1,0 +1,478 @@
+.form-field {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  .form-field label {
+    font-size: 14px;
+    color: #334155;
+    font-weight: 500;
+  }
+  
+  .form-field input,
+  .form-field select {
+    height: 38px;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    width: 100%;
+  }
+
+  .form-field input[type="checkbox"],
+  .form-field input.form-checkbox {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    justify-self: start;
+  }.button-group {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+  }
+  
+  .secondary-button {
+    background: #e2e8f0;
+    color: #1e293b;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  
+  .secondary-button:hover {
+    background: #cbd5e1;
+  }
+  .button-group {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 24px;
+  }
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+  }
+  
+  .data-table th {
+    background: #f1f5f9;
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #cbd5e1;
+  }
+  
+  .data-table td {
+    padding: 12px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  
+  .data-table tr:hover {
+    background: #f8fafc;
+  }
+
+  .tabs-container {
+    margin-top: 8px;
+  }
+
+  .tabs-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 20px;
+  }
+
+  .tab-button {
+    background: transparent;
+    border: none;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .tab-button:hover {
+    color: #1e293b;
+  }
+
+  .tab-button.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+  }
+
+  .tabs-content {
+    padding-top: 4px;
+  }
+
+  .completion-form {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 8px 0;
+  }
+
+  .completion-form-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0f172a;
+    margin-bottom: 12px;
+  }
+
+  .parameter-list {
+    margin-top: 12px;
+  }
+
+  .parameter-list-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: #475569;
+    margin-bottom: 6px;
+  }
+
+  .status-pending {
+    color: #64748b;
+    font-style: italic;
+  }
+
+  .status-in-progress {
+    color: #2563eb;
+    font-weight: 600;
+  }
+
+  .status-completed {
+    color: #16a34a;
+    font-weight: 600;
+  }
+
+  /* ---------- Lot Execution split layout ---------- */
+
+  .lot-exec-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 16px;
+    margin-top: 16px;
+    align-items: start;
+  }
+
+  .lot-exec-active {
+    min-width: 0;
+  }
+
+  .lot-exec-frame {
+    min-width: 0;
+  }
+
+  .button-group-left {
+    justify-content: flex-start;
+  }
+
+  .primary-button:disabled,
+  .secondary-button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .form-field select:disabled,
+  .form-field input:disabled {
+    background: #f1f5f9;
+    color: #94a3b8;
+    cursor: not-allowed;
+  }
+
+  .form-hint {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    color: #1d4ed8;
+    font-size: 13px;
+  }
+
+  .form-hint-warn {
+    background: #fef3c7;
+    border-color: #fcd34d;
+    color: #92400e;
+  }
+
+  /* ---------- Active operation card ---------- */
+
+  .active-op-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .active-op-heading {
+    min-width: 0;
+  }
+
+  .active-op-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.2;
+  }
+
+  .active-op-code {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 4px;
+  }
+
+  .active-op-meta {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .active-op-meta-item {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+
+  .active-op-meta-label {
+    font-size: 11px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .active-op-meta-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0f172a;
+    margin-top: 4px;
+  }
+
+  .active-op-empty {
+    padding: 18px 0;
+    color: #64748b;
+    font-style: italic;
+  }
+
+  /* ---------- Status badges ---------- */
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: capitalize;
+    flex-shrink: 0;
+    border: 1px solid transparent;
+  }
+
+  .status-badge-ready {
+    background: #dbeafe;
+    color: #1d4ed8;
+    border-color: #bfdbfe;
+  }
+
+  .status-badge-in-progress {
+    background: #fef3c7;
+    color: #b45309;
+    border-color: #fde68a;
+  }
+
+  .status-badge-pending {
+    background: #f1f5f9;
+    color: #475569;
+    border-color: #e2e8f0;
+  }
+
+  .status-badge-completed {
+    background: #dcfce7;
+    color: #15803d;
+    border-color: #bbf7d0;
+  }
+
+  /* ---------- Process steps frame ---------- */
+
+  .process-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .process-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .process-step-completed {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+  }
+
+  .process-step-in-progress {
+    background: #fffbeb;
+    border-color: #fde68a;
+  }
+
+  .process-step-active {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  }
+
+  .process-step-number {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #e2e8f0;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .process-step-active .process-step-number {
+    background: #2563eb;
+    color: #ffffff;
+  }
+
+  .process-step-completed .process-step-number {
+    background: #16a34a;
+    color: #ffffff;
+  }
+
+  .process-step-in-progress .process-step-number {
+    background: #d97706;
+    color: #ffffff;
+  }
+
+  .process-step-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .process-step-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+    line-height: 1.3;
+  }
+
+  .process-step-code {
+    font-size: 11px;
+    color: #64748b;
+    margin-top: 2px;
+  }
+
+  .process-step-status {
+    font-size: 11px;
+    color: #475569;
+    margin-top: 4px;
+  }
+
+  /* ---------- Lot split (Production Order create) ---------- */
+
+  .lot-split-section {
+    margin-top: 18px;
+    padding: 16px 18px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+  }
+
+  .lot-split-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .lot-split-header h3 {
+    margin: 0;
+    font-size: 16px;
+    color: #1e293b;
+  }
+
+  .lot-allocation {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 999px;
+    letter-spacing: 0.2px;
+  }
+
+  .lot-allocation.ok {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .lot-allocation.warn {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .lot-qty-input {
+    width: 100%;
+    max-width: 140px;
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+
+  .muted {
+    color: #64748b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+  }
+
+  .link-button {
+    background: none;
+    border: none;
+    color: #dc2626;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0;
+  }
+
+  .link-button:hover {
+    text-decoration: underline;
+  }
+
+  .link-button:disabled {
+    color: #cbd5e1;
+    cursor: not-allowed;
+    text-decoration: none;
+  }
+
+  /* ---------- Responsive ---------- */
+
+  @media (max-width: 900px) {
+    .lot-exec-row {
+      grid-template-columns: 1fr;
+    }
+  }

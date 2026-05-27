@@ -1,0 +1,265 @@
+/* Nyra brand navy — matches logo background */
+:root {
+  --nyra-navy: #08264a;
+  --nyra-navy-mid: #0c2851;
+  --nyra-navy-deep: #061a35;
+  --nyra-navy-hover: #103a6b;
+}
+
+.login-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 32px;
+  align-items: stretch;
+  min-height: calc(100vh - 120px);
+}
+
+/* Left marketing panel — Nyra navy with white type */
+.login-grid .landing-hero {
+  background: var(--nyra-navy);
+  border: 1px solid var(--nyra-navy-deep);
+  box-shadow: 0 16px 40px -24px rgba(6, 26, 53, 0.45);
+}
+
+.login-grid .landing-hero .landing-eyebrow {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.login-grid .landing-hero .landing-title {
+  color: #ffffff;
+}
+
+.login-grid .landing-hero .landing-text {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.login-grid .landing-hero .landing-pill {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Right sign-in panel — Nyra navy with white type */
+.login-grid .industry-card.login-card {
+  background: var(--nyra-navy);
+  border: 1px solid var(--nyra-navy-deep);
+  box-shadow: 0 16px 40px -24px rgba(6, 26, 53, 0.45);
+}
+
+.login-card {
+  justify-content: center;
+}
+
+.login-card-inner {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.login-card-header {
+  margin-bottom: 28px;
+}
+
+.login-card-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.78);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.login-card-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 8px;
+  line-height: 1.15;
+}
+
+.login-card-subtitle {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-field label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.login-field input {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #ffffff;
+  color: #0f172a;
+  padding: 12px 14px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.login-field input:focus {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.25);
+}
+
+.login-info {
+  border-radius: 12px;
+  border: 1px solid rgba(147, 197, 253, 0.35);
+  background: rgba(255, 255, 255, 0.1);
+  color: #e0f2fe;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.login-error {
+  border-radius: 12px;
+  border: 1px solid rgba(252, 165, 165, 0.45);
+  background: rgba(254, 226, 226, 0.95);
+  color: #b91c1c;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.login-warning {
+  border-radius: 12px;
+  border: 1px solid rgba(253, 224, 71, 0.45);
+  background: rgba(254, 243, 199, 0.95);
+  color: #92400e;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.login-btn {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 13px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+}
+
+.login-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.login-btn-primary {
+  background: var(--nyra-navy-mid);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 20px rgba(6, 26, 53, 0.35);
+}
+
+.login-btn-primary:hover:not(:disabled) {
+  background: var(--nyra-navy-hover);
+  transform: translateY(-1px);
+}
+
+.login-btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+.login-btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.login-reset-link {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.login-reset-link:hover:not(:disabled) {
+  color: #ffffff;
+}
+
+.login-reset-link:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.login-footer {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.login-footer a {
+  color: rgba(255, 255, 255, 0.72);
+  text-decoration: none;
+}
+
+.login-footer a:hover {
+  color: #ffffff;
+}
+
+.login-secure-note {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+}
+
+.login-secure-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+}
+
+.login-loading {
+  min-height: calc(100vh - 72px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 14px;
+}
+
+@media (max-width: 1100px) {
+  .login-grid {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .login-card-title {
+    font-size: 24px;
+  }
+}
