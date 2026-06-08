@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import api from "../../services/api";
+import {
+  createMesCoreCustomer,
+  fetchMesCoreCustomerOrders,
+  fetchMesCoreCustomers,
+} from "../../services/mesCoreApi";
+import { formatApiError } from "../../services/api";
+import { useAppContext } from "../../context/AppContext";
+import { isDemoReadOnly } from "../../config/demoMode";
+import { loadDemoWalkthroughContext } from "../../utils/demoWalkthrough";
 import { useWorkflow } from "../WorkflowContext";
 import {
   WfCard,
@@ -17,7 +25,10 @@ import {
 
 function CustomerMaster() {
   const navigate = useNavigate();
-  const { update } = useWorkflow();
+  const { update, markStage } = useWorkflow();
+  const { context } = useAppContext();
+  const demoReadOnly = isDemoReadOnly(context);
+  const [demoLoading, setDemoLoading] = useState(false);
 
   const [customers, setCustomers] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -35,11 +46,11 @@ function CustomerMaster() {
     setLoading(true);
     try {
       const [c, o] = await Promise.all([
-        api.get("/customer"),
-        api.get("/orders").catch(() => ({ data: [] }))
+        fetchMesCoreCustomers(),
+        fetchMesCoreCustomerOrders(),
       ]);
-      setCustomers(c.data || []);
-      setOrders(o.data || []);
+      setCustomers(c || []);
+      setOrders(o || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -50,9 +61,9 @@ function CustomerMaster() {
   const canSave = customerName.trim() && customerType.trim();
 
   const createCustomer = async () => {
-    if (!canSave) return;
+    if (!canSave || demoReadOnly) return;
     try {
-      await api.post("/customer", {
+      await createMesCoreCustomer({
         customer_name: customerName.trim(),
         customer_type: customerType.trim()
       });
@@ -60,7 +71,7 @@ function CustomerMaster() {
       setCustomerType("Automobile OEM");
       await loadAll();
     } catch (e) {
-      alert(e.response?.data?.detail || "Error creating customer");
+      alert(formatApiError(e, "Error creating customer"));
     }
   };
 
@@ -72,13 +83,28 @@ function CustomerMaster() {
     navigate("/workflow/customer-order");
   };
 
+  const startDemoWalkthrough = async () => {
+    setDemoLoading(true);
+    try {
+      const demo = await loadDemoWalkthroughContext();
+      update(demo);
+      markStage("customer-order");
+      navigate("/workflow/production-order");
+    } catch (e) {
+      alert(formatApiError(e, "Could not load demo walkthrough"));
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
   // Counts
   const ordersByCustomer = useMemo(() => {
     const map = {};
     orders.forEach((o) => {
-      const k = o.customer_id;
-      if (!k) return;
-      map[k] = (map[k] || 0) + 1;
+      const keys = [o.customer_id, o.customer_code].filter(Boolean);
+      keys.forEach((k) => {
+        map[k] = (map[k] || 0) + 1;
+      });
     });
     return map;
   }, [orders]);
@@ -97,6 +123,7 @@ function CustomerMaster() {
     if (!q) return customers;
     return customers.filter(
       (c) =>
+        (c.customer_code || "").toLowerCase().includes(q) ||
         (c.customer_id || "").toLowerCase().includes(q) ||
         (c.customer_name || "").toLowerCase().includes(q) ||
         (c.customer_type || "").toLowerCase().includes(q)
@@ -128,6 +155,22 @@ function CustomerMaster() {
             icon={<IconUserPlus />}
           />
           <WfCardBody className="space-y-5">
+            {demoReadOnly && (
+              <div className="wf-info-banner border-amber-500/40 bg-amber-500/10 text-amber-100 space-y-2">
+                <p>
+                  Demo mode is view-only. Use the pre-seeded customer{" "}
+                  <strong>Apex Automotive</strong> below, or start the full walkthrough.
+                </p>
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-primary"
+                  disabled={demoLoading}
+                  onClick={startDemoWalkthrough}
+                >
+                  {demoLoading ? "Loading…" : "Start demo walkthrough →"}
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2 wf-info-banner">
                 Customer ID is assigned automatically from the customer sequence when you save.
@@ -139,6 +182,7 @@ function CustomerMaster() {
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                   placeholder="e.g. Tata Motors"
+                  disabled={demoReadOnly}
                 />
               </div>
               <div>
@@ -147,6 +191,7 @@ function CustomerMaster() {
                   className="wf-select"
                   value={customerType}
                   onChange={(e) => setCustomerType(e.target.value)}
+                  disabled={demoReadOnly}
                 >
                   <option>Automobile OEM</option>
                   <option>Tier-1 Supplier</option>
@@ -166,18 +211,19 @@ function CustomerMaster() {
                   type="button"
                   className="wf-btn wf-btn-ghost"
                   onClick={() => {
-                    setCustomerId("");
                     setCustomerName("");
                     setCustomerType("Automobile OEM");
                   }}
+                  disabled={demoReadOnly}
                 >
                   Clear
                 </button>
                 <button
                   type="button"
                   className="wf-btn wf-btn-primary"
-                  disabled={!canSave}
+                  disabled={!canSave || demoReadOnly}
                   onClick={createCustomer}
+                  title={demoReadOnly ? "Demo is read-only" : undefined}
                 >
                   Save Customer
                 </button>
@@ -269,10 +315,10 @@ function CustomerMaster() {
                 </thead>
                 <tbody>
                   {filtered.map((c) => {
-                    const oc = ordersByCustomer[c.customer_id] || 0;
+                    const oc = ordersByCustomer[c.customer_code || c.customer_id] || 0;
                     return (
                       <tr key={c.customer_id} className="border-b border-white/5 hover:bg-slate-800/30 transition-colors">
-                        <td className="py-2.5 px-3 font-mono text-slate-200">{c.customer_id}</td>
+                        <td className="py-2.5 px-3 font-mono text-slate-200">{c.customer_code || c.customer_id}</td>
                         <td className="py-2.5 px-3 text-slate-100">{c.customer_name}</td>
                         <td className="py-2.5 px-3">
                           <StatusPill kind="info">{c.customer_type || "—"}</StatusPill>

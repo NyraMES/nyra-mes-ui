@@ -5,7 +5,12 @@ import DataCaptureTemplateBuilder, {
   emptyFieldRow
 } from "../../components/DataCaptureTemplateBuilder";
 import api from "../../services/api";
-import { saveProcessTemplateFields } from "../../utils/dataCaptureHelpers";
+import { formatApiError } from "../../services/api";
+import {
+  createMesCoreRoutingWithOperations,
+  fetchMesCoreProducts,
+  fetchMesCoreRoutings,
+} from "../../services/mesCoreApi";
 import {
   fetchProcesses,
   fetchProcessTemplate,
@@ -62,6 +67,22 @@ const RESOURCE_TYPES = [
   { value: "workforce", label: "Workforce",  endpoint: "/workforce-roles",  idKey: "role_id",     nameKey: "role_name"     }
 ];
 
+function findPart(parts, ref) {
+  if (!ref) return null;
+  return (
+    parts.find(
+      (p) =>
+        p.part_code === ref ||
+        p.part_id === ref ||
+        p.product_id === ref
+    ) || null
+  );
+}
+
+function partOptionValue(part) {
+  return part.part_code || part.part_id;
+}
+
 
 function RoutingMaster() {
   const navigate = useNavigate();
@@ -70,6 +91,7 @@ function RoutingMaster() {
 
   // ----- masters & existing data
   const [parts, setParts] = useState([]);
+  const [partsLoading, setPartsLoading] = useState(true);
   const [processes, setProcesses] = useState([]);
   const [existingRoutings, setExistingRoutings] = useState([]);
   const [loadingRoutings, setLoadingRoutings] = useState(false);
@@ -102,9 +124,22 @@ function RoutingMaster() {
   // load masters / existing routings
 
   useEffect(() => {
-    api.get("/part").then((r) => setParts(r.data || [])).catch(() => {});
+    setPartsLoading(true);
+    fetchMesCoreProducts()
+      .then((rows) => setParts(rows || []))
+      .catch(() => setParts([]))
+      .finally(() => setPartsLoading(false));
     fetchProcesses().then(setProcesses).catch(() => setProcesses([]));
   }, []);
+
+  useEffect(() => {
+    if (!parts.length || !partId) return;
+    const match = findPart(parts, partId);
+    if (match) {
+      const code = partOptionValue(match);
+      if (code !== partId) setPartId(code);
+    }
+  }, [parts, partId]);
 
   const activeProcesses = useMemo(
     () => processes.filter(isProcessActive),
@@ -116,12 +151,20 @@ function RoutingMaster() {
       setExistingRoutings([]);
       return;
     }
+    const selected = findPart(parts, partId);
+    if (!selected?.product_id) {
+      setExistingRoutings([]);
+      return;
+    }
     setLoadingRoutings(true);
-    api.get(`/part/${partId}/routings`)
-      .then((r) => setExistingRoutings(r.data || []))
+    fetchMesCoreRoutings()
+      .then((rows) =>
+        (rows || []).filter((r) => r.product_id === selected.product_id)
+      )
+      .then(setExistingRoutings)
       .catch(() => setExistingRoutings([]))
       .finally(() => setLoadingRoutings(false));
-  }, [partId, savedRouting]);
+  }, [partId, savedRouting, parts]);
 
   // pull the right resource list when the picker type switches
   useEffect(() => {
@@ -135,14 +178,11 @@ function RoutingMaster() {
 
 
   // derived state
-  const part = useMemo(
-    () => parts.find((p) => p.part_id === partId) || null,
-    [parts, partId]
-  );
+  const part = useMemo(() => findPart(parts, partId), [parts, partId]);
+  const selectedProductId = part?.product_id || null;
 
   const operationsValid = operations.every((op) => {
     if (!op.name.trim() || Number(op.seq) <= 0) return false;
-    if (op.processMode === "existing" && !op.process_id) return false;
     if (op.processMode === "new") {
       if (!op.newProcess.process_code.trim() || !op.newProcess.process_name.trim()) {
         return false;
@@ -152,8 +192,38 @@ function RoutingMaster() {
     return true;
   });
 
+  const buildResolvedOperations = () =>
+    operations.map((op) => {
+      if (op.processMode === "new") {
+        const code = op.newProcess.process_code.trim();
+        return {
+          operation_id: op.code.trim() || null,
+          operation_sequence: Number(op.seq),
+          operation_name: op.name.trim(),
+          process_id: code,
+          process_code: code,
+          process_name: op.newProcess.process_name.trim(),
+          process_type: op.newProcess.process_type.trim(),
+          standard_cycle_time_minutes:
+            op.cycle === "" || op.cycle === null ? null : Number(op.cycle),
+          inspection_required: !!op.inspect,
+        };
+      }
+      return {
+        operation_id: op.code.trim() || null,
+        operation_sequence: Number(op.seq),
+        operation_name: op.name.trim(),
+        process_id: op.process_id ? String(op.process_id) : null,
+        process_code: op.code.trim() || null,
+        process_name: op.name.trim(),
+        standard_cycle_time_minutes:
+          op.cycle === "" || op.cycle === null ? null : Number(op.cycle),
+        inspection_required: !!op.inspect,
+      };
+    });
+
   const canSave =
-    partId &&
+    selectedProductId &&
     version.trim() &&
     operations.length > 0 &&
     operationsValid &&
@@ -256,33 +326,6 @@ function RoutingMaster() {
     setOperations(rows);
   };
 
-  const resolveOperationProcess = async (op) => {
-    if (op.processMode === "new") {
-      const procRes = await api.post("/processes", {
-        process_code: op.newProcess.process_code.trim(),
-        process_name: op.newProcess.process_name.trim(),
-        process_type: op.newProcess.process_type.trim(),
-        description: op.newProcess.description?.trim() || null,
-        is_active: op.newProcess.is_active !== false
-      });
-      const processId = processKey(procRes.data);
-      await saveProcessTemplateFields(processId, op.templateMeta, op.templateFields);
-      return processId;
-    }
-    const hasPendingFields = (op.templateFields || []).some(
-      (f) => f.field_name?.trim() && f.field_label?.trim()
-    );
-    if (
-      op.process_id &&
-      op.showCaptureBuilder &&
-      hasPendingFields &&
-      op.templateMeta?.template_name?.trim()
-    ) {
-      await saveProcessTemplateFields(op.process_id, op.templateMeta, op.templateFields);
-    }
-    return op.process_id;
-  };
-
   const removeOpRow = (idx) => {
     setOperations((prev) => prev.filter((_, i) => i !== idx));
   };
@@ -304,36 +347,24 @@ function RoutingMaster() {
     if (!canSave) return;
     setSaving(true);
     try {
-      const resolvedOps = [];
-      for (const op of operations) {
-        const process_id = await resolveOperationProcess(op);
-        resolvedOps.push({
-          operation_id: op.code.trim() || null,
-          operation_sequence: Number(op.seq),
-          operation_name: op.name.trim(),
-          process_id,
-          standard_cycle_time_minutes:
-            op.cycle === "" || op.cycle === null ? null : Number(op.cycle),
-          inspection_required: !!op.inspect
-        });
-      }
+      const resolvedOps = buildResolvedOperations();
       const body = {
-        part_id: partId,
+        product_id: selectedProductId,
         routing_version: version.trim(),
         process_type: processType.trim() || null,
         is_active: isActive,
-        operations: resolvedOps
+        operations: resolvedOps,
       };
-      const r = await api.post("/routing-with-operations", body);
-      const routing = r.data?.routing || null;
-      const ops = r.data?.operations || [];
+      const r = await createMesCoreRoutingWithOperations(body);
+      const routing = r.routing || null;
+      const ops = r.operations || [];
       setSavedRouting(routing);
       setSavedOperations(ops);
       setRequirementsByOp({});
       if (ops.length) setReqOpId(ops[0].operation_id);
-      update({ partId });
+      update({ partId: partOptionValue(part) || partId });
     } catch (e) {
-      alert(e.response?.data?.detail || "Error saving routing");
+      alert(formatApiError(e, "Error saving routing"));
     } finally {
       setSaving(false);
     }
@@ -412,7 +443,7 @@ function RoutingMaster() {
 
       <ContextBanner
         items={[
-          { label: "Part",      value: part?.part_id || "—" },
+          { label: "Part",      value: part?.part_code || part?.part_id || "—" },
           { label: "Name",      value: part?.part_name || "—" },
           { label: "Routings",  value: existingRoutings.length || "—" },
           { label: "Status",    value: savedRouting ? "Saved" : "Draft" }
@@ -449,18 +480,25 @@ function RoutingMaster() {
               <div className="md:col-span-2">
                 <label className="wf-label">Part</label>
                 <select
-                  className="wf-select"
+                  className="wf-select wf-part-select"
                   value={partId}
                   onChange={(e) => setPartId(e.target.value)}
                   disabled={!!savedRouting}
                 >
-                  <option value="">-- Pick a part --</option>
+                  <option value="">
+                    {partsLoading ? "Loading parts…" : "-- Pick a part --"}
+                  </option>
                   {parts.map((p) => (
-                    <option key={p.part_id} value={p.part_id}>
-                      {p.part_id} · {p.part_name} ({p.part_type || "—"})
+                    <option key={p.product_id} value={partOptionValue(p)}>
+                      {p.part_code || p.part_id} · {p.part_name} ({p.part_type || "—"})
                     </option>
                   ))}
                 </select>
+                {!partsLoading && parts.length === 0 && (
+                  <div className="text-[11px] text-amber-200 mt-1">
+                    No parts found — create one in Part Master first.
+                  </div>
+                )}
               </div>
               <div>
                 <label className="wf-label">Version</label>
@@ -861,7 +899,7 @@ function RoutingMaster() {
           <WfCard>
             <WfCardHeader
               title="Existing routings"
-              subtitle={part ? `For ${part.part_id}` : "Pick a part first"}
+              subtitle={part ? `For ${part.part_code || part.part_id}` : "Pick a part first"}
               icon={<IconList />}
             />
             <WfCardBody>

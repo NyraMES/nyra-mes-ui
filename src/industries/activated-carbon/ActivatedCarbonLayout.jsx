@@ -1,0 +1,79 @@
+import { useEffect, useState } from "react";
+import { Outlet } from "react-router-dom";
+
+import DemoWatermark from "../../components/DemoWatermark";
+import ContextLoadWarning from "../../components/ContextLoadWarning";
+import AskNyraPanel from "../../workflow/AskNyraPanel";
+import { WorkflowProvider } from "../../workflow/WorkflowContext";
+import { useAppContext } from "../../context/AppContext";
+import { getIndustrySelection, mergeIndustrySelectionFallback } from "../../config/industrySelection";
+import { applyTenantHeaders } from "../../services/appContextApi";
+import api from "../../services/api";
+import { AC_ASK_NYRA_SUGGESTIONS } from "./constants/askNyraSuggestions";
+import AcSidebar from "./components/AcSidebar";
+import AcTopbar from "./components/AcTopbar";
+
+function ActivatedCarbonLayout() {
+  const { context } = useAppContext();
+  const [askOpen, setAskOpen] = useState(false);
+
+  useEffect(() => {
+    const selection = getIndustrySelection("activated-carbon");
+    if (!selection) return;
+    const merged = mergeIndustrySelectionFallback(
+      {
+        ...context,
+        tenant_code: context.tenant_code || selection.tenant_code,
+        workspace_code: context.workspace_code ?? selection.workspace_code
+      },
+      "activated-carbon"
+    );
+    applyTenantHeaders(api, merged);
+  }, [context.tenant_code, context.workspace_code, context.loaded]);
+
+  return (
+    <WorkflowProvider>
+      <div className="wf-shell wf-ac-shell flex w-full min-h-screen">
+        <DemoWatermark />
+        <AcSidebar />
+        <div className="wf-content-column wf-ac-content-column">
+          <ContextLoadWarning />
+          <AcTopbar />
+          <main className="p-6 flex-1 wf-page-frame wf-ac-page-frame overflow-y-auto">
+            <Outlet />
+          </main>
+        </div>
+
+        <button
+          type="button"
+          className="wf-ask-fab"
+          onClick={() => setAskOpen((v) => !v)}
+          title="Ask Nyra"
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 2 4 6v6c0 4.5 3.5 8.5 8 9 4.5-.5 8-4.5 8-9V6z" />
+            <path d="M9 12h6M9 9h6M9 15h4" />
+          </svg>
+        </button>
+
+        {askOpen && (
+          <AskNyraPanel
+            onClose={() => setAskOpen(false)}
+            suggestions={AC_ASK_NYRA_SUGGESTIONS}
+          />
+        )}
+      </div>
+    </WorkflowProvider>
+  );
+}
+
+export default ActivatedCarbonLayout;

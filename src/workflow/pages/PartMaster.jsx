@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import api from "../../services/api";
+import {
+  createMesCoreProduct,
+  fetchMesCoreOrderLines,
+  fetchMesCoreProducts,
+} from "../../services/mesCoreApi";
 import { useWorkflow } from "../WorkflowContext";
 import {
   WfCard,
@@ -45,11 +49,12 @@ function PartMaster() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const parts = await api.get("/part");
-      setParts(parts.data || []);
-
-      const linesResp = await api.get("/order-lines").catch(() => ({ data: [] }));
-      setOrderLines(linesResp.data || []);
+      const [parts, lines] = await Promise.all([
+        fetchMesCoreProducts(),
+        fetchMesCoreOrderLines(),
+      ]);
+      setParts(parts || []);
+      setOrderLines(lines || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -62,7 +67,7 @@ function PartMaster() {
   const createPart = async () => {
     if (!canSave) return;
     try {
-      await api.post("/part", {
+      await createMesCoreProduct({
         part_name: partName.trim(),
         part_type: partType,
         unit_of_measure: uom
@@ -77,19 +82,20 @@ function PartMaster() {
   };
 
   const startOrder = (p) => {
-    update({ partId: p.part_id });
+    update({ partId: p.part_code || p.part_id });
     navigate("/workflow/customer-order");
   };
 
   const defineRouting = (p) => {
-    update({ partId: p.part_id });
-    navigate(`/workflow/masters/routings?part=${encodeURIComponent(p.part_id)}`);
+    const code = p.part_code || p.part_id;
+    update({ partId: code });
+    navigate(`/workflow/masters/routings?part=${encodeURIComponent(code)}`);
   };
 
   const usageByPart = useMemo(() => {
     const map = {};
     orderLines.forEach((l) => {
-      const k = l.part_id;
+      const k = l.part_code || l.part_id;
       if (!k) return;
       map[k] = (map[k] || 0) + 1;
     });
@@ -116,6 +122,7 @@ function PartMaster() {
     if (!q) return parts;
     return parts.filter(
       (p) =>
+        (p.part_code || "").toLowerCase().includes(q) ||
         (p.part_id || "").toLowerCase().includes(q) ||
         (p.part_name || "").toLowerCase().includes(q) ||
         (p.part_type || "").toLowerCase().includes(q)
@@ -334,11 +341,12 @@ function PartMaster() {
                 </thead>
                 <tbody>
                   {filtered.map((p) => {
-                    const usage = usageByPart[p.part_id] || 0;
+                    const code = p.part_code || p.part_id;
+                    const usage = usageByPart[code] || 0;
                     const meta = PART_TYPES.find((t) => t.value === (p.part_type || "").toLowerCase());
                     return (
-                      <tr key={p.part_id} className="border-b border-white/5 hover:bg-slate-800/30 transition-colors">
-                        <td className="py-2.5 px-3 font-mono text-slate-200">{p.part_id}</td>
+                      <tr key={p.product_id || code} className="border-b border-white/5 hover:bg-slate-800/30 transition-colors">
+                        <td className="py-2.5 px-3 font-mono text-slate-200">{code}</td>
                         <td className="py-2.5 px-3 text-slate-100">{p.part_name}</td>
                         <td className="py-2.5 px-3">
                           <span

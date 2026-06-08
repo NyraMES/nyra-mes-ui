@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import api, { formatApiError } from "../../services/api";
+import { formatApiError } from "../../services/api";
+import {
+  createMesCoreDispatch,
+  fetchMesCoreDispatches,
+  fetchMesCoreExecutionSummary,
+  fetchMesCoreInspectionResults,
+  fetchMesCoreNcrs,
+  fetchMesCoreProductionLots,
+} from "../../services/mesCoreApi";
 import { useWorkflow } from "../WorkflowContext";
 import {
   WfCard,
@@ -50,9 +58,8 @@ function DispatchGate() {
       return;
     }
     setExecLoading(true);
-    api
-      .get(`/lot/${lotId}/execution-summary`, { params: { sync: false } })
-      .then((r) => setExecSummary(r.data || null))
+    fetchMesCoreExecutionSummary(lotId, { sync: false })
+      .then((data) => setExecSummary(data || null))
       .catch(() => setExecSummary(null))
       .finally(() => setExecLoading(false));
   }, [lotId]);
@@ -70,15 +77,15 @@ function DispatchGate() {
   const loadAll = async () => {
     try {
       const [l, r, n, d] = await Promise.all([
-        api.get("/production-lots"),
-        api.get("/inspection-results"),
-        api.get("/ncrs"),
-        api.get("/dispatches")
+        fetchMesCoreProductionLots(),
+        fetchMesCoreInspectionResults(),
+        fetchMesCoreNcrs(),
+        fetchMesCoreDispatches(),
       ]);
-      setLots(l.data || []);
-      setResults(r.data || []);
-      setNcrs(n.data || []);
-      setDispatches(d.data || []);
+      setLots(l || []);
+      setResults(r || []);
+      setNcrs(n || []);
+      setDispatches(d || []);
     } catch (e) { console.error(e); }
   };
 
@@ -145,7 +152,7 @@ function DispatchGate() {
         alert("Customer could not be resolved from the lot. Re-select the lot and try again.");
         return;
       }
-      const res = await api.post("/dispatch", {
+      const res = await createMesCoreDispatch({
         customer_id: resolvedCustomer,
         order_id: orderId,
         vehicle_number: vehicleNumber.trim(),
@@ -157,11 +164,11 @@ function DispatchGate() {
             part_id: partId,
             dispatch_quantity: Number(dispatchQty),
             accepted_quantity: Number(dispatchQty),
-            rejected_quantity: 0
-          }
-        ]
+            rejected_quantity: 0,
+          },
+        ],
       });
-      const createdDispatchId = res.data?.dispatch_id;
+      const createdDispatchId = res?.dispatch_id;
 
       markStage("dispatch");
       setVehicleNumber("");

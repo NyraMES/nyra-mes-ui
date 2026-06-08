@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import api from "../../services/api";
+import {
+  createMesCoreInspectionResult,
+  createMesCoreNcr,
+  fetchMesCoreInspectionResults,
+  fetchMesCoreNcrs,
+  fetchMesCoreProductionLots,
+} from "../../services/mesCoreApi";
 import { useWorkflow } from "../WorkflowContext";
 import {
   WfCard,
@@ -41,13 +47,13 @@ function InspectionNcrScreen() {
   const loadAll = async () => {
     try {
       const [l, r, n] = await Promise.all([
-        api.get("/production-lots"),
-        api.get("/inspection-results"),
-        api.get("/ncrs")
+        fetchMesCoreProductionLots(),
+        fetchMesCoreInspectionResults(),
+        fetchMesCoreNcrs(),
       ]);
-      setLots(l.data || []);
-      setResults(r.data || []);
-      setNcrs(n.data || []);
+      setLots(l || []);
+      setResults(r || []);
+      setNcrs(n || []);
     } catch (e) { console.error(e); }
   };
 
@@ -73,26 +79,27 @@ function InspectionNcrScreen() {
     const status = rejected > 0 ? "Failed" : "Passed";
 
     try {
-      const inspRes = await api.post("/inspection-result", {
+      const insp = await createMesCoreInspectionResult({
         work_order_id: workOrderId.trim() || undefined,
         lot_id: lotId,
         inspected_quantity: inspected,
         accepted_quantity: accepted,
         rejected_quantity: rejected,
-        inspection_status: status
+        inspection_status: status,
+        parameters: params.filter((p) => p.name?.trim()),
       });
-      const inspectionId = inspRes.data?.inspection_id;
+      const inspectionId = insp?.inspection_id;
 
       if (status === "Failed" && inspectionId) {
         try {
-          await api.post("/ncr", {
+          await createMesCoreNcr({
             inspection_id: inspectionId,
             defect_id: "AUTO",
             rejected_quantity: rejected,
             disposition: "rework",
             root_cause: "Auto-generated from failed inspection",
             corrective_action: "",
-            status: "Open"
+            status: "Open",
           });
         } catch (e) {
           // best-effort

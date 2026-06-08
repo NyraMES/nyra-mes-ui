@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import api from "../services/api";
+import { createMesCoreNcr, fetchMesCoreNcrs } from "../services/mesCoreApi";
 
 import FormCard from "../components/FormCard";
 import FormField from "../components/FormField";
@@ -25,8 +25,8 @@ function NcrPage() {
 
   const loadNcrs = async () => {
     try {
-      const response = await api.get("/ncrs");
-      setNcrs(response.data);
+      const rows = await fetchMesCoreNcrs();
+      setNcrs(rows);
     } catch (error) {
       console.error(error);
     }
@@ -44,15 +44,15 @@ function NcrPage() {
 
   const createNcr = async () => {
     try {
-      await api.post("/ncr", {
-        ncr_id: ncrId,
-        inspection_result_id: inspectionResultId,
+      await createMesCoreNcr({
+        ncr_id: ncrId || undefined,
+        inspection_id: inspectionResultId,
         defect_id: defectId,
         rejected_quantity: Number(rejectedQty),
         disposition: disposition,
         root_cause: rootCause,
         corrective_action: correctiveAction,
-        status: "Open"
+        status: "Open",
       });
 
       alert("NCR created successfully");

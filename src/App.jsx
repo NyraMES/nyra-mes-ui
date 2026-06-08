@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import ProtectedRoute from "./auth/ProtectedRoute";
+import DemoRouteGuard from "./components/DemoRouteGuard";
+import { ROUTER_BASENAME } from "./basePath";
 import Layout from "./components/Layout";
 
 import LandingPage from "./pages/LandingPage";
@@ -37,19 +39,27 @@ import DispatchGate from "./workflow/pages/DispatchGate";
 import TraceabilityGenealogy from "./workflow/pages/TraceabilityGenealogy";
 import OeeDashboard from "./workflow/pages/OeeDashboard";
 import OntologyExplorer from "./workflow/pages/OntologyExplorer";
+import KgTriplesPage from "./workflow/pages/KgTriplesPage";
 import CustomerMaster from "./workflow/pages/CustomerMaster";
 import PartMaster from "./workflow/pages/PartMaster";
 import RoutingMaster from "./workflow/pages/RoutingMaster";
 
+import IndustryModuleLoader from "./components/IndustryModuleLoader";
+
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={ROUTER_BASENAME}>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
 
         <Route element={<ProtectedRoute />}>
+          <Route element={<DemoRouteGuard />}>
+          {/* Metadata-driven industry modules (lazy-loaded) */}
+          <Route path="/automotive-oem/*" element={<IndustryModuleLoader />} />
+          <Route path="/activated-carbon/*" element={<IndustryModuleLoader />} />
+
           {/* Manufacturing Workflow Intelligence experience */}
           <Route path="/workflow" element={<WorkflowLayout />}>
             <Route index element={<IntelligenceHub />} />
@@ -65,6 +75,7 @@ function App() {
             <Route path="traceability" element={<TraceabilityGenealogy />} />
             <Route path="oee" element={<OeeDashboard />} />
             <Route path="ontology" element={<OntologyExplorer />} />
+            <Route path="kg" element={<KgTriplesPage />} />
             <Route path="masters/customers" element={<CustomerMaster />} />
             <Route path="masters/parts" element={<PartMaster />} />
             <Route path="masters/routings" element={<RoutingMaster />} />
@@ -92,7 +103,9 @@ function App() {
             <Route path="maintenance" element={<MaintenancePage />} />
             <Route path="dispatch" element={<DispatchPage />} />
           </Route>
+          </Route>
         </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

@@ -3,13 +3,16 @@ import { useEffect, useState } from "react";
 
 import { useWorkflow } from "./WorkflowContext";
 import { useAuth } from "../auth/AuthContext";
+import { useAppContext } from "../context/AppContext";
 import { initialsFromUser } from "../auth/roles";
+import TenantContextBar from "../components/TenantContextBar";
 
 
 function WorkflowTopbar() {
   const location = useLocation();
-  const { context, reset } = useWorkflow();
+  const { context: workflowContext, reset } = useWorkflow();
   const { user, authEnabled, logout } = useAuth();
+  const { context: appContext } = useAppContext();
   const initials = initialsFromUser(user);
 
   const [time, setTime] = useState(new Date());
@@ -21,12 +24,16 @@ function WorkflowTopbar() {
   const breadcrumbs = buildBreadcrumbs(location.pathname);
 
   const hasContext =
-    context.orderId || context.lotId || context.productionOrderId;
+    workflowContext.orderId ||
+    workflowContext.lotId ||
+    workflowContext.productionOrderId;
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200">
       <div className="px-6 py-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-4 min-w-0 flex-1">
+          <TenantContextBar compact className="wf-tenant-context shrink-0" />
+          <div className="flex items-center gap-3 min-w-0 border-l border-slate-200 pl-4">
           {breadcrumbs.map((b, i) => (
             <span key={i} className="flex items-center gap-3 text-sm">
               {i > 0 && <span className="text-slate-600">/</span>}
@@ -41,6 +48,7 @@ function WorkflowTopbar() {
               </span>
             </span>
           ))}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -49,10 +57,12 @@ function WorkflowTopbar() {
               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-xs">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500 wf-pulse" />
                 <span className="text-slate-500 uppercase tracking-wider text-[10px]">Workflow</span>
-                {context.customerName && <Crumb v={context.customerName} />}
-                {context.orderId && <Crumb v={context.orderId} />}
-                {context.productionOrderId && <Crumb v={context.productionOrderId} />}
-                {context.lotId && <Crumb v={context.lotId} />}
+                {workflowContext.customerName && <Crumb v={workflowContext.customerName} />}
+                {workflowContext.orderId && <Crumb v={workflowContext.orderId} />}
+                {workflowContext.productionOrderId && (
+                  <Crumb v={workflowContext.productionOrderId} />
+                )}
+                {workflowContext.lotId && <Crumb v={workflowContext.lotId} />}
               </div>
               <button
                 type="button"
@@ -67,7 +77,7 @@ function WorkflowTopbar() {
 
           <div className="hidden sm:flex items-center gap-2 text-xs text-slate-600 px-2.5 py-1.5 rounded-md bg-slate-50 border border-slate-200">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 wf-pulse" />
-            Plant: NY-FOUNDRY-01
+            Plant: {appContext.plant_id || "—"}
             <span className="text-slate-600 mx-1">·</span>
             {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </div>
@@ -118,7 +128,9 @@ function buildBreadcrumbs(pathname) {
     dispatch: "Dispatch Gate",
     traceability: "Traceability",
     oee: "OEE Intelligence",
-    ontology: "Ontology Explorer",
+    ontology: "Domain Graph",
+    kg: "KG Triples",
+    routings: "Routings",
     masters: "Master Data",
     customers: "Customers",
     parts: "Parts"

@@ -1,8 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import WorkOrderCaptureForm from "../../components/WorkOrderCaptureForm";
-import api, { formatApiError } from "../../services/api";
+import AcExecutionParameterCapture from "../../industries/activated-carbon/components/AcExecutionParameterCapture";
+import { formatApiError } from "../../services/api";
+import {
+  appendMesCoreParameterReadings,
+  completeMesCoreExecution,
+  fetchMesCoreExecutionSummary,
+  fetchMesCoreProductionLots,
+  holdMesCoreExecution,
+  resumeMesCoreExecution,
+  startMesCoreExecution,
+} from "../../services/mesCoreApi";
+import { fetchAcMasters, fetchAcRoutingLots } from "../../services/activatedCarbonApi";
+import useAcPageRefresh from "../../industries/activated-carbon/hooks/useAcPageRefresh";
+import {
+  normalizeAcExecutionOperations,
+  summarizeAcExecution,
+  getAcExecutionUiFlags,
+  resolveAcExecutionOperatorName,
+  buildAcParameterReadings
+} from "../../industries/activated-carbon/utils/acExecutionOperations";
+import { loadAcProductRoutingForExecution } from "../../industries/activated-carbon/utils/acRoutingResolver";
+import useWorkflowNavPaths from "../../hooks/useWorkflowNavPaths";
 import { useWorkflow } from "../WorkflowContext";
 import {
   WfCard,
@@ -66,6 +87,8 @@ function applyWoToOperations(ops, woCode, wo) {
       rework_quantity: wo.rework_quantity,
       operator_name: wo.operator_name ?? op.operator_name,
       actual_machine_id: wo.actual_machine_id ?? op.actual_machine_id,
+      actual_labor_pool_code: wo.actual_labor_pool_code ?? op.actual_labor_pool_code,
+      actual_tool_codes: wo.actual_tool_codes ?? op.actual_tool_codes,
       downtime_minutes: wo.downtime_minutes ?? op.downtime_minutes,
       can_start: false
     };
@@ -74,7 +97,11 @@ function applyWoToOperations(ops, woCode, wo) {
 }
 
 function ExecutionScreen() {
-  const { context, markStage } = useWorkflow();
+  const { context, markStage, update } = useWorkflow();
+  const nav = useWorkflowNavPaths();
+  const { pathname } = useLocation();
+  const { locationKey, focusTick } = useAcPageRefresh();
+  const isAcExecution = pathname.startsWith("/activated-carbon");
 
   const [lots, setLots] = useState([]);
   const [lotId, setLotId] = useState(context.lotId || "");
@@ -83,6 +110,8 @@ function ExecutionScreen() {
   const [operations, setOperations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [acting, setActing] = useState(false);
+  const [appendSaving, setAppendSaving] = useState(false);
+  const appendCaptureRef = useRef(null);
   const [executionReady, setExecutionReady] = useState(false);
   const [selectedWoId, setSelectedWoId] = useState("");
 
@@ -90,16 +119,40 @@ function ExecutionScreen() {
   const [scrapQty, setScrapQty] = useState("");
   const [downtimeMin, setDowntimeMin] = useState("");
   const [machineId, setMachineId] = useState("");
+  const [laborPoolCode, setLaborPoolCode] = useState("");
+  const [selectedToolCodes, setSelectedToolCodes] = useState([]);
+  const [plantResources, setPlantResources] = useState({
+    machines: [],
+    tools: [],
+    labor_pools: []
+  });
   const [holdReason, setHoldReason] = useState("");
   const captureRef = useRef(null);
 
   useEffect(() => {
-    api.get("/production-lots").then((r) => setLots(r.data || [])).catch(() => {});
-  }, []);
+    const loader = isAcExecution ? fetchAcRoutingLots : fetchMesCoreProductionLots;
+    loader()
+      .then((rows) => setLots(rows || []))
+      .catch(() => setLots([]));
+    fetchAcMasters()
+      .then((masters) => {
+        setPlantResources({
+          machines: masters.machines || masters.kilns || [],
+          tools: masters.tools || [],
+          labor_pools: masters.labor_pools || []
+        });
+      })
+      .catch(() => {});
+  }, [locationKey, focusTick, isAcExecution]);
 
   useEffect(() => {
     if (context.lotId && !lotId) setLotId(context.lotId);
-  }, [context.lotId]);
+  }, [context.lotId, lotId]);
+
+  const selectLot = (value) => {
+    setLotId(value);
+    if (value) update({ lotId: value });
+  };
 
   useEffect(() => {
     if (lotId) loadSummary({ sync: true });
@@ -143,11 +196,16 @@ function ExecutionScreen() {
     const keepId = preserveSelection ? (preferId ?? selectedWoId) : "";
     if (!silent) setLoading(true);
     try {
-      const r = await api.get(`/lot/${lotId}/execution-summary`, {
-        params: { sync }
-      });
-      const d = r.data || {};
-      setSummary({
+      const d = (await fetchMesCoreExecutionSummary(lotId, { sync })) || {};
+      setExecutionReady(!!d.execution_ready);
+      let ops = Array.isArray(d.operations) ? d.operations : [];
+
+      if (isAcExecution) {
+        const productRouting = await loadAcProductRoutingForExecution(lotId).catch(() => null);
+        ops = normalizeAcExecutionOperations(ops, productRouting);
+      }
+
+      const baseSummary = {
         lot_id: d.lot_id,
         production_order_id: d.production_order_id,
         part_id: d.part_id,
@@ -158,9 +216,9 @@ function ExecutionScreen() {
         operations_on_hold: d.operations_on_hold ?? 0,
         operations_total: d.operations_total ?? 0,
         operations_completed: d.operations_completed ?? 0
-      });
-      setExecutionReady(!!d.execution_ready);
-      const ops = Array.isArray(d.operations) ? d.operations : [];
+      };
+
+      setSummary(isAcExecution ? summarizeAcExecution(baseSummary, ops) : baseSummary);
       setOperations(ops);
       setSelectedWoId(pickDefaultWoId(ops, keepId));
     } catch (e) {
@@ -188,11 +246,28 @@ function ExecutionScreen() {
     [sortedOperations, selectedWoId]
   );
 
+  const acUiFlags = useMemo(() => {
+    if (!isAcExecution || !selectedOp) return null;
+    return getAcExecutionUiFlags(selectedOp);
+  }, [isAcExecution, selectedOp]);
+
   useEffect(() => {
     if (!selectedOp) return;
+    const planned = selectedOp.planned_resources || {};
     setMachineId(
-      selectedOp.actual_machine_id || selectedOp.assigned_machine_id || ""
+      selectedOp.actual_machine_id ||
+        selectedOp.assigned_machine_id ||
+        planned.machine_code ||
+        ""
     );
+    setLaborPoolCode(
+      selectedOp.actual_labor_pool_code || planned.labor_pool_code || ""
+    );
+    const tools =
+      selectedOp.actual_tool_codes?.length
+        ? selectedOp.actual_tool_codes
+        : planned.tool_codes || [];
+    setSelectedToolCodes(Array.isArray(tools) ? tools : []);
     setHoldReason("");
     if (selectedOp.operator_name) {
       setOperatorName(selectedOp.operator_name);
@@ -230,18 +305,39 @@ function ExecutionScreen() {
   }, [sortedOperations]);
 
   const startOp = async () => {
-    if (!selectedOp || !operatorName.trim()) {
-      alert("Enter operator name to start.");
-      return;
-    }
+    if (!selectedOp || acting) return;
+    if (selectedOp.status !== "Ready") return;
     const id = woId(selectedOp);
-    if (!id || acting) return;
+    if (!id) return;
+
     setActing(true);
     try {
-      const res = await api.put(`/work-order/${id}/start`, {
-        operator_name: operatorName.trim()
+      if (isAcExecution) {
+        const flags = acUiFlags || getAcExecutionUiFlags(selectedOp);
+        if (flags.machine_required && !machineId.trim()) {
+          alert("Select a machine to start.");
+          return;
+        }
+        if (flags.labor_required && !laborPoolCode.trim()) {
+          alert("Select a labor pool (crew) to start.");
+          return;
+        }
+      } else if (!operatorName.trim()) {
+        alert("Enter operator name to start.");
+        return;
+      }
+
+      const flags = isAcExecution ? acUiFlags || getAcExecutionUiFlags(selectedOp) : null;
+      const res = await startMesCoreExecution(id, {
+        operator_name: isAcExecution
+          ? resolveAcExecutionOperatorName(selectedOp, laborPoolCode)
+          : operatorName.trim() || undefined,
+        machine_id: flags?.skip_machine ? undefined : machineId.trim() || undefined,
+        labor_pool_code: flags?.skip_labor ? undefined : laborPoolCode.trim() || undefined,
+        tool_codes:
+          flags?.skip_tools || !selectedToolCodes.length ? undefined : selectedToolCodes
       });
-      setOperations((ops) => applyWoToOperations(ops, id, res.data));
+      setOperations((ops) => applyWoToOperations(ops, id, res));
       setSelectedWoId(id);
       refreshInBackground(id);
     } catch (e) {
@@ -261,9 +357,9 @@ function ExecutionScreen() {
     const id = woId(selectedOp);
     setActing(true);
     try {
-      const res = await api.put(`/work-order/${id}/hold`, { reason });
+      const res = await holdMesCoreExecution(id, { reason });
       setHoldReason("");
-      setOperations((ops) => applyWoToOperations(ops, id, res.data));
+      setOperations((ops) => applyWoToOperations(ops, id, res));
       setSelectedWoId(id);
       refreshInBackground(id);
     } catch (e) {
@@ -278,8 +374,8 @@ function ExecutionScreen() {
     const id = woId(selectedOp);
     setActing(true);
     try {
-      const res = await api.put(`/work-order/${id}/resume`);
-      setOperations((ops) => applyWoToOperations(ops, id, res.data));
+      const res = await resumeMesCoreExecution(id);
+      setOperations((ops) => applyWoToOperations(ops, id, res));
       setSelectedWoId(id);
       refreshInBackground(id);
     } catch (e) {
@@ -312,30 +408,67 @@ function ExecutionScreen() {
         if (!saved) return;
       }
 
+      const flags = isAcExecution ? acUiFlags || getAcExecutionUiFlags(selectedOp) : null;
+      const capturedParams =
+        isAcExecution && captureRef.current?.getValues
+          ? captureRef.current.getValues()
+          : null;
       const downtimeVal = downtimeMin.trim() ? Number(downtimeMin) : undefined;
-      const res = await api.put(`/work-order/${id}/complete`, {
+      const parameterReadings =
+        isAcExecution && capturedParams && selectedOp?.parameters?.length
+          ? buildAcParameterReadings(selectedOp.parameters, capturedParams)
+          : undefined;
+      const res = await completeMesCoreExecution(id, {
         actual_output_quantity: Number(outputQty) || 0,
         scrap_quantity: Number(scrapQty) || 0,
         rework_quantity: 0,
-        operator_name: operatorName.trim() || undefined,
-        machine_id: machineId.trim() || undefined,
-        downtime_minutes: downtimeVal
+        operator_name: isAcExecution
+          ? resolveAcExecutionOperatorName(selectedOp, laborPoolCode)
+          : operatorName.trim() || undefined,
+        machine_id: flags?.skip_machine ? undefined : machineId.trim() || undefined,
+        downtime_minutes: downtimeVal,
+        ...(parameterReadings?.length ? { parameter_readings: parameterReadings } : {})
       });
       const woPayload = {
-        ...res.data,
+        ...res,
         downtime_minutes:
-          res.data?.downtime_minutes != null ? res.data.downtime_minutes : downtimeVal,
-        actual_machine_id: res.data?.actual_machine_id || machineId.trim() || undefined
+          res?.downtime_minutes != null ? res.downtime_minutes : downtimeVal,
+        actual_machine_id:
+          flags?.skip_machine
+            ? undefined
+            : res?.actual_machine_id || machineId.trim() || undefined
       };
       const updated = applyWoToOperations(operations, id, woPayload);
       setOperations(updated);
-      setSelectedWoId(id);
+      const nextId = pickDefaultWoId(updated, null);
+      setSelectedWoId(nextId);
       markStage("execution");
-      refreshInBackground(id);
+      refreshInBackground(nextId);
     } catch (e) {
       alert(formatApiError(e, "Error completing operation"));
     } finally {
       setActing(false);
+    }
+  };
+
+  const appendSupplementaryReadings = async () => {
+    if (!selectedOp || appendSaving) return;
+    const id = woId(selectedOp);
+    if (!id || !selectedOp.parameters?.length) return;
+    const captured = appendCaptureRef.current?.getValues?.() || {};
+    const readings = buildAcParameterReadings(selectedOp.parameters, captured);
+    if (!readings.length) {
+      alert("Enter at least one parameter value to save.");
+      return;
+    }
+    setAppendSaving(true);
+    try {
+      await appendMesCoreParameterReadings(id, readings);
+      await loadSummary({ silent: true, preserveSelection: true, preferId: id });
+    } catch (e) {
+      alert(formatApiError(e, "Could not save supplementary readings"));
+    } finally {
+      setAppendSaving(false);
     }
   };
 
@@ -354,12 +487,23 @@ function ExecutionScreen() {
         subtitle="After scheduling, run each routing step here: start, record output/scrap, complete, or put on hold if material or machine is not ready."
         right={
           allComplete && (
-            <Link to="/workflow/inspection" className="wf-btn wf-btn-primary">
-              Proceed to Inspection →
+            <Link to={nav.afterExecution} className="wf-btn wf-btn-primary">
+              {nav.afterExecutionLabel}
             </Link>
           )
         }
       />
+
+      {isAcExecution && allComplete && (
+        <div className="rounded-xl border border-emerald-300/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          <span className="font-semibold">All four shop-floor routing steps are complete.</span>{" "}
+          Record finished-goods test results on{" "}
+          <Link to={nav.afterExecution} className="underline font-medium">
+            Quality Testing
+          </Link>
+          , then proceed to dispatch when stock is ready.
+        </div>
+      )}
 
       <ContextBanner
         items={[
@@ -385,13 +529,18 @@ function ExecutionScreen() {
           {executionReady ? (
             <>
               <span className="font-semibold">Shop floor ready.</span>{" "}
-              Select each operation in routing order, start it, enter production data, then complete —
-              or put on hold if material/machine is not available. Machine is pre-filled from scheduling when assigned.
+              {isAcExecution
+                ? "Run each routing step in order. Production steps use labor pool + machine; QC and feasibility gate steps need parameters only."
+                : "Select each operation in routing order, start it, enter production data, then complete — or put on hold if material/machine is not available. Machine is pre-filled from scheduling when assigned."}
             </>
           ) : operations.length === 0 ? (
             <>
               <span className="font-semibold">Not ready yet.</span>{" "}
-              Finish <Link to="/workflow/scheduling" className="underline text-cyan-200">Scheduling</Link> for this lot,
+              Finish{" "}
+              <Link to={nav.prerequisiteForExecution} className="underline text-cyan-200">
+                {nav.prerequisiteLabel}
+              </Link>{" "}
+              for this lot,
               then return here — work orders sync automatically.
             </>
           ) : (
@@ -422,31 +571,42 @@ function ExecutionScreen() {
             }
           />
           <WfCardBody className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="md:col-span-2">
+            <div className={`grid grid-cols-1 gap-3 ${isAcExecution ? "" : "md:grid-cols-3"}`}>
+              <div className={isAcExecution ? "" : "md:col-span-2"}>
                 <label className="wf-label">Lot</label>
-                <select className="wf-select" value={lotId} onChange={(e) => setLotId(e.target.value)}>
+                <select className="wf-select" value={lotId} onChange={(e) => selectLot(e.target.value)}>
                   <option value="">-- Pick lot --</option>
-                  {lots.map((l) => (
-                    <option key={l.lot_id} value={l.lot_id}>{l.lot_id} · qty {l.lot_quantity}</option>
-                  ))}
+                  {lots.map((l) => {
+                    const id = l.lot_id || l.lot_code;
+                    return (
+                      <option key={id} value={id}>
+                        {id} · qty {l.lot_quantity}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
-              <div>
-                <label className="wf-label">Operator (required to start)</label>
-                <input
-                  className="wf-input"
-                  value={operatorName}
-                  onChange={(e) => setOperatorName(e.target.value)}
-                  placeholder="Shop floor user"
-                />
-              </div>
+              {!isAcExecution && (
+                <div>
+                  <label className="wf-label">Operator (required to start)</label>
+                  <input
+                    className="wf-input"
+                    value={operatorName}
+                    onChange={(e) => setOperatorName(e.target.value)}
+                    placeholder="Shop floor user"
+                  />
+                </div>
+              )}
             </div>
 
             {sortedOperations.length === 0 && !loading && (
               <EmptyState
                 title="No work orders for this lot"
-                hint="Schedule this lot in Scheduling — each operation becomes a shop-floor work order you run here."
+                hint={
+                  isAcExecution
+                    ? "Open Lot Routing, generate work orders for this lot, then return here."
+                    : "Schedule this lot in Scheduling — each operation becomes a shop-floor work order you run here."
+                }
                 icon={<IconPlay />}
               />
             )}
@@ -487,7 +647,11 @@ function ExecutionScreen() {
                           <span className="block text-sm text-slate-100 truncate">{op.operation_name}</span>
                           <span className="block text-[10px] text-slate-500 font-mono truncate">
                             {op.operation_code}
-                            {op.assigned_machine_id ? ` · ${op.assigned_machine_id}` : ""}
+                            {isAcExecution && (op.parameters?.length || 0) > 0
+                              ? ` · ${op.parameters.length} param(s)`
+                              : ""}
+                            {!isAcExecution && op.assigned_machine_id ? ` · ${op.assigned_machine_id}` : ""}
+                            {op.actual_labor_pool_code ? ` · ${op.actual_labor_pool_code}` : ""}
                             {op.status === "Completed" &&
                             op.downtime_minutes != null &&
                             op.downtime_minutes !== ""
@@ -509,8 +673,24 @@ function ExecutionScreen() {
             )}
 
             {selectedOp && selectedOp.status === "Completed" && (
-              <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-5">
+              <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-5 space-y-4">
                 <div className="text-sm font-semibold text-emerald-100">{selectedOp.operation_name} — completed</div>
+                {selectedOp.captured_readings?.length > 0 && (
+                  <div className="rounded-xl border border-slate-600/40 bg-slate-900/40 p-3">
+                    <div className="text-xs font-semibold text-slate-200 mb-2">Recorded parameters</div>
+                    <ul className="text-xs text-slate-300 space-y-1">
+                      {selectedOp.captured_readings.map((r, idx) => (
+                        <li key={`${r.parameter_code}-${idx}`}>
+                          <span className="font-mono text-slate-100">{r.parameter_name || r.parameter_code}</span>
+                          {": "}
+                          {r.reading_value != null
+                            ? `${r.reading_value}${r.uom ? ` ${r.uom}` : ""}`
+                            : r.reading_text ?? "—"}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-slate-300">
                   <div>Output: <span className="font-mono">{selectedOp.actual_output_quantity ?? 0}</span></div>
                   <div>Scrap: <span className="font-mono">{selectedOp.scrap_quantity ?? 0}</span></div>
@@ -523,10 +703,11 @@ function ExecutionScreen() {
                         : "—"}
                     </span>
                   </div>
-                  {selectedOp.operator_name && (
+                  {selectedOp.operator_name && !isAcExecution && (
                     <div>Operator: <span className="font-mono">{selectedOp.operator_name}</span></div>
                   )}
-                  {(selectedOp.actual_machine_id || selectedOp.assigned_machine_id) && (
+                  {!acUiFlags?.skip_machine &&
+                    (selectedOp.actual_machine_id || selectedOp.assigned_machine_id) && (
                     <div>
                       Machine:{" "}
                       <span className="font-mono">
@@ -534,7 +715,41 @@ function ExecutionScreen() {
                       </span>
                     </div>
                   )}
+                  {selectedOp.actual_labor_pool_code && (
+                    <div>
+                      Crew:{" "}
+                      <span className="font-mono">{selectedOp.actual_labor_pool_code}</span>
+                    </div>
+                  )}
+                  {selectedOp.actual_tool_codes?.length > 0 && (
+                    <div className="md:col-span-2">
+                      Tools:{" "}
+                      <span className="font-mono">
+                        {selectedOp.actual_tool_codes.join(", ")}
+                      </span>
+                    </div>
+                  )}
                 </div>
+                {isAcExecution && selectedOp.parameters?.length > 0 && (
+                  <div className="rounded-xl border border-cyan-400/20 bg-slate-900/50 p-4">
+                    <AcExecutionParameterCapture
+                      ref={appendCaptureRef}
+                      parameters={selectedOp.parameters}
+                      readOnly={false}
+                      allowEmpty
+                      title="Add supplementary readings"
+                      subtitle="Optional: record lab or follow-up values after this step was completed (Masters / admin)."
+                    />
+                    <button
+                      type="button"
+                      className="wf-btn wf-btn--primary mt-3"
+                      disabled={appendSaving}
+                      onClick={appendSupplementaryReadings}
+                    >
+                      {appendSaving ? "Saving…" : "Save additional readings"}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -582,22 +797,133 @@ function ExecutionScreen() {
 
                 {(selectedOp.status === "Ready" || selectedOp.status === "In Progress") && (
                   <div className="mt-4 rounded-xl border border-cyan-400/20 bg-slate-900/50 p-4">
-                    <WorkOrderCaptureForm
-                      ref={captureRef}
-                      workOrderId={woId(selectedOp)}
-                      capturedBy={operatorName}
-                      captureStage="execution"
-                      theme="workflow"
-                      title="Capture parameters"
-                      subtitle={
-                        selectedOp.status === "In Progress"
-                          ? "Enter actual values for each parameter defined during routing."
-                          : "Review parameters that must be recorded when this operation runs."
-                      }
-                      readOnly={selectedOp.status !== "In Progress"}
-                      showSubmitButton={false}
-                    />
+                    {isAcExecution ? (
+                      <AcExecutionParameterCapture
+                        ref={captureRef}
+                        parameters={selectedOp.parameters || []}
+                        readOnly={selectedOp.status !== "In Progress"}
+                        title="Capture parameters"
+                        subtitle={
+                          selectedOp.status === "In Progress"
+                            ? "Enter actual values for each parameter defined in Routing Builder."
+                            : "Review parameters that must be recorded when this operation runs."
+                        }
+                      />
+                    ) : (
+                      <WorkOrderCaptureForm
+                        ref={captureRef}
+                        workOrderId={woId(selectedOp)}
+                        capturedBy={operatorName}
+                        captureStage="execution"
+                        theme="workflow"
+                        title="Capture parameters"
+                        subtitle={
+                          selectedOp.status === "In Progress"
+                            ? "Enter actual values for each parameter defined during routing."
+                            : "Review parameters that must be recorded when this operation runs."
+                        }
+                        readOnly={selectedOp.status !== "In Progress"}
+                        showSubmitButton={false}
+                      />
+                    )}
                   </div>
+                )}
+
+                {selectedOp.status === "Ready" &&
+                  selectedOp.can_start &&
+                  !acUiFlags?.is_gate_step &&
+                  (acUiFlags?.machine_required ||
+                    acUiFlags?.labor_required ||
+                    acUiFlags?.tools_required) && (
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {acUiFlags?.machine_required && (
+                    <div>
+                      <label className="wf-label">Machine (required)</label>
+                      <select
+                        className="wf-input"
+                        value={machineId}
+                        onChange={(e) => setMachineId(e.target.value)}
+                      >
+                        <option value="">— Select machine —</option>
+                        {plantResources.machines.map((m) => (
+                          <option key={m.resource_code} value={m.resource_code}>
+                            {m.resource_code} · {m.resource_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    )}
+                    {acUiFlags?.labor_required && (
+                    <div>
+                      <label className="wf-label">Labor pool (required)</label>
+                      <select
+                        className="wf-input"
+                        value={laborPoolCode}
+                        onChange={(e) => setLaborPoolCode(e.target.value)}
+                      >
+                        <option value="">— Select crew —</option>
+                        {plantResources.labor_pools.map((l) => (
+                          <option key={l.resource_code} value={l.resource_code}>
+                            {l.resource_code} · {l.resource_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    )}
+                    {acUiFlags?.tools_required && (
+                    <div className="md:col-span-2">
+                      <label className="wf-label">Tools used</label>
+                      {plantResources.tools.length === 0 ? (
+                        <p className="text-xs text-slate-500">No tools registered in Masters.</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {plantResources.tools.map((t) => {
+                            const selected = selectedToolCodes.includes(t.resource_code);
+                            return (
+                              <button
+                                key={t.resource_code}
+                                type="button"
+                                className={`text-xs px-2 py-1 rounded border ${
+                                  selected
+                                    ? "border-cyan-400 bg-cyan-500/20 text-cyan-100"
+                                    : "border-slate-600 text-slate-400"
+                                }`}
+                                onClick={() =>
+                                  setSelectedToolCodes((prev) =>
+                                    prev.includes(t.resource_code)
+                                      ? prev.filter((c) => c !== t.resource_code)
+                                      : [...prev, t.resource_code]
+                                  )
+                                }
+                              >
+                                {t.resource_code}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    )}
+                  </div>
+                )}
+
+                {selectedOp.status === "Ready" && selectedOp.can_start && acUiFlags?.is_gate_step && (
+                  <p className="mt-4 text-xs text-slate-400">
+                    {acUiFlags.is_feasibility_step
+                      ? "Feasibility gate — confirm parameters and start; no machine or crew assignment."
+                      : "QC / inspection step — record results only; no machine or crew assignment."}
+                  </p>
+                )}
+
+                {selectedOp.status === "Ready" &&
+                  selectedOp.can_start &&
+                  !acUiFlags?.is_gate_step &&
+                  !acUiFlags?.machine_required &&
+                  !acUiFlags?.labor_required &&
+                  !acUiFlags?.tools_required && (
+                  <p className="mt-4 text-xs text-slate-400">
+                    No machine or crew on this step — start and record parameters, then complete.
+                  </p>
                 )}
 
                 {selectedOp.status === "Ready" && (
@@ -620,9 +946,27 @@ function ExecutionScreen() {
                         {acting ? "Saving…" : "▶ Start"}
                       </button>
                     </div>
-                    {selectedOp.can_start && !operatorName.trim() && (
+                    {selectedOp.can_start &&
+                      !isAcExecution &&
+                      !operatorName.trim() && (
                       <p className="text-xs text-amber-200/90 mt-2 text-right">
                         Enter operator name above, then click Start.
+                      </p>
+                    )}
+                    {selectedOp.can_start &&
+                      isAcExecution &&
+                      acUiFlags?.machine_required &&
+                      !machineId.trim() && (
+                      <p className="text-xs text-amber-200/90 mt-2 text-right">
+                        Select a machine, then click Start.
+                      </p>
+                    )}
+                    {selectedOp.can_start &&
+                      isAcExecution &&
+                      acUiFlags?.labor_required &&
+                      !laborPoolCode.trim() && (
+                      <p className="text-xs text-amber-200/90 mt-2 text-right">
+                        Select a labor pool (crew), then click Start.
                       </p>
                     )}
                     {!selectedOp.can_start && nextStartableOp && (
@@ -648,7 +992,36 @@ function ExecutionScreen() {
 
                 {selectedOp.status === "In Progress" && (
                   <div className="mt-5 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    {isAcExecution &&
+                      (machineId ||
+                        laborPoolCode ||
+                        selectedOp.actual_machine_id ||
+                        selectedOp.actual_labor_pool_code) && (
+                      <div className="flex flex-wrap gap-3 text-xs text-slate-300">
+                        {(machineId || selectedOp.actual_machine_id) && (
+                          <span>
+                            Machine:{" "}
+                            <span className="font-mono text-slate-100">
+                              {machineId || selectedOp.actual_machine_id}
+                            </span>
+                          </span>
+                        )}
+                        {(laborPoolCode || selectedOp.actual_labor_pool_code) && (
+                          <span>
+                            Crew:{" "}
+                            <span className="font-mono text-slate-100">
+                              {laborPoolCode || selectedOp.actual_labor_pool_code}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div
+                      className={`grid grid-cols-1 gap-3 ${
+                        isAcExecution || acUiFlags?.skip_machine ? "md:grid-cols-3" : "md:grid-cols-4"
+                      }`}
+                    >
+                      {!isAcExecution && !acUiFlags?.skip_machine && (
                       <div>
                         <label className="wf-label">Machine</label>
                         <input
@@ -661,6 +1034,14 @@ function ExecutionScreen() {
                           <div className="text-[10px] text-slate-500 mt-1">From schedule</div>
                         )}
                       </div>
+                      )}
+                      {acUiFlags?.is_gate_step && (
+                        <div className="md:col-span-4 text-xs text-slate-400">
+                          {acUiFlags.is_feasibility_step
+                            ? "Feasibility gate — no machine or crew on this step."
+                            : "QC / inspection — no machine or crew on this step."}
+                        </div>
+                      )}
                       <div>
                         <label className="wf-label">Output Qty</label>
                         <input
@@ -729,8 +1110,17 @@ function ExecutionScreen() {
             <WfCardBody className="space-y-3 text-xs text-slate-400">
               <p>1. Pick the lot scheduled in Stage 06.</p>
               <p>2. Work through each routing step in order.</p>
-              <p>3. <span className="text-slate-200">Start</span> with operator name.</p>
-              <p>4. <span className="text-slate-200">Complete</span> — enter capture parameters, output, scrap, machine, and downtime.</p>
+              {isAcExecution ? (
+                <>
+                  <p>3. <span className="text-slate-200">Start</span> — pick machine/crew only when the routing step requires them.</p>
+                  <p>4. <span className="text-slate-200">Complete</span> — enter capture parameters, output, scrap, and downtime.</p>
+                </>
+              ) : (
+                <>
+                  <p>3. <span className="text-slate-200">Start</span> with operator name.</p>
+                  <p>4. <span className="text-slate-200">Complete</span> — enter capture parameters, output, scrap, machine, and downtime.</p>
+                </>
+              )}
               <p>5. <span className="text-slate-200">Put on hold</span> if material or machine is not ready — resume later.</p>
               <OntologyEdge from="WorkOrder" to="Operation" label="executes" />
               <OntologyEdge from="WorkOrder" to="Machine" label="runs on" />
@@ -744,7 +1134,7 @@ function ExecutionScreen() {
                 <EmptyState title="No operations" hint="Pick a lot to view status." icon={<IconWave />} />
               ) : (
                 <div className="space-y-2">
-                  {operations.map((op) => (
+                  {sortedOperations.map((op) => (
                     <div key={woId(op)} className="flex items-center gap-3 text-xs">
                       <span className="w-6 h-6 rounded-md bg-slate-900/70 border border-slate-700/50 flex items-center justify-center font-mono text-[10px] text-slate-400">
                         {op.seq}

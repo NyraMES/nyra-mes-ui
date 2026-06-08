@@ -5,6 +5,77 @@ body {
   color: #0f172a;
 }
 
+/* ---------- Tenant / template context bar ---------- */
+
+.topbar-context {
+  margin-left: 8px;
+}
+
+.mes-context-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-width: 420px;
+}
+
+.mes-context-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mes-context-label {
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.mes-context-value {
+  color: #0f172a;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mes-context-fallback {
+  font-size: 10px;
+  color: #b45309;
+  font-weight: 500;
+}
+
+.context-load-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  color: #92400e;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.context-load-warning-icon {
+  flex-shrink: 0;
+}
+
+.wf-shell header .wf-tenant-context .text-slate-500 {
+  color: rgba(100, 116, 139, 0.95) !important;
+}
+
+.wf-shell header .wf-tenant-context .text-slate-700 {
+  color: #334155 !important;
+}
+
 .app-shell {
   display: flex;
   min-height: 100vh;

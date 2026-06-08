@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 
-import api from "../services/api";
+import {
+  createMesCoreInspectionResult,
+  fetchMesCoreInspectionResults,
+} from "../services/mesCoreApi";
 
 import FormCard from "../components/FormCard";
 import FormField from "../components/FormField";
@@ -26,8 +29,8 @@ function InspectionResultPage() {
 
   const loadInspectionResults = async () => {
     try {
-      const response = await api.get("/inspection-results");
-      setInspectionResults(response.data);
+      const rows = await fetchMesCoreInspectionResults();
+      setInspectionResults(rows);
     } catch (error) {
       console.error(error);
     }
@@ -46,15 +49,15 @@ function InspectionResultPage() {
 
   const createInspectionResult = async () => {
     try {
-      await api.post("/inspection-result", {
-        inspection_result_id: inspectionResultId,
+      await createMesCoreInspectionResult({
+        inspection_id: inspectionResultId || undefined,
         work_order_id: workOrderId,
         lot_id: lotId,
         inspection_plan_id: inspectionPlanId,
         inspected_quantity: Number(inspectedQty),
         accepted_quantity: Number(acceptedQty),
         rejected_quantity: Number(rejectedQty),
-        inspection_status: inspectionStatus
+        inspection_status: inspectionStatus,
       });
 
       alert("Inspection result created successfully");

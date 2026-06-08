@@ -3,7 +3,10 @@
 export function isFeasibilityReady(status) {
   if (!status) return false;
   const key = String(status).toUpperCase().trim();
-  return key === "OK" || key === "READY" || key.includes("READY");
+  if (key === "NOT_READY" || key === "NOT READY" || key === "BLOCKED" || key === "FAILED") {
+    return false;
+  }
+  return key === "OK" || key === "READY" || key === "PASSED" || key === "AVAILABLE";
 }
 
 export function feasibilityLabel(status) {

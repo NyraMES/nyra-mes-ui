@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import api from "../../services/api";
+import {
+  createMesCoreSchedule,
+  fetchMesCoreLotFeasibility,
+  fetchMesCoreMachines,
+  fetchMesCoreProductionLots,
+  fetchMesCoreSchedulePlan,
+  fetchMesCoreSchedules,
+  fetchMesCoreWorkCenters,
+  runMesCoreFeasibilityCheck,
+} from "../../services/mesCoreApi";
 import { isFeasibilityReady } from "../../utils/workflowValidation";
 import { useWorkflow } from "../WorkflowContext";
 import {
@@ -63,6 +72,7 @@ function SchedulingBoard() {
   const [savingOpId, setSavingOpId] = useState(null);
   const [feasibilityGate, setFeasibilityGate] = useState(null);
   const [gateLoading, setGateLoading] = useState(false);
+  const [runningFeasibility, setRunningFeasibility] = useState(false);
 
 
   // ===================================================================
@@ -89,9 +99,22 @@ function SchedulingBoard() {
     }
     let cancelled = false;
     setGateLoading(true);
-    api.get(`/feasibility/${lotId}`)
-      .then((r) => {
-        if (!cancelled) setFeasibilityGate(r.data || null);
+    fetchMesCoreLotFeasibility(lotId)
+      .then(async (data) => {
+        if (cancelled) return;
+        const needsRun =
+          data?.overall_status === "BLOCKED" &&
+          String(data?.blocked_reason || "").toLowerCase().includes("no feasibility check");
+        if (needsRun) {
+          try {
+            const run = await runMesCoreFeasibilityCheck(lotId);
+            if (!cancelled) setFeasibilityGate(run || data);
+            return;
+          } catch {
+            /* fall through to stored gate */
+          }
+        }
+        setFeasibilityGate(data || null);
       })
       .catch(() => {
         if (!cancelled) setFeasibilityGate(null);
@@ -104,6 +127,19 @@ function SchedulingBoard() {
     };
   }, [lotId]);
 
+  const runFeasibility = async () => {
+    if (!lotId) return;
+    setRunningFeasibility(true);
+    try {
+      const run = await runMesCoreFeasibilityCheck(lotId);
+      setFeasibilityGate(run);
+    } catch (e) {
+      alert(e.response?.data?.detail || "Feasibility check failed");
+    } finally {
+      setRunningFeasibility(false);
+    }
+  };
+
   // when shift changes, snap the planned start to that shift's slot
   useEffect(() => {
     const s = SHIFTS.find((x) => x.id === shift);
@@ -114,6 +150,9 @@ function SchedulingBoard() {
   useEffect(() => {
     if (!plan) return;
     setRows((prev) => {
+      const defaultMachine = machines[0]?.machine_id || "";
+      const defaultWc =
+        machines[0]?.work_center_id || workCenters[0]?.work_center_id || "";
       let cursor = new Date(startAt || Date.now());
       const next = {};
       plan.operations.forEach((op) => {
@@ -122,8 +161,14 @@ function SchedulingBoard() {
         const end = new Date(cursor.getTime() + dur * 60_000);
         const existing = prev[op.operation_id] || {};
         next[op.operation_id] = {
-          machine: existing.machine ?? (op.suggested_machine_id || ""),
-          workCenter: existing.workCenter ?? (op.suggested_work_center_id || ""),
+          machine:
+            existing.machine ||
+            op.suggested_machine_id ||
+            defaultMachine,
+          workCenter:
+            existing.workCenter ||
+            op.suggested_work_center_id ||
+            defaultWc,
           start: existing.startEdited ? existing.start : toLocalInputValue(start),
           end: existing.endEdited ? existing.end : toLocalInputValue(end),
           startEdited: !!existing.startEdited,
@@ -133,21 +178,21 @@ function SchedulingBoard() {
       });
       return next;
     });
-  }, [plan, startAt, shift]);
+  }, [plan, startAt, shift, machines, workCenters]);
 
 
   const loadStatic = async () => {
     try {
       const [ls, ms, wc, sc] = await Promise.all([
-        api.get("/production-lots"),
-        api.get("/machines"),
-        api.get("/work-centers"),
-        api.get("/schedules")
+        fetchMesCoreProductionLots(),
+        fetchMesCoreMachines(),
+        fetchMesCoreWorkCenters(),
+        fetchMesCoreSchedules(),
       ]);
-      setLots(ls.data || []);
-      setMachines(ms.data || []);
-      setWorkCenters(wc.data || []);
-      setSchedules(sc.data || []);
+      setLots(ls || []);
+      setMachines(ms || []);
+      setWorkCenters(wc || []);
+      setSchedules(sc || []);
     } catch (e) {
       console.error(e);
     }
@@ -155,8 +200,8 @@ function SchedulingBoard() {
 
   const refreshSchedules = async () => {
     try {
-      const sc = await api.get("/schedules");
-      setSchedules(sc.data || []);
+      const sc = await fetchMesCoreSchedules();
+      setSchedules(sc || []);
     } catch { /* ignore */ }
   };
 
@@ -164,8 +209,8 @@ function SchedulingBoard() {
     setPlanLoading(true);
     setPlanError("");
     try {
-      const r = await api.get(`/lot/${id}/schedule-plan`);
-      setPlan(r.data);
+      const data = await fetchMesCoreSchedulePlan(id);
+      setPlan(data);
     } catch (e) {
       const detail =
         e.response?.data?.detail ||
@@ -224,14 +269,14 @@ function SchedulingBoard() {
     }
     setSavingOpId(op.operation_id);
     try {
-      await api.post("/schedule", {
+      await createMesCoreSchedule({
         lot_id: lotId,
         operation_id: op.operation_id,
         assigned_machine_id: r.machine,
         assigned_work_center_id: r.workCenter || null,
         planned_start_time: r.start ? new Date(r.start).toISOString() : null,
         planned_end_time: r.end ? new Date(r.end).toISOString() : null,
-        schedule_status: "Scheduled"
+        schedule_status: "Scheduled",
       });
       await Promise.all([refreshSchedules(), loadPlan(lotId)]);
       markStage("scheduling");
@@ -255,14 +300,14 @@ function SchedulingBoard() {
       for (const op of pending) {
         const r = rows[op.operation_id];
         if (!r?.machine) continue; // skip operations without a machine pick
-        await api.post("/schedule", {
+        await createMesCoreSchedule({
           lot_id: lotId,
           operation_id: op.operation_id,
           assigned_machine_id: r.machine,
           assigned_work_center_id: r.workCenter || null,
           planned_start_time: r.start ? new Date(r.start).toISOString() : null,
           planned_end_time: r.end ? new Date(r.end).toISOString() : null,
-          schedule_status: "Scheduled"
+          schedule_status: "Scheduled",
         });
       }
       await Promise.all([refreshSchedules(), loadPlan(lotId)]);
@@ -328,9 +373,19 @@ function SchedulingBoard() {
             <span className="font-semibold">Feasibility gate closed.</span>{" "}
             {feasibilityGate.blocked_reason || "Resolve blockers before scheduling this lot."}
           </div>
-          <Link to="/workflow/feasibility" className="wf-btn wf-btn-ghost shrink-0">
-            Open Feasibility →
-          </Link>
+          <div className="flex gap-2 shrink-0">
+            <button
+              type="button"
+              className="wf-btn wf-btn-primary"
+              disabled={runningFeasibility}
+              onClick={runFeasibility}
+            >
+              {runningFeasibility ? "Checking…" : "Re-run feasibility"}
+            </button>
+            <Link to="/workflow/feasibility" className="wf-btn wf-btn-ghost">
+              Open Feasibility →
+            </Link>
+          </div>
         </div>
       )}
 
@@ -420,6 +475,12 @@ function SchedulingBoard() {
                 {pendingOps.length > 0 && !allPicked && (
                   <div className="text-amber-200/90">
                     Choose a machine on each row still pending, then bulk-schedule or save row-by-row.
+                    {machines.length === 0 && " No machines loaded — add equipment in master data."}
+                  </div>
+                )}
+                {pendingOps.length > 0 && allPicked && !gateOpen && (
+                  <div className="text-amber-200/90">
+                    Feasibility must be OK before scheduling. Use “Re-run feasibility” above if needed.
                   </div>
                 )}
               </div>

@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import api, { formatApiError } from "../services/api";
+import { isActivatedCarbonShell } from "../config/legacyApiGuard";
 import {
   buildInitialCaptureValues,
   captureFieldKey,
@@ -61,6 +62,13 @@ const WorkOrderCaptureForm = forwardRef(function WorkOrderCaptureForm(
       return;
     }
 
+    if (isActivatedCarbonShell()) {
+      setTemplates([]);
+      setValues({});
+      setLoadError("");
+      return;
+    }
+
     setLoading(true);
     setLoadError("");
     setSubmitError("");
@@ -107,6 +115,9 @@ const WorkOrderCaptureForm = forwardRef(function WorkOrderCaptureForm(
   };
 
   const submitCapture = async () => {
+    if (isActivatedCarbonShell()) {
+      return true;
+    }
     if (!workOrderId?.trim()) {
       setSubmitError("Work order ID is required.");
       return false;

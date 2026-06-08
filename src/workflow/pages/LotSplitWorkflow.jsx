@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import api from "../../services/api";
+import {
+  fetchMesCoreProductionLots,
+  fetchMesCoreProductionOrders,
+  splitMesCoreProductionLots,
+} from "../../services/mesCoreApi";
+import { formatApiError } from "../../services/api";
 import { useWorkflow } from "../WorkflowContext";
 import { fetchProductionOrderById } from "../workflowData";
 import {
@@ -32,12 +37,12 @@ function LotSplitWorkflow() {
 
   const loadAll = useCallback(async () => {
     try {
-      const [po, lotsRes] = await Promise.all([
-        api.get("/production-orders"),
-        api.get("/production-lots")
+      const [po, lotsList] = await Promise.all([
+        fetchMesCoreProductionOrders(),
+        fetchMesCoreProductionLots(),
       ]);
-      setProductionOrders(po.data || []);
-      setLots(lotsRes.data || []);
+      setProductionOrders(po || []);
+      setLots(lotsList || []);
     } catch (e) {
       console.error(e);
     }
@@ -127,16 +132,7 @@ function LotSplitWorkflow() {
     if (!allocationOk || alreadySplit) return;
 
     try {
-      const res = await api.post(
-        `/production-order/${productionOrderId}/lots/split`,
-        {
-          lots: splitRows.map((r) => ({
-            lot_quantity: Number(r.qty),
-            status: "Created"
-          }))
-        }
-      );
-      const createdLots = res.data || [];
+      const createdLots = await splitMesCoreProductionLots(productionOrderId, splitRows);
       const firstLotId = createdLots[0]?.lot_id;
       update({
         lotId: firstLotId,
@@ -158,7 +154,7 @@ function LotSplitWorkflow() {
       });
     } catch (e) {
       console.error(e);
-      alert(e.response?.data?.detail || "Error creating lots");
+      alert(formatApiError(e, "Error creating lots"));
     }
   };
 

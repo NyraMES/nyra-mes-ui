@@ -6,7 +6,6 @@ import {
   useMemo,
   useState
 } from "react";
-import { Amplify } from "aws-amplify";
 import {
   confirmSignIn,
   fetchAuthSession,
@@ -18,24 +17,17 @@ import {
 
 import api from "../services/api";
 import {
+  ensureAmplifyConfigured,
+  isAmplifyConfigured
+} from "./amplifySetup";
+import {
   authEnabled,
-  buildAmplifyConfig,
-  cognitoEnv
+  cognitoEnv,
+  isCognitoConfigured
 } from "./cognitoConfig";
 import { primaryRoleLabel } from "./roles";
 
 const AuthContext = createContext(null);
-
-let amplifyConfigured = false;
-
-function ensureAmplifyConfigured() {
-  if (amplifyConfigured) return true;
-  const config = buildAmplifyConfig();
-  if (!config) return false;
-  Amplify.configure(config);
-  amplifyConfigured = true;
-  return true;
-}
 
 function formatAuthError(err) {
   if (!err) return "Sign-in failed";
@@ -56,6 +48,9 @@ function formatAuthError(err) {
   }
   if (message.includes("Invalid attributes") || message.includes("email is missing")) {
     return "Email is required. Enter a valid email address and try again.";
+  }
+  if (message.includes("Cannot modify an already provided email")) {
+    return "Your email is already on file. Set only your new password, or click Start over and sign in again.";
   }
   if (message.includes("Password did not conform") || err.name === "InvalidPasswordException") {
     return "Password must be at least 8 characters and include upper, lower, number, and symbol.";
@@ -85,6 +80,7 @@ async function loadDevUser() {
     sub: data.sub,
     username: data.username,
     email: data.email,
+    tenant_code: data.tenant_code || null,
     roles: data.roles || data.groups || [],
     displayName: data.email || data.username,
     roleLabel: primaryRoleLabel(data.roles || data.groups || [])
@@ -124,6 +120,7 @@ async function loadCognitoUser({ forceRefresh = true } = {}) {
       sub: profile?.sub,
       username: profile?.username,
       email: profile?.email,
+      tenant_code: profile?.tenant_code || null,
       roles,
       displayName: profile?.email || profile?.username,
       roleLabel: primaryRoleLabel(roles)
@@ -226,6 +223,7 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const [serverAuthEnabled, setServerAuthEnabled] = useState(authEnabled);
+  const [authConfig, setAuthConfig] = useState(null);
 
   const applySession = useCallback(async () => {
     const result = await waitForCognitoSession();
@@ -242,9 +240,10 @@ export function AuthProvider({ children }) {
     try {
       const cfgRes = await api.get("/auth/config");
       const cfg = cfgRes.data || {};
+      setAuthConfig(cfg);
       setServerAuthEnabled(!!cfg.auth_enabled);
 
-      if (!cfg.auth_enabled) {
+      if (!cfg.auth_enabled || !authEnabled) {
         delete api.defaults.headers.common.Authorization;
         const devUser = await loadDevUser();
         setUser(devUser);
@@ -252,10 +251,10 @@ export function AuthProvider({ children }) {
         return { ok: true, user: devUser };
       }
 
-      if (!ensureAmplifyConfigured()) {
+      if (!ensureAmplifyConfigured(cfg)) {
         setUser(null);
         setToken(null);
-        return { ok: false, error: "Cognito is not configured in the UI." };
+        return { ok: false, error: "Cognito is not configured in the UI or API." };
       }
 
       return await applySession();
@@ -311,10 +310,12 @@ export function AuthProvider({ children }) {
         Object.entries(userAttributes).filter(([, value]) => String(value || "").trim())
       );
 
-      let result = await confirmSignIn({
-        challengeResponse: newPassword,
-        options: { userAttributes: cleanedAttributes }
-      });
+      const confirmOptions = { challengeResponse: newPassword };
+      if (Object.keys(cleanedAttributes).length > 0) {
+        confirmOptions.options = { userAttributes: cleanedAttributes };
+      }
+
+      let result = await confirmSignIn(confirmOptions);
 
       for (let attempt = 0; attempt < 5; attempt += 1) {
         const mapped = mapSignInStep(result);
@@ -347,7 +348,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(async () => {
-    if (serverAuthEnabled && amplifyConfigured) {
+    if (serverAuthEnabled && isAmplifyConfigured()) {
       await signOut();
     }
     delete api.defaults.headers.common.Authorization;
@@ -356,7 +357,7 @@ export function AuthProvider({ children }) {
   }, [serverAuthEnabled]);
 
   const resetLoginFlow = useCallback(async () => {
-    if (serverAuthEnabled && amplifyConfigured) {
+    if (serverAuthEnabled && isAmplifyConfigured()) {
       await clearExistingSession();
     } else {
       delete api.defaults.headers.common.Authorization;
@@ -371,8 +372,8 @@ export function AuthProvider({ children }) {
       token,
       loading,
       authEnabled: serverAuthEnabled,
-      cognitoConfigured: !!(cognitoEnv.userPoolId && cognitoEnv.userPoolClientId),
-      isAuthenticated: !!user,
+      cognitoConfigured: isCognitoConfigured(authConfig),
+      isAuthenticated: serverAuthEnabled ? !!(user && token) : !!user,
       refreshSession,
       loginWithPassword,
       completeNewPassword,
@@ -385,6 +386,7 @@ export function AuthProvider({ children }) {
       token,
       loading,
       serverAuthEnabled,
+      authConfig,
       refreshSession,
       loginWithPassword,
       completeNewPassword,

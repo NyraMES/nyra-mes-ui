@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import {
   AreaChart,
   Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -12,7 +14,10 @@ import {
   RadialBar
 } from "recharts";
 
-import api from "../../services/api";
+import { formatApiError } from "../../services/api";
+import { fetchMesCoreIntelligenceHub } from "../../services/mesCoreApi";
+import { expandSingleDayTrend } from "../../utils/oeeTrend";
+import useIndustryBasePath from "../../hooks/useIndustryBasePath";
 import {
   WfCard,
   WfCardHeader,
@@ -25,17 +30,8 @@ import {
 import FlowDiagram from "../FlowDiagram";
 
 
-const safeFetch = async (url, fallback) => {
-  try {
-    const r = await api.get(url);
-    return r.data ?? fallback;
-  } catch (e) {
-    return fallback;
-  }
-};
-
-
 function IntelligenceHub() {
+  const industryBase = useIndustryBasePath();
   const [kpis, setKpis] = useState({
     production_orders: 0,
     work_orders: 0,
@@ -45,36 +41,54 @@ function IntelligenceHub() {
   });
   const [orders, setOrders] = useState([]);
   const [lots, setLots] = useState([]);
+  const [orderLotLines, setOrderLotLines] = useState([]);
   const [oeeTrend, setOeeTrend] = useState([]);
   const [oeeSummaries, setOeeSummaries] = useState([]);
   const [openWorkOrders, setOpenWorkOrders] = useState([]);
   const [openNcrs, setOpenNcrs] = useState([]);
   const [dispatches, setDispatches] = useState([]);
+  const [plantKpis, setPlantKpis] = useState({
+    availability: 0,
+    performance: 0,
+    quality: 0,
+    oee: 0
+  });
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     (async () => {
-      const [k, o, l, t, oee, wos, ncrs, dis] = await Promise.all([
-        safeFetch("/dashboard/kpis", {}),
-        safeFetch("/orders", []),
-        safeFetch("/production-lots", []),
-        safeFetch("/dashboard/oee-trend", []),
-        safeFetch("/oee-daily-summary", []),
-        safeFetch("/dashboard/open-work-orders", []),
-        safeFetch("/dashboard/open-ncrs", []),
-        safeFetch("/dashboard/recent-dispatches", [])
-      ]);
-      setKpis(k || {});
-      setOrders(Array.isArray(o) ? o : []);
-      setLots(Array.isArray(l) ? l : []);
-      setOeeTrend(Array.isArray(t) ? t : []);
-      setOeeSummaries(Array.isArray(oee) ? oee : []);
-      setOpenWorkOrders(Array.isArray(wos) ? wos : []);
-      setOpenNcrs(Array.isArray(ncrs) ? ncrs : []);
-      setDispatches(Array.isArray(dis) ? dis : []);
+      try {
+        setLoadError("");
+        const data = await fetchMesCoreIntelligenceHub();
+        setKpis(data.kpis || {});
+        setOrders(Array.isArray(data.orders) ? data.orders : []);
+        setLots(Array.isArray(data.lots) ? data.lots : []);
+        setOrderLotLines(Array.isArray(data.order_lot_lines) ? data.order_lot_lines : []);
+        setOeeTrend(Array.isArray(data.oee_trend) ? data.oee_trend : []);
+        setOeeSummaries(Array.isArray(data.oee_summaries) ? data.oee_summaries : []);
+        setOpenWorkOrders(Array.isArray(data.open_work_orders) ? data.open_work_orders : []);
+        setOpenNcrs(Array.isArray(data.open_ncrs) ? data.open_ncrs : []);
+        setDispatches(Array.isArray(data.dispatches) ? data.dispatches : []);
+        setPlantKpis(
+          data.plant_kpis || {
+            availability: 0,
+            performance: 0,
+            quality: 0,
+            oee: Number(data.kpis?.average_oee) || 0
+          }
+        );
+      } catch (e) {
+        setLoadError(formatApiError(e, "Could not load intelligence hub data."));
+      }
     })();
   }, []);
 
   const oeeValue = Number(kpis.average_oee || 0);
+
+  const oeeTrendChart = useMemo(
+    () => expandSingleDayTrend(oeeTrend),
+    [oeeTrend]
+  );
 
   const machineStatus = useMemo(() => {
     const latest = {};
@@ -100,21 +114,36 @@ function IntelligenceHub() {
     return map;
   }, [lots]);
 
+  const lotStageChart = useMemo(
+    () => [
+      { stage: "Created", count: lotStageCounts.created, fill: "#60a5fa" },
+      { stage: "In Progress", count: lotStageCounts.inprogress, fill: "#fbbf24" },
+      { stage: "Completed", count: lotStageCounts.completed, fill: "#34d399" }
+    ],
+    [lotStageCounts]
+  );
+
   return (
     <div className="space-y-6">
       <SectionHeader
         eyebrow="Manufacturing Workflow Intelligence"
         title="Operational Intelligence Hub"
-        subtitle="A single, connected view across orders, lots, machines, quality and dispatch — driven by the ontology graph."
+        subtitle="A single, connected view across orders, lots, machines, quality and dispatch — driven by nyra_mes_core."
         right={
-          <Link to="/workflow/customer-order" className="wf-btn wf-btn-primary">
+          <Link to={`${industryBase}/customer-order`} className="wf-btn wf-btn-primary">
             Start New Workflow
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6"/></svg>
           </Link>
         }
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      {loadError && (
+        <div className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          {loadError}
+        </div>
+      )}
+
+      <div className="wf-kpi-grid">
         <KpiTile label="Orders" value={orders.length} sub="Customer orders" accent="blue" icon={<IconOrder />} />
         <KpiTile label="Production Lots" value={lots.length} sub="In system" accent="indigo" icon={<IconLot />} />
         <KpiTile label="Open Work Orders" value={openWorkOrders.length} sub="Shop floor" accent="cyan" icon={<IconWO />} />
@@ -129,20 +158,20 @@ function IntelligenceHub() {
           title="Live Workflow Pipeline"
           subtitle="Real-time view of every manufacturing stage from order intake to dispatch"
           icon={<IconFlow />}
-          right={<StatusPill kind="info">Streaming</StatusPill>}
+          right={<StatusPill kind="info">Live</StatusPill>}
         />
         <WfCardBody>
           <FlowDiagram
             steps={[
-              { id: "co", title: "Customer Order", code: "CO", status: "done", seq: 1, meta: `${orders.length} orders` },
-              { id: "po", title: "Production Order", code: "PO", status: "done", seq: 2, meta: `${kpis.production_orders ?? 0} active` },
-              { id: "ls", title: "Lot Split", code: "LS", status: "done", seq: 3, meta: `${lots.length} lots` },
+              { id: "co", title: "Customer Order", code: "CO", status: "done", seq: 1, count: orders.length, meta: "orders captured" },
+              { id: "po", title: "Production Order", code: "PO", status: "done", seq: 2, count: kpis.production_orders ?? 0, meta: "active POs" },
+              { id: "ls", title: "Lot Split", code: "LS", status: "done", seq: 3, count: lots.length, meta: "lots in system" },
               { id: "rt", title: "Routing", code: "RT", status: "active", seq: 4, meta: "Operations sequenced" },
               { id: "fe", title: "Feasibility", code: "FE", status: "active", seq: 5, meta: "Materials · Machines · Tools" },
               { id: "sc", title: "Scheduling", code: "SC", status: "active", seq: 6, meta: "Work centers · Shifts" },
-              { id: "ex", title: "Execution", code: "EX", status: "active", seq: 7, meta: `${openWorkOrders.length} WO open` },
-              { id: "qc", title: "Inspection", code: "QC", status: openNcrs.length ? "blocked" : "active", seq: 8, meta: `${openNcrs.length} NCR` },
-              { id: "dp", title: "Dispatch", code: "DP", status: "pending", seq: 9, meta: `${dispatches.length} dispatched` },
+              { id: "ex", title: "Execution", code: "EX", status: "active", seq: 7, count: openWorkOrders.length, meta: "open work orders" },
+              { id: "qc", title: "Inspection", code: "QC", status: openNcrs.length ? "blocked" : "active", seq: 8, count: openNcrs.length, meta: openNcrs.length === 1 ? "open NCR" : "open NCRs" },
+              { id: "dp", title: "Dispatch", code: "DP", status: "pending", seq: 9, count: dispatches.length, meta: "dispatched" },
               { id: "tr", title: "Traceability", code: "TR", status: "pending", seq: 10, meta: "Genealogy closed" }
             ]}
           />
@@ -157,25 +186,29 @@ function IntelligenceHub() {
             icon={<IconChart />}
           />
           <WfCardBody>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={oeeTrend} margin={{ top: 6, right: 10, left: -16, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="oeeGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.5}/>
-                      <stop offset="100%" stopColor="#60a5fa" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 6" stroke="rgba(124,159,255,0.12)" vertical={false}/>
-                  <XAxis dataKey="day" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false}/>
-                  <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} domain={[0, 100]}/>
-                  <Tooltip
-                    contentStyle={{ background: "#0a1226", border: "1px solid rgba(124,159,255,0.3)", borderRadius: 8, color: "#e2e8f0" }}
-                    labelStyle={{ color: "#94a3b8" }}
-                  />
-                  <Area type="monotone" dataKey="oee" stroke="#60a5fa" strokeWidth={2.5} fill="url(#oeeGrad)" />
-                </AreaChart>
-              </ResponsiveContainer>
+            <div className="h-64 min-h-[256px] w-full">
+              {oeeTrendChart.mode === "empty" ? (
+                <EmptyState title="No OEE data yet" hint="Complete shop-floor work orders or record OEE summaries to populate this chart." icon={<IconChart />} />
+              ) : (
+                <ResponsiveContainer width="100%" height={256}>
+                  <AreaChart data={oeeTrendChart.data} margin={{ top: 6, right: 10, left: -16, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="oeeGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.5}/>
+                        <stop offset="100%" stopColor="#60a5fa" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 6" stroke="rgba(124,159,255,0.12)" vertical={false}/>
+                    <XAxis dataKey="day" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false}/>
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} domain={[0, 100]}/>
+                    <Tooltip
+                      contentStyle={{ background: "#0a1226", border: "1px solid rgba(124,159,255,0.3)", borderRadius: 8, color: "#e2e8f0" }}
+                      labelStyle={{ color: "#94a3b8" }}
+                    />
+                    <Area type="monotone" dataKey="oee" stroke="#60a5fa" strokeWidth={2.5} fill="url(#oeeGrad)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </WfCardBody>
         </WfCard>
@@ -199,9 +232,9 @@ function IntelligenceHub() {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-2 mt-12 text-center">
-              <StatBlock label="Avail" value="—" tone="emerald" />
-              <StatBlock label="Perf"  value="—" tone="blue" />
-              <StatBlock label="Qual"  value="—" tone="violet" />
+              <StatBlock label="Avail" value={`${Number(plantKpis.availability || 0).toFixed(1)}%`} />
+              <StatBlock label="Perf" value={`${Number(plantKpis.performance || 0).toFixed(1)}%`} />
+              <StatBlock label="Qual" value={`${Number(plantKpis.quality || 0).toFixed(1)}%`} />
             </div>
           </WfCardBody>
         </WfCard>
@@ -245,7 +278,20 @@ function IntelligenceHub() {
         <WfCard>
           <WfCardHeader title="Lot Stages" subtitle="Where lots are right now" icon={<IconLot />} />
           <WfCardBody>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="h-40 mb-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={lotStageChart} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 6" stroke="rgba(124,159,255,0.12)" vertical={false} />
+                  <XAxis dataKey="stage" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ background: "#0a1226", border: "1px solid rgba(124,159,255,0.3)", borderRadius: 8, color: "#e2e8f0" }}
+                  />
+                  <Bar dataKey="count" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="grid grid-cols-3 gap-2 items-stretch">
               <StageStat label="Created" value={lotStageCounts.created} tone="info" />
               <StageStat label="In Progress" value={lotStageCounts.inprogress} tone="warn" />
               <StageStat label="Completed" value={lotStageCounts.completed} tone="ok" />
@@ -256,16 +302,33 @@ function IntelligenceHub() {
                 Recent Lots
               </div>
               <div className="space-y-1.5 max-h-44 overflow-y-auto">
-                {lots.slice(0, 8).map((l) => (
-                  <div key={l.lot_id} className="flex items-center justify-between px-3 py-1.5 rounded-md bg-slate-900/40 border border-slate-700/30 text-xs">
-                    <span className="font-mono text-slate-300">{l.lot_id}</span>
-                    <span className="text-slate-400">qty {l.lot_quantity}</span>
-                    <StatusPill kind={(l.status || "").toLowerCase().includes("complete") ? "ok" : "info"}>
-                      {l.status || "—"}
+                {orderLotLines.length > 0 && (
+                  <div className="wf-lot-registry-head hidden sm:grid">
+                    <span>Order</span>
+                    <span>Prod Order</span>
+                    <span>Lot</span>
+                    <span>Qty</span>
+                    <span>Status</span>
+                  </div>
+                )}
+                {orderLotLines.slice(0, 8).map((row) => (
+                  <div key={`recent-${row.lot_id}`} className="wf-lot-registry-row">
+                    <span className="font-mono truncate" title={row.order_id || "—"}>
+                      {row.order_id || "—"}
+                    </span>
+                    <span className="font-mono truncate" title={row.production_order_id || "—"}>
+                      {row.production_order_id || "—"}
+                    </span>
+                    <span className="font-mono truncate text-slate-200" title={row.lot_id}>
+                      {row.lot_id}
+                    </span>
+                    <span className="whitespace-nowrap">{row.lot_quantity}</span>
+                    <StatusPill kind={(row.status || "").toLowerCase().includes("complete") ? "ok" : "info"}>
+                      {row.status || "—"}
                     </StatusPill>
                   </div>
                 ))}
-                {lots.length === 0 && (
+                {orderLotLines.length === 0 && (
                   <div className="text-xs text-slate-500 text-center py-3">No lots yet</div>
                 )}
               </div>
@@ -290,27 +353,21 @@ function IntelligenceHub() {
 }
 
 function StageStat({ label, value, tone }) {
-  const cls = {
-    ok:   "bg-emerald-500/10 border-emerald-400/30 text-emerald-200",
-    info: "bg-blue-500/10 border-blue-400/30 text-blue-200",
-    warn: "bg-amber-500/10 border-amber-400/30 text-amber-200",
-    bad:  "bg-rose-500/10 border-rose-400/30 text-rose-200"
-  }[tone] || "bg-slate-500/10 border-slate-400/30";
   return (
-    <div className={`rounded-xl border ${cls} p-3 text-center`}>
-      <div className="text-2xl font-bold">{value}</div>
-      <div className="text-[10px] uppercase tracking-widest mt-0.5 opacity-80">{label}</div>
+    <div className={`wf-stage-stat wf-stage-stat--${tone}`}>
+      <div className="wf-stage-stat__value">{value}</div>
+      <div className="wf-stage-stat__label">{label}</div>
     </div>
   );
 }
 
 function SignalRow({ tone, label, value, hint }) {
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg bg-slate-900/40 border border-slate-700/30">
-      <StatusPill kind={tone}>{value}</StatusPill>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm text-slate-200">{label}</div>
-        <div className="text-[11px] text-slate-500 leading-snug mt-0.5">{hint}</div>
+    <div className="wf-signal-row">
+      <div className={`wf-signal-row__value wf-signal-row__value--${tone}`}>{value}</div>
+      <div className="wf-signal-row__body">
+        <div className="wf-signal-row__label">{label}</div>
+        <div className="wf-signal-row__hint">{hint}</div>
       </div>
     </div>
   );

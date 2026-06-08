@@ -97,11 +97,11 @@ function OntologyExplorer() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        eyebrow="Knowledge System"
-        title="Ontology Explorer"
-        subtitle="Every screen of this platform is derived from the same manufacturing knowledge graph. Pick an entity to view its relationships."
+        eyebrow="Ontology & Knowledge Graph"
+        title="Domain Graph"
+        subtitle="Industry-agnostic manufacturing ontology — shared by all tenants and templates. Runtime triples are staged in KG → Staged Triples."
         right={
-          <StatusPill kind="info">{ENTITIES.length} entities · {EDGES.length} edges</StatusPill>
+          <StatusPill kind="info">{ENTITIES.length} entities · {EDGES.length} relationships</StatusPill>
         }
       />
 

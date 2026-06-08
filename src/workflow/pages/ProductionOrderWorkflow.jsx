@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import api from "../../services/api";
+import { formatApiError } from "../../services/api";
+import {
+  createMesCoreProductionOrder,
+  fetchMesCoreProductionOrders,
+} from "../../services/mesCoreApi";
+import { displayBusinessCode } from "../../utils/businessCodes";
 import { quantitiesBalanced, quantityDelta } from "../../utils/workflowValidation";
 import { useWorkflow } from "../WorkflowContext";
 import { fetchAllOrderLines } from "../workflowData";
@@ -33,12 +38,12 @@ function ProductionOrderWorkflow() {
 
   const loadAll = useCallback(async () => {
     try {
-      const [poRes, lines] = await Promise.all([
-        api.get("/production-orders"),
-        fetchAllOrderLines()
+      const [productionOrders, lines] = await Promise.all([
+        fetchMesCoreProductionOrders(),
+        fetchAllOrderLines(),
       ]);
-      setProductionOrders(poRes.data || []);
-      setOrderLines(lines);
+      setProductionOrders(productionOrders || []);
+      setOrderLines(lines || []);
     } catch (e) {
       console.error(e);
     }
@@ -50,9 +55,14 @@ function ProductionOrderWorkflow() {
 
   useEffect(() => {
     if (context.orderLineId) {
-      setOrderLineId(context.orderLineId);
+      const match = orderLines.find(
+        (l) =>
+          l.order_line_id === context.orderLineId ||
+          l.order_line_code === context.orderLineId
+      );
+      setOrderLineId(match?.order_line_id || context.orderLineId);
     }
-  }, [context.orderLineId]);
+  }, [context.orderLineId, orderLines]);
 
   useEffect(() => {
     if (!orderLineId) {
@@ -63,7 +73,10 @@ function ProductionOrderWorkflow() {
       return;
     }
 
-    const line = orderLines.find((l) => l.order_line_id === orderLineId);
+    const line = orderLines.find(
+      (l) =>
+        l.order_line_id === orderLineId || l.order_line_code === orderLineId
+    );
     const fromContext =
       context.orderLineId === orderLineId && context.plannedQuantity != null
         ? String(context.plannedQuantity)
@@ -89,13 +102,24 @@ function ProductionOrderWorkflow() {
   ]);
 
   const selectedLine = useMemo(
-    () => orderLines.find((l) => l.order_line_id === orderLineId),
+    () =>
+      orderLines.find(
+        (l) =>
+          l.order_line_id === orderLineId || l.order_line_code === orderLineId
+      ),
     [orderLines, orderLineId]
   );
 
+  const resolvedLineId = selectedLine?.order_line_id || orderLineId;
+
   const linePO = useMemo(
-    () => productionOrders.find((po) => po.order_line_id === orderLineId),
-    [productionOrders, orderLineId]
+    () =>
+      productionOrders.find(
+        (po) =>
+          po.order_line_id === resolvedLineId ||
+          po.order_line_id === orderLineId
+      ),
+    [productionOrders, resolvedLineId, orderLineId]
   );
 
   const usedLineIds = useMemo(
@@ -104,7 +128,10 @@ function ProductionOrderWorkflow() {
   );
 
   const availableLines = orderLines.filter((l) => {
-    if (l.order_line_id === context.orderLineId || l.order_line_id === orderLineId) {
+    const matchesContext =
+      l.order_line_id === context.orderLineId ||
+      l.order_line_code === context.orderLineId;
+    if (matchesContext || l.order_line_id === orderLineId) {
       return true;
     }
     if (usedLineIds.has(l.order_line_id)) return false;
@@ -119,53 +146,48 @@ function ProductionOrderWorkflow() {
     demandQty > 0 && quantitiesBalanced(plannedQtyNum, demandQty);
   const qtyDelta = quantityDelta(plannedQtyNum, demandQty);
 
-  const canSave = orderLineId && plannedQtyNum > 0 && qtyBalanced && !linePO;
+  const canSave =
+    resolvedLineId && plannedQtyNum > 0 && qtyBalanced && !linePO;
 
   const submit = async () => {
     if (!canSave) return;
     try {
-      const res = await api.post("/production-order", {
-        order_line_id: orderLineId,
+      const created = await createMesCoreProductionOrder({
+        order_line_id: resolvedLineId,
         planned_quantity: Number(plannedQuantity),
-        status: "Planned"
+        status: "Planned",
       });
-      const poId = res.data.production_order_id;
+      const poId = created.production_order_id;
 
       const qty = Number(plannedQuantity);
       update({
         productionOrderId: poId,
-        orderLineId,
+        orderLineId: resolvedLineId,
         plannedQuantity: qty,
-        partId: selectedLine?.part_id || context.partId,
-        orderId: selectedLine?.order_id || context.orderId
+        partId: selectedLine?.part_code || selectedLine?.part_id || context.partId,
+        orderId: selectedLine?.order_id || context.orderId,
       });
       markStage("production-order");
       setProductionOrders((prev) => {
         const exists = prev.some((p) => p.production_order_id === poId);
         if (exists) return prev;
-        return [
-          {
-            ...res.data,
-            production_order_id: poId,
-            order_line_id: orderLineId,
-            planned_quantity: qty,
-            status: "Planned"
-          },
-          ...prev
-        ];
+        return [created, ...prev];
       });
       await loadAll();
       setIdsDialog({
         open: true,
         items: [
           { label: "Production Order", value: poId },
-          { label: "Order Line", value: orderLineId },
-          { label: "Planned Qty", value: String(plannedQuantity) }
-        ]
+          {
+            label: "Order Line",
+            value: selectedLine?.order_line_code || orderLineId,
+          },
+          { label: "Planned Qty", value: String(plannedQuantity) },
+        ],
       });
     } catch (e) {
       console.error(e);
-      alert(e.response?.data?.detail || "Error creating production order");
+      alert(formatApiError(e, "Error creating production order"));
     }
   };
 
@@ -192,8 +214,8 @@ function ProductionOrderWorkflow() {
         items={[
           { label: "Customer", value: context.customerName },
           { label: "Order", value: context.orderId },
-          { label: "Order Line", value: orderLineId || context.orderLineId },
-          { label: "Part", value: selectedLine?.part_id || context.partId }
+          { label: "Order Line", value: displayBusinessCode(context.orderLineId, selectedLine?.order_line_code) },
+          { label: "Part", value: selectedLine?.part_code || selectedLine?.part_id || context.partId }
         ]}
       />
 
@@ -226,7 +248,7 @@ function ProductionOrderWorkflow() {
                   <option value="">-- Pick order line --</option>
                   {availableLines.map((l) => (
                     <option key={l.order_line_id} value={l.order_line_id}>
-                      {l.order_line_id} · {l.order_id} · {l.part_id} · qty {l.quantity ?? l.line_quantity}
+                      {l.order_line_code || l.order_line_id} · {l.order_id} · {l.part_code || l.part_id} · qty {l.quantity ?? l.line_quantity}
                     </option>
                   ))}
                 </select>
@@ -276,8 +298,8 @@ function ProductionOrderWorkflow() {
             {selectedLine && (
               <div className="rounded-lg bg-slate-900/40 border border-slate-700/40 p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <Info label="Order" value={selectedLine.order_id} />
-                <Info label="Order Line" value={selectedLine.order_line_id} />
-                <Info label="Part" value={selectedLine.part_id} />
+                <Info label="Order Line" value={selectedLine.order_line_code || selectedLine.order_line_id} />
+                <Info label="Part" value={selectedLine.part_code || selectedLine.part_id} />
                 <Info label="Demand Qty" value={selectedLine.quantity ?? selectedLine.line_quantity} />
               </div>
             )}
@@ -370,7 +392,9 @@ function ProductionOrderWorkflow() {
                   {productionOrders.map((po) => (
                     <tr key={po.production_order_id} className="border-b border-white/5 hover:bg-slate-800/30">
                       <td className="py-2.5 px-3 font-mono text-slate-200">{po.production_order_id}</td>
-                      <td className="py-2.5 px-3 text-slate-300">{po.order_line_id}</td>
+                      <td className="py-2.5 px-3 text-slate-300">
+                        {po.order_line_code || displayBusinessCode(po.order_line_id)}
+                      </td>
                       <td className="py-2.5 px-3 text-slate-300">{po.planned_quantity}</td>
                       <td className="py-2.5 px-3"><StatusPill kind="info">{po.status}</StatusPill></td>
                     </tr>

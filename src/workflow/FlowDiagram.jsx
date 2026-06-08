@@ -1,19 +1,19 @@
 /**
  * Horizontal flow diagram with arrow connectors.
  * Each `step` shape:
- *   { id, title, code, status: 'done' | 'active' | 'pending' | 'blocked', meta?, icon? }
+ *   { id, title, code, status, seq?, count?, meta?, icon? }
  */
 export default function FlowDiagram({ steps = [], compact = false }) {
   if (!steps.length) {
     return (
-      <div className="text-sm text-slate-500 py-6 text-center">
+      <div className="wf-flow-diagram-empty">
         No flow defined yet.
       </div>
     );
   }
 
   return (
-    <div className="flex items-stretch gap-2 overflow-x-auto pb-2">
+    <div className="wf-flow-diagram flex items-stretch gap-2 overflow-x-auto pb-2">
       {steps.map((step, idx) => (
         <div className="flex items-stretch gap-2" key={step.id || idx}>
           <FlowNode step={step} compact={compact} />
@@ -24,6 +24,13 @@ export default function FlowDiagram({ steps = [], compact = false }) {
       ))}
     </div>
   );
+}
+
+function formatFlowCount(step) {
+  if (step.count === undefined || step.count === null) {
+    return "—";
+  }
+  return step.count;
 }
 
 function FlowNode({ step, compact }) {
@@ -44,31 +51,34 @@ function FlowNode({ step, compact }) {
 
   return (
     <div
-      className={`wf-flow-node ${statusClass} ${compact ? "min-w-[150px]" : "min-w-[180px]"} flex-shrink-0`}
+      className={`wf-flow-node ${statusClass} ${compact ? "wf-flow-node--compact min-w-[148px]" : "min-w-[196px]"} flex-shrink-0`}
     >
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2">
-          {step.seq !== undefined && (
-            <div className="w-6 h-6 rounded-md bg-slate-900/80 border border-slate-700/60 flex items-center justify-center text-[11px] font-bold text-slate-200">
-              {step.seq}
-            </div>
-          )}
-          {step.icon && (
-            <div className="text-blue-300">{step.icon}</div>
-          )}
-        </div>
+      <div className="wf-flow-node-top">
+        {step.seq !== undefined && (
+          <div className="wf-flow-node-seq" aria-hidden="true">
+            {step.seq}
+          </div>
+        )}
         <span className={badge.cls}>{badge.text}</span>
       </div>
-      <div className="text-sm font-semibold text-slate-100 leading-tight">
+
+      <div
+        className={`wf-flow-node-count${step.count === undefined || step.count === null ? " wf-flow-node-count--placeholder" : ""}`}
+        aria-label={`${step.title} count`}
+      >
+        {formatFlowCount(step)}
+      </div>
+
+      <div className="wf-flow-node-title">
         {step.title}
       </div>
       {step.code && (
-        <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+        <div className="wf-flow-node-code">
           {step.code}
         </div>
       )}
       {step.meta && (
-        <div className="text-[11px] text-slate-400 mt-2 leading-snug">
+        <div className="wf-flow-node-meta">
           {step.meta}
         </div>
       )}

@@ -4,10 +4,26 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>nyra-mes-ui</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>Nyra MES — Manufacturing Workflow Intelligence</title>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      window.addEventListener("error", function (event) {
+        var target = event.target;
+        if (!target || target.tagName !== "SCRIPT") return;
+        var root = document.getElementById("root");
+        if (!root || root.childNodes.length) return;
+        root.innerHTML =
+          '<div style="padding:2rem;font-family:Inter,system-ui,sans-serif;max-width:36rem;margin:2rem auto;color:#0f172a">' +
+          "<h1 style=\"font-size:1.25rem;margin:0 0 0.75rem\">App failed to load</h1>" +
+          "<p style=\"color:#475569;line-height:1.5\">Your browser may be using a cached copy of this site. " +
+          "Hard refresh with <strong>Ctrl+Shift+R</strong> or open this page in a private/incognito window.</p></div>";
+      }, true);
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

@@ -12,19 +12,19 @@ export function WfCard({ children, className = "", glow = false }) {
 
 export function WfCardHeader({ title, subtitle, icon, right }) {
   return (
-    <div className="flex items-start justify-between gap-4 px-5 pt-5">
+    <div className="wf-card-header flex items-start justify-between gap-4 px-5 pt-5">
       <div className="flex items-start gap-3">
         {icon && (
-          <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-400/30 text-blue-300">
+          <div className="wf-card-header-icon">
             {icon}
           </div>
         )}
         <div>
-          <h3 className="text-base font-semibold text-white">
+          <h3 className="wf-card-header-title">
             {title}
           </h3>
           {subtitle && (
-            <p className="text-xs text-slate-300 mt-0.5">{subtitle}</p>
+            <p className="wf-card-header-subtitle">{subtitle}</p>
           )}
         </div>
       </div>
@@ -53,30 +53,34 @@ export function KpiTile({ label, value, sub, accent = "blue", icon, trend }) {
   };
   const a = accents[accent] || accents.blue;
   return (
-    <div className={`wf-card relative overflow-hidden p-5`}>
+    <div className="wf-kpi-tile wf-card relative overflow-hidden p-4 min-w-0">
       <div className={`absolute -top-12 -right-12 w-40 h-40 rounded-full bg-gradient-radial ${a.from} blur-3xl`} />
-      <div className="relative flex items-start justify-between gap-3">
-        <div>
-          <div className="text-[11px] uppercase tracking-widest text-slate-300 font-semibold">
-            {label}
+      <div className="relative min-w-0">
+        <div className="wf-kpi-tile__label pr-1" title={label}>
+          {label}
+        </div>
+        <div className="mt-2 flex items-end justify-between gap-2">
+          <div className="min-w-0">
+            <div className="wf-kpi-tile__value-row">
+              <span className="wf-kpi-tile__value">{value}</span>
+              {sub && (
+                <span className="wf-kpi-tile__sub" title={sub}>
+                  {sub}
+                </span>
+              )}
+            </div>
+            {trend && (
+              <div className={`text-xs mt-2 ${a.text} flex items-center gap-1`}>
+                {trend}
+              </div>
+            )}
           </div>
-          <div className="text-3xl font-bold text-white mt-2">
-            {value}
-          </div>
-          {sub && (
-            <div className="text-xs text-slate-300 mt-1">{sub}</div>
-          )}
-          {trend && (
-            <div className={`text-xs mt-2 ${a.text} flex items-center gap-1`}>
-              {trend}
+          {icon && (
+            <div className={`shrink-0 p-2 rounded-xl bg-slate-900/60 border ${a.border} ${a.icon}`}>
+              {icon}
             </div>
           )}
         </div>
-        {icon && (
-          <div className={`p-2.5 rounded-xl bg-slate-900/60 border ${a.border} ${a.icon}`}>
-            {icon}
-          </div>
-        )}
       </div>
     </div>
   );

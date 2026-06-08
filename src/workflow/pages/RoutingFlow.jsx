@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
+import { fetchMesCoreProductionLots, fetchMesCoreLotFeasibility } from "../../services/mesCoreApi";
 import api from "../../services/api";
-import { isFeasibilityReady } from "../../utils/workflowValidation";
+import { isActivatedCarbonShell } from "../../config/legacyApiGuard";
+import useIndustryBasePath from "../../hooks/useIndustryBasePath";
+import { feasibilityLabel, isFeasibilityReady } from "../../utils/workflowValidation";
 import { useWorkflow } from "../WorkflowContext";
 import {
   WfCard,
@@ -17,23 +20,60 @@ import {
 import FlowDiagram from "../FlowDiagram";
 
 
-function RoutingFlow() {
-  const { context, markStage } = useWorkflow();
+function RoutingFlow({
+  loadPlan,
+  generatePlan,
+  loadLots,
+  feasibilityPath,
+  mastersPath,
+  emptyLotsHint,
+  stageEyebrow = "Stage 04 · Routing Flow",
+  showOemRoutingMaster = true,
+  feasibilityFirst = false,
+  executionPath
+}) {
+  const location = useLocation();
+  const industryBase = useIndustryBasePath();
+  const { context, markStage, update } = useWorkflow();
   const [lots, setLots] = useState([]);
   const [lotId, setLotId] = useState(context.lotId || "");
+  const [lotsLoading, setLotsLoading] = useState(true);
   const [plan, setPlan] = useState(null);
   const [planError, setPlanError] = useState("");
   const [planLoading, setPlanLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState("");
   const [feasibility, setFeasibility] = useState(null);
+  const [lotFeasibility, setLotFeasibility] = useState(null);
+  const [lotFeasibilityLoading, setLotFeasibilityLoading] = useState(false);
 
   useEffect(() => {
-    api.get("/production-lots").then((r) => setLots(r.data || [])).catch(() => {});
-  }, []);
+    setLotsLoading(true);
+    const loader = loadLots || fetchMesCoreProductionLots;
+    loader()
+      .then((rows) => setLots(rows || []))
+      .catch(() => setLots([]))
+      .finally(() => setLotsLoading(false));
+  }, [location.pathname, location.key, loadLots]);
+
+  useEffect(() => {
+    if (!lots.length) return;
+    const preferred = context.lotId;
+    if (!preferred) return;
+    const match = lots.find(
+      (l) => l.lot_id === preferred || l.production_lot_id === preferred
+    );
+    if (match) setLotId(match.lot_id);
+  }, [context.lotId, lots]);
 
   useEffect(() => {
     if (context.lotId && !lotId) setLotId(context.lotId);
-  }, [context.lotId]);
+  }, [context.lotId, lotId]);
+
+  const selectLot = (value) => {
+    setLotId(value);
+    if (value) update({ lotId: value });
+  };
 
   useEffect(() => {
     if (lotId) loadRoutingPlan(lotId);
@@ -41,22 +81,52 @@ function RoutingFlow() {
       setPlan(null);
       setPlanError("");
       setFeasibility(null);
+      setLotFeasibility(null);
     }
   }, [lotId]);
+
+  useEffect(() => {
+    if (!lotId || !feasibilityFirst) {
+      setLotFeasibility(null);
+      return;
+    }
+    setLotFeasibilityLoading(true);
+    fetchMesCoreLotFeasibility(lotId)
+      .then((gate) => setLotFeasibility(gate || null))
+      .catch(() =>
+        setLotFeasibility({
+          overall_status: "BLOCKED",
+          blocked_reason: "No feasibility check found for this lot. Run Feasibility Gate first."
+        })
+      )
+      .finally(() => setLotFeasibilityLoading(false));
+  }, [lotId, feasibilityFirst]);
 
   const loadRoutingPlan = async (id) => {
     setPlanLoading(true);
     setPlanError("");
     try {
-      const r = await api.get(`/lot/${id}/routing-plan`);
-      setPlan(r.data || null);
+      let data;
+      if (loadPlan) {
+        data = await loadPlan(id);
+      } else if (isActivatedCarbonShell()) {
+        throw new Error("Routing plan loader is not configured for Activated Carbon.");
+      } else {
+        data = (await api.get(`/lot/${id}/routing-plan`)).data;
+      }
+      setPlan(data || null);
     } catch (e) {
-      const detail =
+      let detail =
         e.response?.data?.detail ||
+        e.message ||
         (typeof e.response?.data === "object"
           ? JSON.stringify(e.response.data)
           : null) ||
         "Could not load routing plan";
+      if (detail === "Not Found") {
+        detail =
+          "Routing API not found — restart the local API, then refresh.";
+      }
       setPlanError(typeof detail === "string" ? detail : JSON.stringify(detail));
       setPlan(null);
     } finally {
@@ -65,24 +135,60 @@ function RoutingFlow() {
   };
 
   const generateRoute = async () => {
-    if (!lotId || generating || !plan?.can_generate) return;
+    if (!lotId || generating) return;
+    if (!canGenerateRoute) {
+      setGenerateError(
+        feasibilityFirst && canGenerate && !lotFeasibilityReady
+          ? lotFeasibility?.blocked_reason ||
+              "Feasibility Gate must pass before generating work orders for this lot."
+          : plan
+            ? "No pending operations to generate. Route may already be complete."
+            : "Load a routing plan first — pick a lot and wait for operations to appear."
+      );
+      return;
+    }
     setGenerating(true);
+    setGenerateError("");
     try {
-      const res = await api.post(`/lot/${lotId}/generate-route`);
-      setFeasibility(res.data?.feasibility || null);
+      let res;
+      if (generatePlan) {
+        res = await generatePlan(lotId);
+      } else if (isActivatedCarbonShell()) {
+        throw new Error("Route generation is not configured for Activated Carbon.");
+      } else {
+        res = (await api.post(`/lot/${lotId}/generate-route`)).data;
+      }
+      setFeasibility(res?.feasibility || null);
       await loadRoutingPlan(lotId);
       markStage("routing");
     } catch (e) {
-      alert(e.response?.data?.detail || "Error generating route");
+      const msg =
+        e.response?.data?.detail ||
+        e.message ||
+        "Error generating route";
+      setGenerateError(typeof msg === "string" ? msg : JSON.stringify(msg));
     } finally {
       setGenerating(false);
     }
   };
 
   const operations = plan?.operations || [];
-  const canGenerate = Boolean(plan?.can_generate);
+  const canGenerate = Boolean(
+    plan?.can_generate || (plan?.pending_work_orders ?? 0) > 0
+  );
+  const lotFeasibilityReady = isFeasibilityReady(lotFeasibility?.overall_status);
+  const canGenerateRoute =
+    canGenerate && (!feasibilityFirst || lotFeasibilityReady);
   const routingComplete = Boolean(plan?.routing_complete);
   const feasibilityReady = isFeasibilityReady(feasibility?.overall_status);
+
+  function lotOptionLabel(l) {
+    const id = l.lot_id || l.lot_code;
+    const feas = l.feasibility_status
+      ? feasibilityLabel(l.feasibility_status)
+      : "Feasibility not checked";
+    return `${id} · PO ${l.production_order_id ?? "—"} · qty ${l.lot_quantity ?? "—"} · ${feas}`;
+  }
 
   const flowSteps = useMemo(() => {
     if (operations.length > 0) {
@@ -119,18 +225,27 @@ function RoutingFlow() {
           ? `Sync ${plan.pending_work_orders} New Operation(s)`
           : "Route Complete";
 
-  const routingMasterLink = plan?.part_id
-    ? `/workflow/masters/routings?part=${encodeURIComponent(plan.part_id)}`
-    : context.partId
-      ? `/workflow/masters/routings?part=${encodeURIComponent(context.partId)}`
-      : "/workflow/masters/routings";
+  const routingMasterLink =
+    mastersPath ||
+    (plan?.part_id
+      ? `${industryBase}/masters/routings?part=${encodeURIComponent(plan.part_id)}`
+      : context.partId
+        ? `${industryBase}/masters/routings?part=${encodeURIComponent(context.partId)}`
+        : `${industryBase}/masters/routings`);
+
+  const feasibilityLink = feasibilityPath || `${industryBase}/feasibility`;
+  const executionLink = executionPath || `${industryBase}/execution`;
 
   return (
     <div className="space-y-6">
       <SectionHeader
-        eyebrow="Stage 04 · Routing Flow"
+        eyebrow={stageEyebrow}
         title="Operation sequence per lot"
-        subtitle="Shows the active routing from Master Data (including new processes). Generate creates work orders — feasibility runs after that and only gates scheduling, not this step."
+        subtitle={
+          feasibilityFirst
+            ? "Pick a lot after Feasibility Gate passes, then generate work orders for each routing step."
+            : "Shows the active routing from Master Data (including new processes). Generate creates work orders — feasibility runs after that and only gates scheduling, not this step."
+        }
       />
 
       <ContextBanner
@@ -138,12 +253,25 @@ function RoutingFlow() {
           { label: "Customer", value: context.customerName },
           { label: "Order", value: context.orderId },
           { label: "Lot", value: lotId || "—" },
-          { label: "Part", value: plan?.part_id || context.partId || "—" },
+          {
+            label: plan?.raw_material_code ? "Feedstock" : "Part",
+            value: plan?.raw_material_code
+              ? `${plan.raw_material_code} → ${plan.part_id || "—"}`
+              : plan?.part_id || context.partId || "—"
+          },
           { label: "Routing", value: plan?.routing_id || "—" }
         ]}
         action={
           routingComplete ? (
-            <Link to="/workflow/feasibility" className="wf-btn wf-btn-primary">
+            <Link to={executionLink} className="wf-btn wf-btn-primary">
+              Continue to Execution →
+            </Link>
+          ) : feasibilityFirst && lotId ? (
+            <Link to={feasibilityLink} className="wf-btn wf-btn-primary">
+              Feasibility Gate →
+            </Link>
+          ) : !feasibilityFirst && lotId ? (
+            <Link to={feasibilityLink} className="wf-btn wf-btn-primary">
               Check Feasibility →
             </Link>
           ) : null
@@ -177,17 +305,28 @@ function RoutingFlow() {
               <div className="md:col-span-2">
                 <label className="wf-label">Lot</label>
                 <select
-                  className="wf-select"
+                  className="wf-select wf-lot-select"
                   value={lotId}
-                  onChange={(e) => setLotId(e.target.value)}
+                  onChange={(e) => selectLot(e.target.value)}
                 >
-                  <option value="">-- Pick a lot --</option>
-                  {lots.map((l) => (
-                    <option key={l.lot_id} value={l.lot_id}>
-                      {l.lot_id} · qty {l.lot_quantity} · {l.status}
-                    </option>
-                  ))}
+                  <option value="">
+                    {lotsLoading ? "Loading lots…" : "-- Pick a lot --"}
+                  </option>
+                  {lots.map((l) => {
+                    const id = l.lot_id || l.lot_code;
+                    return (
+                      <option key={id || l.production_lot_id} value={id}>
+                        {lotOptionLabel(l)}
+                      </option>
+                    );
+                  })}
                 </select>
+                {!lotsLoading && lots.length === 0 && (
+                  <div className="text-[11px] text-amber-200 mt-1">
+                    {emptyLotsHint ||
+                      "No lots yet — complete Lot Split first, then return here."}
+                  </div>
+                )}
               </div>
               <div className="flex items-end gap-2">
                 <button
@@ -202,13 +341,16 @@ function RoutingFlow() {
                   type="button"
                   className="wf-btn wf-btn-primary flex-1 justify-center"
                   onClick={generateRoute}
-                  disabled={!lotId || !canGenerate || generating || planLoading}
+                  disabled={!lotId || !canGenerateRoute || generating || planLoading || lotFeasibilityLoading}
                   title={
-                    !canGenerate && plan
-                      ? "All routing operations already have work orders"
-                      : !plan && lotId
-                        ? "Save a routing for this part in Master Data first"
-                        : undefined
+                    feasibilityFirst && canGenerate && !lotFeasibilityReady
+                      ? lotFeasibility?.blocked_reason ||
+                        "Run Feasibility Gate for this lot first"
+                      : !canGenerate && plan
+                        ? "All routing operations already have work orders"
+                        : !plan && lotId
+                          ? "Save a routing for this part in Master Data first"
+                          : undefined
                   }
                 >
                   {generateLabel}
@@ -216,20 +358,73 @@ function RoutingFlow() {
               </div>
             </div>
 
+            {plan && plan.resolved_from === "raw_material_type" && (
+              <div className="rounded-lg bg-emerald-500/10 border border-emerald-400/30 px-4 py-3 text-sm text-emerald-100">
+                Routing resolved from raw material type{" "}
+                <span className="font-mono font-semibold">{plan.raw_material_code}</span>
+                {" → "}
+                finished product{" "}
+                <span className="font-mono font-semibold">{plan.part_id}</span>
+                {" "}via{" "}
+                <span className="font-mono">{plan.routing_id}</span>.
+              </div>
+            )}
+
+            {generateError && (
+              <div className="rounded-lg bg-rose-500/10 border border-rose-400/30 px-4 py-3 text-sm text-rose-100">
+                <div className="font-semibold mb-1">Generate route failed</div>
+                <div className="text-xs opacity-90">{generateError}</div>
+              </div>
+            )}
+
             {planError && (
               <div className="rounded-lg bg-amber-500/10 border border-amber-400/30 px-4 py-3 text-sm text-amber-100">
                 <div className="font-semibold mb-1">No routing loaded for this lot</div>
                 <div className="text-xs opacity-90">{planError}</div>
-                <Link
-                  to={routingMasterLink}
-                  className="inline-block mt-2 text-xs text-cyan-300 underline"
-                >
-                  Open Routing Master →
+                {showOemRoutingMaster && (
+                  <Link
+                    to={routingMasterLink}
+                    className="inline-block mt-2 text-xs text-cyan-300 underline"
+                  >
+                    Open Routing Master →
+                  </Link>
+                )}
+                {!showOemRoutingMaster && (
+                  <p className="text-xs mt-2 opacity-90">
+                    Routing is seeded for finished product{" "}
+                    <code className="font-mono">AC-GRAN-8x30</code> as{" "}
+                    <code className="font-mono">RT-AC-8x30-V1</code> — see{" "}
+                    <Link to={mastersPath || `${industryBase}/masters`} className="text-cyan-300 underline">
+                      Masters → Routing
+                    </Link>
+                    . Re-run{" "}
+                    <code className="font-mono">run_local_api.ps1</code> if missing.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {feasibilityFirst && lotId && canGenerate && !lotFeasibilityLoading && !lotFeasibilityReady && (
+              <div className="rounded-lg bg-amber-500/10 border border-amber-400/30 px-4 py-3 text-sm text-amber-100">
+                Feasibility Gate has not passed for this lot
+                {lotFeasibility?.blocked_reason ? (
+                  <> — {lotFeasibility.blocked_reason}</>
+                ) : (
+                  <> — open Feasibility Gate, run the check, then return here.</>
+                )}{" "}
+                <Link to={feasibilityLink} className="text-cyan-300 underline font-semibold">
+                  Go to Feasibility Gate
                 </Link>
               </div>
             )}
 
-            {plan && canGenerate && (
+            {feasibilityFirst && lotId && lotFeasibilityReady && canGenerate && (
+              <div className="rounded-lg bg-emerald-500/10 border border-emerald-400/30 px-4 py-3 text-sm text-emerald-100">
+                Feasibility Gate passed — you can generate work orders for this lot.
+              </div>
+            )}
+
+            {plan && canGenerate && !feasibilityFirst && (
               <div className="rounded-lg bg-blue-500/10 border border-blue-400/30 px-4 py-3 text-sm text-blue-100">
                 {plan.pending_work_orders} operation(s) from the active routing do not have work
                 orders yet
@@ -330,16 +525,34 @@ function RoutingFlow() {
           <WfCard>
             <WfCardHeader title="How it works" subtitle="Routing vs feasibility gate" icon={<IconBook />} />
             <WfCardBody className="space-y-2 text-xs text-slate-300">
-              <p>
-                1. Define operations (and new processes) in{" "}
-                <Link to={routingMasterLink} className="text-cyan-300 underline">
-                  Routing Master
-                </Link>{" "}
-                for the same part as the lot.
-              </p>
+              {showOemRoutingMaster ? (
+                <p>
+                  1. Define operations (and new processes) in{" "}
+                  <Link to={routingMasterLink} className="text-cyan-300 underline">
+                    Routing Master
+                  </Link>{" "}
+                  for the same part as the lot.
+                </p>
+              ) : (
+                <p>
+                  1. Product routing RT-AC-8x30-V1 defines Pyrolysis → Activation → Screening → QC.
+                </p>
+              )}
               <p>2. Pick the lot here — all routing steps appear, including newly added processes.</p>
-              <p>3. Click Generate / Sync to create work orders for pending operations.</p>
-              <p>4. Feasibility runs after generate and only blocks scheduling — not route generation.</p>
+              {feasibilityFirst ? (
+                <>
+                  <p>
+                    3. Complete <strong>Feasibility Gate</strong> for the lot (after Kiln Feed).
+                  </p>
+                  <p>4. Click Generate / Sync to create work orders for pending operations.</p>
+                  <p>5. Continue to Execution to run each operation on the shop floor.</p>
+                </>
+              ) : (
+                <>
+                  <p>3. Click Generate / Sync to create work orders for pending operations.</p>
+                  <p>4. Feasibility runs after generate and only blocks scheduling — not route generation.</p>
+                </>
+              )}
             </WfCardBody>
           </WfCard>
 

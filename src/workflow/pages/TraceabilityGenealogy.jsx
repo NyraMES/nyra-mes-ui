@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 
-import api, { formatApiError } from "../../services/api";
+import { formatApiError } from "../../services/api";
+import {
+  fetchMesCoreExecutionSummary,
+  fetchMesCoreInspectionResults,
+  fetchMesCoreLotTraceability,
+  fetchMesCoreNcrs,
+  fetchMesCoreProductionLots,
+  fetchMesCoreProductionOrderByRef,
+  fetchMesCoreDispatches,
+} from "../../services/mesCoreApi";
 import { useWorkflow } from "../WorkflowContext";
 import {
   WfCard,
@@ -27,7 +36,9 @@ function TraceabilityGenealogy() {
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
-    api.get("/production-lots").then((r) => setLots(r.data || [])).catch(() => {});
+    fetchMesCoreProductionLots()
+      .then((rows) => setLots(rows || []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -42,44 +53,39 @@ function TraceabilityGenealogy() {
     setLoading(true);
     setLoadError("");
     try {
-      const [trace, execSummary, ncrs, results] = await Promise.all([
-        api.get(`/traceability/${lotId}`).then((r) => r.data),
-        api
-          .get(`/lot/${lotId}/execution-summary`, { params: { sync: false } })
-          .then((r) => r.data)
-          .catch(() => null),
-        api.get("/ncrs").then((r) => r.data).catch(() => []),
-        api.get("/inspection-results").then((r) => r.data).catch(() => [])
+      const [trace, execSummary, ncrs, results, allDispatches] = await Promise.all([
+        fetchMesCoreLotTraceability(lotId),
+        fetchMesCoreExecutionSummary(lotId, { sync: false }).catch(() => null),
+        fetchMesCoreNcrs().catch(() => []),
+        fetchMesCoreInspectionResults().catch(() => []),
+        fetchMesCoreDispatches().catch(() => []),
       ]);
 
       let po = null;
       if (trace.production_order_id) {
-        try {
-          po = (await api.get(`/production-order/${trace.production_order_id}`)).data;
-        } catch {
+        po = await fetchMesCoreProductionOrderByRef(trace.production_order_id);
+        if (!po) {
           po = {
             production_order_id: trace.production_order_id,
-            order_line_id: null,
+            order_line_id: execSummary?.order_line_code || null,
             planned_quantity: null,
-            status: null
+            status: null,
           };
         }
       }
 
       let dispatches = [];
       if (trace.dispatch_id) {
-        try {
-          const d = (await api.get(`/dispatch/${trace.dispatch_id}`)).data;
-          dispatches = d ? [d] : [];
-        } catch {
-          dispatches = [
-            {
-              dispatch_id: trace.dispatch_id,
-              dispatch_status: "Dispatched",
-              vehicle_number: null
-            }
-          ];
-        }
+        const match = allDispatches.find((d) => d.dispatch_id === trace.dispatch_id);
+        dispatches = match
+          ? [match]
+          : [
+              {
+                dispatch_id: trace.dispatch_id,
+                dispatch_status: "Dispatched",
+                vehicle_number: null,
+              },
+            ];
       }
 
       const lotInspections = results.filter((r) => r.lot_id === lotId);
@@ -98,7 +104,9 @@ function TraceabilityGenealogy() {
               delivery_date: null
             }
           : null,
-        orderLine: po?.order_line_id ? { order_line_id: po.order_line_id } : null,
+        orderLine: po?.order_line_code || po?.order_line_id
+          ? { order_line_id: po.order_line_code || po.order_line_id }
+          : null,
         part: trace.part_id
           ? { part_id: trace.part_id, part_name: execSummary?.part_name || trace.part_id }
           : null,
@@ -110,7 +118,10 @@ function TraceabilityGenealogy() {
           production_order_id: trace.production_order_id
         },
         execSummary,
-        operations: execSummary?.operations || [],
+        operations: (execSummary?.operations || []).map((op) => ({
+          ...op,
+          lot_operation_id: op.lot_operation_id || op.work_order_id,
+        })),
         inspections: lotInspections,
         ncrs: lotNcrs,
         dispatches

@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import api from "../../services/api";
-import { isFeasibilityReady } from "../../utils/workflowValidation";
+import {
+  fetchMesCoreProductionLots,
+  runMesCoreFeasibilityCheck,
+} from "../../services/mesCoreApi";
+import { isFeasibilityReady, feasibilityLabel } from "../../utils/workflowValidation";
+import useWorkflowNavPaths from "../../hooks/useWorkflowNavPaths";
 import { useWorkflow } from "../WorkflowContext";
 import {
   WfCard,
@@ -44,8 +48,108 @@ function statusOf(v) {
 }
 
 
-function FeasibilityScreen() {
-  const { context, markStage } = useWorkflow();
+function groupChecks(checks, types) {
+  const wanted = new Set(types.map((t) => t.toLowerCase()));
+  return (checks || []).filter((c) =>
+    wanted.has(String(c.resource_type || "").toLowerCase())
+  );
+}
+
+function groupStatus(checks, fallbackStatus) {
+  if (checks.some((c) => (c.status || "").toUpperCase() === "BLOCKED")) {
+    return statusOf("blocked");
+  }
+  if (checks.some((c) => (c.status || "").toUpperCase() === "WARNING")) {
+    return statusOf("warn");
+  }
+  if (checks.length) return statusOf("ok");
+  return fallbackStatus;
+}
+
+function groupHint(checks, fallbackHint, dimKey) {
+  const details = checks.map((c) => c.detail).filter(Boolean);
+  if (!details.length) return fallbackHint;
+  if (dimKey === "schedule_capacity") {
+    return simplifyScheduleDetail(details.join("; "));
+  }
+  if (details.length === 1) return details[0];
+  return details[0];
+}
+
+/** Collapse legacy multi-operation overlap text to one sentence. */
+function simplifyScheduleDetail(detail) {
+  const text = String(detail || "").trim();
+  if (!text) return text;
+
+  const lotFromOverlap = text.match(/overlaps lot\s+(\S+)/i);
+  const lotFromShort = text.match(/^Lot\s+(\S+)\s+is using/i);
+  const lot = lotFromOverlap?.[1] || lotFromShort?.[1];
+  if (lot) {
+    const usesKiln = /KILN|activation kiln/i.test(text);
+    const resource = usesKiln ? "the activation kiln" : "this equipment";
+    return `Lot ${lot} is using ${resource}. Please wait for that process to complete.`;
+  }
+
+  const first = text.split(";")[0].trim();
+  return first.length > 160 ? `${first.slice(0, 157)}…` : first;
+}
+
+/** Map API checks onto user-facing dimension tiles (one card per group). */
+function buildDimensionTiles(result, dimDefs) {
+  const checks = result?.checks || [];
+  const groups = {
+    material: ["material"],
+    machine: ["machine", "machine_assignment"],
+    tool: ["tool"],
+    workforce: ["workforce"],
+    routing: ["routing"],
+    schedule_capacity: ["schedule_capacity"]
+  };
+
+  return dimDefs.map((d) => {
+    const matched = groupChecks(checks, groups[d.key] || [d.key]);
+    const summaryStatus = result?.[`${d.key}_status`];
+    return {
+      ...d,
+      status: groupStatus(
+        matched,
+        summaryStatus ? statusOf(summaryStatus) : { kind: "neutral", label: "Pending" }
+      ),
+      hint: groupHint(matched, d.hint, d.key)
+    };
+  });
+}
+
+function feasibilityDimDefs(machineLabel, machineHint) {
+  return [
+    { key: "material", label: "Material", hint: "Raw material inward and QC status", icon: <IconBox /> },
+    { key: "machine", label: machineLabel, hint: machineHint, icon: <IconMachine /> },
+    { key: "tool", label: "Tool", hint: "Tooling requirements satisfied", icon: <IconTool /> },
+    { key: "workforce", label: "Workforce", hint: "Labor pools available for routing", icon: <IconUsers /> },
+    {
+      key: "routing",
+      label: "Routing",
+      hint: "Active product routing with operations defined",
+      icon: <IconRoute />
+    },
+    {
+      key: "schedule_capacity",
+      label: "Schedule",
+      hint: "Machine/kiln not double-booked with another lot",
+      icon: <IconCalendar />
+    }
+  ];
+}
+
+function FeasibilityScreen({
+  hideHeader = false,
+  machineLabel = "Machine",
+  machineHint = "Required machines available & uptime",
+  runCheck,
+  loadLots
+}) {
+  const { context, markStage, update } = useWorkflow();
+  const nav = useWorkflowNavPaths();
   const [lots, setLots] = useState([]);
   const [lotId, setLotId] = useState(context.lotId || "");
   const [result, setResult] = useState(null);
@@ -53,12 +157,33 @@ function FeasibilityScreen() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    api.get("/production-lots").then((r) => setLots(r.data || [])).catch(() => {});
-  }, []);
+    const loader = loadLots || fetchMesCoreProductionLots;
+    loader()
+      .then((rows) => setLots(rows || []))
+      .catch(() => setLots([]));
+  }, [loadLots]);
+
+  useEffect(() => {
+    if (!lots.length) return;
+    const preferred = context.lotId;
+    if (!preferred) return;
+    const match = lots.find(
+      (l) => l.lot_id === preferred || l.production_lot_id === preferred || l.lot_code === preferred
+    );
+    if (match) {
+      const id = match.lot_id || match.lot_code;
+      setLotId(id);
+    }
+  }, [context.lotId, lots]);
 
   useEffect(() => {
     if (context.lotId && !lotId) setLotId(context.lotId);
-  }, [context.lotId]);
+  }, [context.lotId, lotId]);
+
+  const selectLot = (value) => {
+    setLotId(value);
+    if (value) update({ lotId: value });
+  };
 
   const check = async () => {
     if (!lotId) return;
@@ -66,13 +191,14 @@ function FeasibilityScreen() {
     setError(null);
     setResult(null);
     try {
-      const r = await api.get(`/feasibility/${lotId}`);
-      setResult(r.data);
-      if (isFeasibilityReady(r.data?.overall_status)) {
+      const checkFn = runCheck || runMesCoreFeasibilityCheck;
+      const data = await checkFn(lotId);
+      setResult(data);
+      if (isFeasibilityReady(data?.overall_status)) {
         markStage("feasibility");
       }
     } catch (e) {
-      setError(e.response?.data?.detail || "Feasibility check failed");
+      setError(e?.response?.data?.detail || e?.message || "Feasibility check failed");
     } finally {
       setLoading(false);
     }
@@ -82,30 +208,37 @@ function FeasibilityScreen() {
     if (lotId) check();
   }, [lotId]);
 
-  const dims = [
-    { key: "material",  label: "Material",  hint: "Raw material, alloys & consumables ready", icon: <IconBox /> },
-    { key: "machine",   label: "Machine",   hint: "Required machines available & uptime",     icon: <IconMachine /> },
-    { key: "tool",      label: "Tool",      hint: "Tooling, dies, fixtures present",          icon: <IconTool /> },
-    { key: "workforce", label: "Workforce", hint: "Skilled operators scheduled in shift",     icon: <IconUsers /> }
-  ];
+  const dimDefs = feasibilityDimDefs(machineLabel, machineHint);
+
+  const dimensionTiles = result
+    ? buildDimensionTiles(result, dimDefs)
+    : dimDefs.map((d) => ({
+        ...d,
+        status: { kind: "neutral", label: "Pending" }
+      }));
 
   const overall = statusOf(result?.overall_status);
   const isReady = result && isFeasibilityReady(result.overall_status);
-  const gateReason = result?.blocked_reason;
 
-  const blockers = result
-    ? dims
-        .map((d) => ({ ...d, s: statusOf(result[`${d.key}_status`]) }))
-        .filter((d) => d.s.kind !== "ok")
-    : [];
+  const blockers = dimensionTiles
+    .filter((d) => d.status?.kind === "bad")
+    .map((d) => ({
+      key: d.key,
+      label: d.label,
+      hint: d.hint,
+      icon: <IconAlert />,
+      s: d.status
+    }));
 
   return (
     <div className="space-y-6">
-      <SectionHeader
-        eyebrow="Stage 05 · Feasibility Validation"
-        title="Can this lot run right now?"
-        subtitle="Reasoning across four dimensions. If any are blocked, the system surfaces the root cause and prevents scheduling."
-      />
+      {!hideHeader && (
+        <SectionHeader
+          eyebrow="Stage 05 · Feasibility Validation"
+          title="Can this lot run right now?"
+          subtitle="Six checks across material, kiln, tools, workforce, routing, and schedule. Blocked items show what to fix before lot routing."
+        />
+      )}
 
       <ContextBanner
         items={[
@@ -116,8 +249,8 @@ function FeasibilityScreen() {
         ]}
         action={
           isReady && (
-            <Link to="/workflow/scheduling" className="wf-btn wf-btn-primary">
-              Proceed to Schedule →
+            <Link to={nav.afterFeasibility} className="wf-btn wf-btn-primary">
+              {nav.afterFeasibilityLabel}
             </Link>
           )
         }
@@ -138,14 +271,20 @@ function FeasibilityScreen() {
                 <select
                   className="wf-select"
                   value={lotId}
-                  onChange={(e) => setLotId(e.target.value)}
+                  onChange={(e) => selectLot(e.target.value)}
                 >
                   <option value="">-- Pick a lot --</option>
-                  {lots.map((l) => (
-                    <option key={l.lot_id} value={l.lot_id}>
-                      {l.lot_id} · qty {l.lot_quantity} · {l.status}
-                    </option>
-                  ))}
+                  {lots.map((l) => {
+                    const id = l.lot_id || l.lot_code;
+                    const gateLabel = l.feasibility_status
+                      ? feasibilityLabel(l.feasibility_status)
+                      : "Not checked";
+                    return (
+                      <option key={id} value={id}>
+                        {id} · qty {l.lot_quantity ?? "—"} · {gateLabel}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
               <div className="flex items-end">
@@ -161,19 +300,15 @@ function FeasibilityScreen() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {dims.map((d) => {
-                const s = result ? statusOf(result[`${d.key}_status`]) : { kind: "neutral", label: "Pending" };
-                return (
-                  <DimensionTile
-                    key={d.key}
-                    icon={d.icon}
-                    label={d.label}
-                    hint={d.hint}
-                    status={s}
-                    value={result?.[`${d.key}_status`]}
-                  />
-                );
-              })}
+              {dimensionTiles.map((d) => (
+                <DimensionTile
+                  key={d.key}
+                  icon={d.icon}
+                  label={d.label}
+                  hint={d.hint}
+                  status={d.status}
+                />
+              ))}
             </div>
 
             {error && (
@@ -182,18 +317,18 @@ function FeasibilityScreen() {
               </div>
             )}
 
-            {result && gateReason && !isReady && (
+            {result && !isReady && blockers.length > 0 && (
               <div className="rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
                 <div className="text-[10px] uppercase tracking-widest text-rose-300 font-semibold mb-1">
                   Feasibility gate — blocked
                 </div>
-                {gateReason}
+                {blockers.map((b) => b.hint).join(" ")}
               </div>
             )}
 
             {result && isReady && (
               <div className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-                Feasibility gate passed — scheduling is allowed for this lot.
+                Feasibility gate passed — you can proceed to Lot Routing and Execution.
               </div>
             )}
 
@@ -217,13 +352,21 @@ function FeasibilityScreen() {
             <WfCardBody>
               {!result ? (
                 <EmptyState title="Run a check" hint="Select a lot to compute root cause." icon={<IconAlert />} />
-              ) : blockers.length === 0 ? (
+              ) : blockers.length === 0 && isReady ? (
                 <div className="text-center py-6">
                   <div className="inline-flex p-3 rounded-2xl bg-emerald-500/10 border border-emerald-400/30 text-emerald-300 mb-2">
                     <IconCheck />
                   </div>
                   <div className="text-sm text-emerald-200 font-medium">No blockers detected</div>
                   <div className="text-xs text-slate-500 mt-1">Lot is ready to schedule.</div>
+                </div>
+              ) : blockers.length === 0 && !isReady ? (
+                <div className="text-center py-6">
+                  <div className="text-sm text-amber-200 font-medium">Checks passed individually</div>
+                  <div className="text-xs text-slate-400 mt-1">
+                    {result?.blocked_reason ||
+                      "Overall gate is not open yet — open Lot Routing and generate work orders, then re-run feasibility."}
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -260,6 +403,10 @@ function FeasibilityScreen() {
               <GateRule ok={Boolean(result)} label="Feasibility check run" />
               <GateRule ok={isReady} label="overall_status = OK / READY" />
               <GateRule
+                ok={!result || (result.checks || []).every((c) => (c.status || "").toUpperCase() !== "BLOCKED")}
+                label="Routing, machines & schedule capacity OK"
+              />
+              <GateRule
                 ok={!result || blockers.length === 0}
                 label="No resource dimension blocked"
               />
@@ -295,7 +442,7 @@ function GateRule({ ok, label }) {
   );
 }
 
-function DimensionTile({ icon, label, hint, status, value }) {
+function DimensionTile({ icon, label, hint, status }) {
   const toneRing = {
     ok:      "ring-emerald-400/40 from-emerald-500/15",
     warn:    "ring-amber-400/40   from-amber-500/15",
@@ -318,12 +465,7 @@ function DimensionTile({ icon, label, hint, status, value }) {
         <StatusPill kind={status.kind}>{status.label}</StatusPill>
       </div>
       <div className="mt-3 text-base font-semibold text-slate-100">{label}</div>
-      <div className="text-xs text-slate-400 mt-1 leading-snug">{hint}</div>
-      {value && (
-        <div className="text-[10px] mt-2 font-mono uppercase tracking-widest text-slate-500">
-          Raw: {String(value)}
-        </div>
-      )}
+      <div className="text-xs text-slate-400 mt-1 leading-relaxed">{hint}</div>
     </div>
   );
 }
@@ -333,6 +475,8 @@ function IconBox()     { return <svg width="14" height="14" viewBox="0 0 24 24" 
 function IconMachine() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M8 8V4h8v4M9 14h6"/></svg>; }
 function IconTool()    { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-2.5z"/></svg>; }
 function IconUsers()   { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5M14 19c0-2.5 2.5-4 4-4s4 1.5 4 4"/></svg>; }
+function IconRoute()   { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19V8a4 4 0 0 1 4-4h4"/></svg>; }
+function IconCalendar(){ return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>; }
 function IconBolt()    { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>; }
 function IconAtom()    { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="2"/><ellipse cx="12" cy="12" rx="10" ry="4.5"/><ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(120 12 12)"/></svg>; }
 function IconAlert()   { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.86 1.82 18A2 2 0 0 0 3.54 21h16.92a2 2 0 0 0 1.72-3L13.7 3.86a2 2 0 0 0-3.4 0z"/></svg>; }

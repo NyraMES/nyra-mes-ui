@@ -4,7 +4,13 @@ import {
   RadialBarChart, RadialBar
 } from "recharts";
 
-import api, { formatApiError } from "../../services/api";
+import { formatApiError } from "../../services/api";
+import {
+  fetchMesCoreMachines,
+  fetchMesCoreOeeIntelligence,
+  recordMesCoreOeeSummary,
+} from "../../services/mesCoreApi";
+import { expandSingleDayTrend, normalizeOeeTrendPoints } from "../../utils/oeeTrend";
 import {
   WfCard,
   WfCardHeader,
@@ -35,12 +41,12 @@ function OeeDashboard() {
     setLoading(true);
     setLoadError("");
     try {
-      const [intelRes, machinesRes] = await Promise.all([
-        api.get("/oee/intelligence"),
-        api.get("/machines").catch(() => ({ data: [] }))
+      const [intelData, machineList] = await Promise.all([
+        fetchMesCoreOeeIntelligence(),
+        fetchMesCoreMachines(),
       ]);
-      setIntel(intelRes.data);
-      const machineList = machinesRes.data || [];
+
+      setIntel(intelData);
       setMachines(machineList);
       if (machineList.length) {
         setMachineId((prev) => prev || machineList[0].machine_id);
@@ -59,45 +65,8 @@ function OeeDashboard() {
 
   const plant = intel?.plant || { availability: 0, performance: 0, quality: 0, oee: 0 };
   const trendChart = useMemo(() => {
-    const raw = Array.isArray(intel?.trend) ? intel.trend : [];
-    let points = raw
-      .map((p) => ({
-        day: p?.day ? String(p.day) : "",
-        oee: Number(p?.oee) || 0
-      }))
-      .filter((p) => p.day);
-    if (points.length === 0) {
-      const ranking = Array.isArray(intel?.machine_ranking) ? intel.machine_ranking : [];
-      points = ranking
-        .filter((m) => m.oee_date && m.oee_percent != null)
-        .map((m) => ({
-          day: String(m.oee_date),
-          oee: Number(m.oee_percent) || 0
-        }));
-    }
-    points.sort((a, b) => a.day.localeCompare(b.day));
-
-    if (points.length === 0) {
-      return { data: [], mode: "empty", dayCount: 0 };
-    }
-    if (points.length === 1) {
-      const p = points[0];
-      const d = new Date(`${p.day}T12:00:00`);
-      const prev = new Date(d);
-      prev.setDate(prev.getDate() - 1);
-      const prevDay = prev.toISOString().slice(0, 10);
-      return {
-        mode: "single",
-        dayCount: 1,
-        singleDay: p.day,
-        singleOee: p.oee,
-        data: [
-          { day: prevDay, oee: p.oee },
-          { day: p.day, oee: p.oee }
-        ]
-      };
-    }
-    return { data: points, mode: "trend", dayCount: points.length };
+    const points = normalizeOeeTrendPoints(intel?.trend, intel?.machine_ranking);
+    return expandSingleDayTrend(points);
   }, [intel]);
   const machineLatest = intel?.machine_ranking || [];
   const downtimeByMachine = (intel?.downtime_hotspots || []).map((h) => ({
@@ -123,7 +92,7 @@ function OeeDashboard() {
 
     setSaving(true);
     try {
-      await api.post("/oee-daily-summary", {
+      await recordMesCoreOeeSummary({
         machine_id: machineId,
         oee_date: oeeDate,
         planned_production_minutes: planned,

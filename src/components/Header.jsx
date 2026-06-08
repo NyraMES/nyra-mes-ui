@@ -1,7 +1,9 @@
 import "../styles/AppLayout.css";
 
 import { useAuth } from "../auth/AuthContext";
+import { useAppContext } from "../context/AppContext";
 import { initialsFromUser } from "../auth/roles";
+import TenantContextBar from "./TenantContextBar";
 
 
 function IconMenu() {
@@ -32,6 +34,7 @@ function IconChevronDown() {
 
 function Header({ onToggleSidebar }) {
   const { user, authEnabled, logout } = useAuth();
+  const { context } = useAppContext();
   const displayName = user?.displayName || "User";
   const initials = initialsFromUser(user);
 
@@ -45,6 +48,8 @@ function Header({ onToggleSidebar }) {
       >
         <IconMenu />
       </button>
+
+      <TenantContextBar className="topbar-context" />
 
       <div className="topbar-spacer" />
 

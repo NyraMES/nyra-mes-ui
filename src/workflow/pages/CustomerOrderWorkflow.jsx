@@ -1,7 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import api from "../../services/api";
+import {
+  createMesCoreCustomerOrder,
+  fetchMesCoreCustomerOrders,
+  fetchMesCoreCustomers,
+  fetchMesCoreProducts,
+} from "../../services/mesCoreApi";
+import { formatApiError } from "../../services/api";
+import { useAppContext } from "../../context/AppContext";
+import { isDemoReadOnly } from "../../config/demoMode";
+import {
+  DEMO_ORDER_CODE,
+  loadDemoWalkthroughContext,
+  workflowContextFromOrder,
+} from "../../utils/demoWalkthrough";
 import { useWorkflow } from "../WorkflowContext";
 import {
   WfCard,
@@ -18,6 +31,7 @@ import {
 function CustomerOrderWorkflow() {
   const navigate = useNavigate();
   const { context, update, markStage } = useWorkflow();
+  const { context: appContext } = useAppContext();
 
   const [customerId, setCustomerId] = useState(context.customerId || "");
   const [partId, setPartId] = useState(context.partId || "");
@@ -33,6 +47,9 @@ function CustomerOrderWorkflow() {
   const [loadError, setLoadError] = useState("");
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
+
+  const demoReadOnly = isDemoReadOnly(appContext);
 
   useEffect(() => {
     loadAll();
@@ -43,13 +60,13 @@ function CustomerOrderWorkflow() {
     setLoadError("");
     try {
       const [o, c, p] = await Promise.all([
-        api.get("/orders"),
-        api.get("/customer"),
-        api.get("/part")
+        fetchMesCoreCustomerOrders(),
+        fetchMesCoreCustomers(),
+        fetchMesCoreProducts(),
       ]);
-      setOrders(o.data || []);
-      setCustomers(c.data || []);
-      setParts(p.data || []);
+      setOrders(o || []);
+      setCustomers(c || []);
+      setParts(p || []);
     } catch (e) {
       console.error(e);
       const status = e?.response?.status;
@@ -58,7 +75,7 @@ function CustomerOrderWorkflow() {
       } else if (status === 403) {
         setLoadError("Your account does not have permission to load master data. Ask an admin to add you to a MES role group.");
       } else {
-        setLoadError("Could not load customers and parts. Check that the API is running.");
+        setLoadError(formatApiError(e, "Could not load customers and parts. Check that the API is running."));
       }
     } finally {
       setLoadingData(false);
@@ -78,35 +95,36 @@ function CustomerOrderWorkflow() {
 
   const submit = async () => {
     setFormError("");
+    if (demoReadOnly) {
+      setFormError("Demo is read-only. Click “Start demo walkthrough” to continue with ORD-DEMO-1042.");
+      return;
+    }
     if (!canSave) {
       setFormError(`Complete: ${missingFields.join(", ")}.`);
       return;
     }
     setSubmitting(true);
     try {
-      const orderRes = await api.post("/order", {
+      const { order, line } = await createMesCoreCustomerOrder({
         customer_id: customerId,
-        status: status,
-        delivery_date: `${deliveryDate}T00:00:00`
-      });
-      const createdOrderId = orderRes.data.order_id;
-
-      const lineRes = await api.post(`/order/${createdOrderId}/line`, {
-        part_id: partId,
+        product_id: partId,
         quantity: Number(quantity),
-        status: "Planned"
+        delivery_date: deliveryDate,
+        status,
       });
-      const lineId = lineRes.data.order_line_id;
+      const createdOrderId = order.order_id;
+      const lineId = line.order_line_id;
 
       const customer = customers.find((c) => c.customer_id === customerId);
+      const part = parts.find((p) => p.product_id === partId);
 
       update({
         orderId: createdOrderId,
         orderLineId: lineId,
         plannedQuantity: Number(quantity),
         customerId,
-        customerName: customer?.customer_name || customerId,
-        partId
+        customerName: customer?.customer_name || customer?.customer_code || customerId,
+        partId: part?.part_code || partId,
       });
       markStage("customer-order");
 
@@ -114,20 +132,51 @@ function CustomerOrderWorkflow() {
         open: true,
         items: [
           { label: "Customer Order", value: createdOrderId },
-          { label: "Order Line", value: lineId },
+          { label: "Order Line", value: line.order_line_code || lineId },
           { label: "Planned Delivery", value: deliveryDate }
         ]
       });
     } catch (e) {
       console.error(e);
-      alert(e.response?.data?.detail || "Error creating order");
+      alert(formatApiError(e, "Error creating order"));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const selectedCustomer = customers.find((c) => c.customer_id === customerId);
-  const selectedPart = parts.find((p) => p.part_id === partId);
+  const startDemoWalkthrough = async (targetPath = "/workflow/production-order") => {
+    setDemoLoading(true);
+    setFormError("");
+    try {
+      const demo = await loadDemoWalkthroughContext();
+      update({
+        ...demo,
+      });
+      markStage("customer-order");
+      navigate(targetPath);
+    } catch (e) {
+      console.error(e);
+      alert(formatApiError(e, e.message || "Could not load demo walkthrough"));
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
+  const continueWithOrder = (order) => {
+    try {
+      const ctx = workflowContextFromOrder(order, customers, parts);
+      update(ctx);
+      markStage("customer-order");
+      navigate("/workflow/production-order");
+    } catch (e) {
+      alert(e.message || "Cannot continue with this order");
+    }
+  };
+
+  const selectedCustomer = customers.find(
+    (c) => c.customer_id === customerId || c.customer_code === customerId
+  );
+  const selectedPart = parts.find((p) => p.product_id === partId);
 
   return (
     <div className="space-y-6">
@@ -139,6 +188,7 @@ function CustomerOrderWorkflow() {
         continueLabel="Continue to Production Order →"
         onContinue={() => {
           setIdsDialog({ open: false, items: [] });
+          loadAll();
           navigate("/workflow/production-order");
         }}
       />
@@ -147,6 +197,23 @@ function CustomerOrderWorkflow() {
         title="Capture customer demand"
         subtitle="Origin of the manufacturing workflow. The order anchors the downstream production, routing, quality and dispatch graph."
       />
+
+      {demoReadOnly && (
+        <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-4 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm text-amber-100">
+            <strong>Demo mode</strong> — creating customers/orders is disabled. Use the pre-seeded{" "}
+            <span className="font-mono text-amber-200">{DEMO_ORDER_CODE}</span> walkthrough (Apex Automotive → BRK-PAD-450).
+          </div>
+          <button
+            type="button"
+            className="wf-btn wf-btn-primary shrink-0"
+            disabled={demoLoading || loadingData}
+            onClick={() => startDemoWalkthrough("/workflow/production-order")}
+          >
+            {demoLoading ? "Loading…" : "Start demo walkthrough →"}
+          </button>
+        </div>
+      )}
 
       {context.orderId && (
         <ContextBanner
@@ -208,7 +275,7 @@ function CustomerOrderWorkflow() {
                   <option value="">-- Select customer --</option>
                   {customers.map((c) => (
                     <option key={c.customer_id} value={c.customer_id}>
-                      {c.customer_id} · {c.customer_name}
+                      {c.customer_code || c.customer_id} · {c.customer_name}
                     </option>
                   ))}
                 </select>
@@ -223,8 +290,8 @@ function CustomerOrderWorkflow() {
                 >
                   <option value="">-- Select part --</option>
                   {parts.map((p) => (
-                    <option key={p.part_id} value={p.part_id}>
-                      {p.part_id} · {p.part_name}
+                    <option key={p.product_id} value={p.product_id}>
+                      {p.part_code || p.part_id} · {p.part_name}
                     </option>
                   ))}
                 </select>
@@ -295,7 +362,8 @@ function CustomerOrderWorkflow() {
                 <button
                   type="button"
                   className={`wf-btn wf-btn-primary${canSave ? " wf-btn-primary-ready" : ""}`}
-                  disabled={submitting}
+                  disabled={submitting || demoReadOnly}
+                  title={demoReadOnly ? "Use Start demo walkthrough above" : undefined}
                   onClick={submit}
                 >
                   Create &amp; Continue →
@@ -325,7 +393,7 @@ function CustomerOrderWorkflow() {
             <WfCardHeader title="Context Preview" subtitle="Captured workflow state" icon={<IconPreview />} />
             <WfCardBody className="space-y-3">
               <PreviewRow label="Customer" value={selectedCustomer?.customer_name || customerId || "—"} />
-              <PreviewRow label="Part" value={selectedPart?.part_name || partId || "—"} />
+              <PreviewRow label="Part" value={selectedPart ? `${selectedPart.part_code || ""} · ${selectedPart.part_name}` : "—"} />
               <PreviewRow label="Order ID" value={context.orderId || "Assigned on save"} />
               <PreviewRow label="Quantity" value={quantity || "—"} />
               <PreviewRow label="Delivery" value={deliveryDate || "—"} />
@@ -352,20 +420,30 @@ function CustomerOrderWorkflow() {
                   <th className="text-left py-2 px-3 font-semibold">Status</th>
                   <th className="text-left py-2 px-3 font-semibold">Order Date</th>
                   <th className="text-left py-2 px-3 font-semibold">Delivery</th>
+                  <th className="text-left py-2 px-3 font-semibold">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {orders.map((o) => (
                   <tr key={o.order_id} className="border-b border-white/5 hover:bg-slate-800/30 transition-colors">
                     <td className="py-2.5 px-3 font-mono text-slate-900">{o.order_id}</td>
-                    <td className="py-2.5 px-3 text-slate-700">{o.customer_id}</td>
+                    <td className="py-2.5 px-3 text-slate-700">{o.customer_code || o.customer_id}</td>
                     <td className="py-2.5 px-3"><StatusPill kind="info">{o.status || "—"}</StatusPill></td>
                     <td className="py-2.5 px-3 text-slate-600">{o.order_date || "—"}</td>
                     <td className="py-2.5 px-3 text-slate-600">{o.delivery_date || "—"}</td>
+                    <td className="py-2.5 px-3">
+                      <button
+                        type="button"
+                        className="wf-btn wf-btn-ghost text-xs py-1 px-2"
+                        onClick={() => continueWithOrder(o)}
+                      >
+                        Continue →
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {orders.length === 0 && (
-                  <tr><td colSpan={5} className="py-6 text-center text-slate-500">No orders yet.</td></tr>
+                  <tr><td colSpan={6} className="py-6 text-center text-slate-500">No orders yet.</td></tr>
                 )}
               </tbody>
             </table>

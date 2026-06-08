@@ -4,6 +4,7 @@ import { Outlet } from "react-router-dom";
 import WorkflowSidebar from "./WorkflowSidebar";
 import WorkflowTopbar from "./WorkflowTopbar";
 import AskNyraPanel from "./AskNyraPanel";
+import DemoWatermark from "../components/DemoWatermark";
 import { WorkflowProvider } from "./WorkflowContext";
 
 
@@ -13,10 +14,11 @@ function WorkflowLayout() {
   return (
     <WorkflowProvider>
       <div className="wf-shell flex w-full">
+        <DemoWatermark />
         <WorkflowSidebar />
-        <div className="wf-content-column flex-1 min-w-0 flex flex-col">
-          <WorkflowTopbar />
-          <main className="p-6 flex-1 wf-page-frame">
+      <div className="wf-content-column">
+        <WorkflowTopbar />
+        <main className="p-6 flex-1 wf-page-frame">
             <Outlet />
           </main>
         </div>

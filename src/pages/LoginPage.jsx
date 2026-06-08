@@ -2,9 +2,21 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext";
+import { useAppContext } from "../context/AppContext";
+import {
+  getIndustrySelection,
+  resolveScopedTenantForIndustry
+} from "../config/industrySelection";
+import { resolveDefaultWorkspaceCode } from "../services/mesCorePaths";
+import {
+  resolveAppHostBinding,
+  tenantMismatchMessage,
+  userMatchesHostTenant
+} from "../config/hostConfig";
 import { cognitoEnv } from "../auth/cognitoConfig";
 import nyraLogo from "../assets/nyra-logo.png";
 import autoImage from "../assets/automobile-oem.png";
+import carbonImage from "../assets/activated-carbon.png";
 
 import "../styles/Landing.css";
 import "../styles/Login.css";
@@ -49,11 +61,14 @@ function LoginPage() {
     cognitoConfigured,
     isAuthenticated,
     loading,
+    user,
     loginWithPassword,
     completeNewPassword,
     loginWithHostedUi,
     resetLoginFlow
   } = useAuth();
+  const { selectIndustryContext } = useAppContext();
+  const hostBinding = resolveAppHostBinding();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -64,17 +79,87 @@ function LoginPage() {
   const [profileAttributes, setProfileAttributes] = useState({ email: "", name: "" });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [contextReady, setContextReady] = useState(false);
 
-  const redirectTo = location.state?.from || "/workflow";
+  const industry =
+    hostBinding?.industry_key || location.state?.industry;
+  const industrySelection = industry ? getIndustrySelection(industry) : null;
+  const redirectTo =
+    location.state?.from ||
+    hostBinding?.landing_path ||
+    industrySelection?.landing_path ||
+    "/workflow";
+  const scopedTenantCode =
+    (isAuthenticated && user?.tenant_code) ||
+    hostBinding?.tenant_code ||
+    location.state?.tenant_code ||
+    industrySelection?.tenant_code ||
+    user?.tenant_code;
+  const scopedWorkspaceCode =
+    (isAuthenticated && user?.tenant_code
+      ? resolveDefaultWorkspaceCode(user.tenant_code)
+      : null) ??
+    hostBinding?.workspace_code ??
+    location.state?.workspace_code ??
+    industrySelection?.workspace_code ??
+    (industry && user?.tenant_code
+      ? resolveScopedTenantForIndustry(industry, user).workspace_code
+      : null);
+  const needsIndustryContext = Boolean(scopedTenantCode);
+  const heroImage =
+    industry === "activated-carbon" ? carbonImage : autoImage;
+  const heroAlt =
+    industry === "activated-carbon"
+      ? "Activated Carbon Plant"
+      : "Automobile OEM manufacturing";
+  const plantTitle =
+    hostBinding?.tenant_name ||
+    industrySelection?.tenant_name ||
+    "your manufacturing workspace";
+
+  useEffect(() => {
+    if (!isAuthenticated || loading || !needsIndustryContext) {
+      if (isAuthenticated && !loading && !needsIndustryContext) {
+        setContextReady(true);
+      }
+      return;
+    }
+
+    let active = true;
+    (async () => {
+      await selectIndustryContext({
+        tenant_code: scopedTenantCode,
+        workspace_code: scopedWorkspaceCode,
+        industryKey: industry
+      });
+      if (active) setContextReady(true);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    isAuthenticated,
+    loading,
+    needsIndustryContext,
+    scopedTenantCode,
+    scopedWorkspaceCode,
+    industry,
+    selectIndustryContext
+  ]);
+
+  useEffect(() => {
+    if (!authEnabled || loading || !isAuthenticated || !user || !hostBinding) {
+      return;
+    }
+    if (!userMatchesHostTenant(user, hostBinding)) {
+      setError(tenantMismatchMessage(hostBinding));
+      void resetLoginFlow();
+    }
+  }, [authEnabled, hostBinding, isAuthenticated, loading, resetLoginFlow, user]);
 
   const requiredProfileFields = () => {
-    const fields = new Set(["email"]);
-    missingAttributes.forEach((attribute) => {
-      if (PROFILE_ATTRIBUTE_FIELDS[attribute]) {
-        fields.add(attribute);
-      }
-    });
-    return Array.from(fields);
+    return missingAttributes.filter((attribute) => PROFILE_ATTRIBUTE_FIELDS[attribute]);
   };
 
   const clearFormState = () => {
@@ -135,12 +220,22 @@ function LoginPage() {
     );
   }
 
-  if (!authEnabled) {
+  if (!loading && !authEnabled) {
     return <Navigate to={redirectTo} replace />;
   }
 
-  if (isAuthenticated) {
+  if (!loading && isAuthenticated && (contextReady || !needsIndustryContext)) {
     return <Navigate to={redirectTo} replace />;
+  }
+
+  if (!loading && isAuthenticated && needsIndustryContext && !contextReady) {
+    return (
+      <div className="landing">
+        <div className="landing-body">
+          <div className="login-loading">Loading workspace…</div>
+        </div>
+      </div>
+    );
   }
 
   const onSubmit = async (event) => {
@@ -149,14 +244,22 @@ function LoginPage() {
     setSubmitting(true);
     try {
       const result = await loginWithPassword(username.trim(), password);
+      if (
+        result?.ok &&
+        hostBinding &&
+        result.user &&
+        !userMatchesHostTenant(result.user, hostBinding)
+      ) {
+        await resetLoginFlow();
+        setError(tenantMismatchMessage(hostBinding));
+        return;
+      }
       if (result?.needsNewPassword) {
-        const attrs = result.missingAttributes?.length
-          ? result.missingAttributes
-          : ["email"];
+        const attrs = result.missingAttributes || [];
         setMissingAttributes(attrs);
         setProfileAttributes((current) => ({
           ...current,
-          email: current.email || "",
+          email: current.email || (username.includes("@") ? username.trim() : ""),
           name: current.name || username.trim() || "Admin User"
         }));
         setNeedsNewPassword(true);
@@ -200,7 +303,16 @@ function LoginPage() {
       fields.forEach((field) => {
         userAttributes[field] = String(profileAttributes[field]).trim();
       });
-      await completeNewPassword(newPassword, userAttributes);
+      const result = await completeNewPassword(newPassword, userAttributes);
+      if (
+        hostBinding &&
+        result?.user &&
+        !userMatchesHostTenant(result.user, hostBinding)
+      ) {
+        await resetLoginFlow();
+        setError(tenantMismatchMessage(hostBinding));
+        return;
+      }
     } catch (err) {
       setError(err?.message || "Could not set new password");
     } finally {
@@ -242,17 +354,17 @@ function LoginPage() {
               </div>
 
               <h1 className="landing-title" style={{ fontSize: "34px" }}>
-                Sign in to your manufacturing workspace
+                Sign in to {plantTitle}
               </h1>
 
               <p className="landing-text">
-                Access the Nyra workflow intelligence platform with your plant
-                credentials. Orders, production, execution, quality, and
-                traceability — connected in one ontology-driven system.
+                {industry === "activated-carbon"
+                  ? "Access activated carbon production — raw material inward, kiln, QC, routing, execution, and dispatch — with tenant-scoped credentials."
+                  : "Access the Nyra workflow intelligence platform with your plant credentials. Orders, production, execution, quality, and traceability — connected in one ontology-driven system."}
               </p>
 
               <div className="industry-tile-image" style={{ maxWidth: 420, marginBottom: 20 }}>
-                <img src={autoImage} alt="Automobile OEM manufacturing" />
+                <img src={heroImage} alt={heroAlt} />
               </div>
 
               <div className="landing-pills">
@@ -272,8 +384,14 @@ function LoginPage() {
                   </h2>
                   <p className="login-card-subtitle">
                     {needsNewPassword
-                      ? "Set your email and a new password to finish signing in."
-                      : "Use your Cognito username and password to continue."}
+                      ? requiredProfileFields().length
+                        ? "Set your profile details and a new password to finish signing in."
+                        : "Set a new password to finish signing in."
+                      : industry === "automotive-oem"
+                        ? "Sign in to open the Automobile OEM workflow dashboard."
+                        : industry === "activated-carbon"
+                          ? "Sign in to open the activated carbon production workspace."
+                          : "Use your Cognito username and password to continue."}
                   </p>
                 </div>
 
@@ -427,7 +545,7 @@ function LoginPage() {
                 </div>
 
                 <div className="login-footer">
-                  <Link to="/">← Back to home</Link>
+                  {!hostBinding?.lock_industry && <Link to="/">← Back to home</Link>}
                 </div>
               </div>
             </section>
