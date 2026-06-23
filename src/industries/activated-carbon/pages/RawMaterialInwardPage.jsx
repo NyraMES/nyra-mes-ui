@@ -40,14 +40,17 @@ function RawMaterialInwardPage() {
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState("1000");
 
+  const suppliers = masters.suppliers || [];
+  const rawProducts = masters.raw_products || [];
+
   useEffect(() => {
     if (!ready) return;
-    if (!productId && masters.raw_products[0]) {
-      setProductId(rawProductOptionValue(masters.raw_products[0]));
+    if (!productId && rawProducts[0]) {
+      setProductId(rawProductOptionValue(rawProducts[0]));
     }
-  }, [ready, masters, productId]);
+  }, [ready, rawProducts, productId]);
 
-  const selectedSupplier = masters.suppliers.find(
+  const selectedSupplier = suppliers.find(
     (s) => String(s.supplier_id) === String(supplierId)
   );
 
@@ -81,7 +84,7 @@ function RawMaterialInwardPage() {
     setError("");
     setSuccess("");
     try {
-      const selectedProduct = findRawProductSelection(masters.raw_products, productId);
+      const selectedProduct = findRawProductSelection(rawProducts, productId);
       const result = await createAcRawMaterialInward({
         supplier_id: String(selectedSupplier.supplier_id),
         product_id: selectedProduct?.product_id || productId,
@@ -99,15 +102,9 @@ function RawMaterialInwardPage() {
             selectedSupplier.supplier_name ||
             result.order.supplier_code
         },
-        { label: "Order line", value: result.line.line_code }
+        { label: "Order line", value: result.line.line_code },
+        { label: "Quantity", value: `${quantity} KG` }
       ];
-      if (result.production_order?.production_order_code) {
-        items.push({
-          label: "Production order (legacy)",
-          value: result.production_order.production_order_code
-        });
-      }
-      items.push({ label: "Quantity", value: `${quantity} KG` });
       setSuccess(`Inward order ${result.order.order_code} recorded.`);
       setIdsDialog({ open: true, items });
       await reloadOrders();
@@ -119,12 +116,12 @@ function RawMaterialInwardPage() {
     }
   };
 
-  const noSuppliers = ready && masters.suppliers.length === 0;
-  const noProducts = ready && masters.raw_products.length === 0;
+  const noSuppliers = ready && suppliers.length === 0;
+  const noProducts = ready && rawProducts.length === 0;
 
   const selectedMaterialType = findRawMaterialTypeByProductId(
-    masters.raw_material_types,
-    masters.raw_products,
+    masters.raw_material_types || [],
+    rawProducts,
     productId
   );
 
@@ -145,7 +142,7 @@ function RawMaterialInwardPage() {
       <SectionHeader
         eyebrow="Inbound"
         title="Raw Material Inward"
-        subtitle="Supplier receipt only — not linked to a customer PO. After QC, release to production on Kiln Feed."
+        subtitle="Supplier receipt only — not linked to a customer PO. After QC, release to production on Feasibility Gate."
       />
 
       {(mastersError || error) && <AcAlert variant="error">{mastersError || error}</AcAlert>}
@@ -165,7 +162,7 @@ function RawMaterialInwardPage() {
               onChange={(e) => setSupplierId(e.target.value)}
             >
               <option value="">Select supplier…</option>
-              {masters.suppliers.map((s) => (
+              {suppliers.map((s) => (
                 <option key={s.supplier_id} value={String(s.supplier_id)}>
                   {s.supplier_name} ({s.supplier_code})
                 </option>
@@ -187,7 +184,7 @@ function RawMaterialInwardPage() {
               loading={mastersLoading}
               onChange={(e) => setProductId(e.target.value)}
             >
-              {masters.raw_products.map((p) => (
+              {rawProducts.map((p) => (
                 <option key={p.product_code} value={rawProductOptionValue(p)}>
                   {p.product_code} — {p.product_name}
                 </option>
@@ -203,27 +200,29 @@ function RawMaterialInwardPage() {
               </p>
             )}
 
-            {selectedMaterialType && (
-              <div className="md:col-span-2 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
-                <RawMaterialRoutingPreview materialType={selectedMaterialType} compact />
-              </div>
-            )}
-
-            <label className="text-sm">
+            <label className="text-sm md:col-span-2">
               <span className="block mb-1 font-medium text-slate-700">Quantity (KG)</span>
               <input
                 type="number"
                 min="1"
-                className="w-full rounded border border-slate-300 px-3 py-2"
+                className="w-full max-w-xs rounded border border-slate-300 px-3 py-2"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
               />
             </label>
 
+            {selectedMaterialType ? (
+              <div className="md:col-span-2 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                  Fixed routing for selected feedstock
+                </p>
+                <RawMaterialRoutingPreview materialType={selectedMaterialType} compact />
+              </div>
+            ) : null}
+
             <p className="text-xs text-slate-500 md:col-span-2">
-              A production order (<span className="font-mono">PO-AC-####</span>) and finished
-              product line (<span className="font-mono">AC-GRAN-8x30</span>) are created
-              automatically for Kiln Feed.
+              Production order and lot are created when you{" "}
+              <strong>release to production</strong> on Feasibility Gate (after QC).
             </p>
           </div>
           <AcSaveBar
@@ -259,6 +258,7 @@ function RawMaterialInwardPage() {
               <thead>
                 <tr className="text-left text-slate-500 border-b">
                   <th className="py-2">Order</th>
+                  <th className="py-2">PO</th>
                   <th className="py-2">Material</th>
                   <th className="py-2 text-right">Received (KG)</th>
                   <th className="py-2 text-right">Released (KG)</th>
@@ -286,6 +286,9 @@ function RawMaterialInwardPage() {
                       className="border-b border-slate-100"
                     >
                       <td className="py-2 font-mono">{o.order_code}</td>
+                      <td className="py-2 font-mono text-slate-600">
+                        {o.production_order_code || "—"}
+                      </td>
                       <td className="py-2 font-mono text-slate-700">{material}</td>
                       <td className="py-2 text-right font-mono">{received || "—"}</td>
                       <td className="py-2 text-right font-mono">{released || "0"}</td>

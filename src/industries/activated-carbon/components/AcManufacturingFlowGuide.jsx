@@ -21,30 +21,36 @@ const FLOW_STEPS = [
   },
   {
     n: 4,
-    title: "Kiln feed",
-    desc: "Release QC-passed material to production, then charge kiln",
-    to: "/activated-carbon/kiln-feed"
-  },
-  {
-    n: 5,
-    title: "Feasibility & routing",
-    desc: "Validate lot, generate work orders",
+    title: "Feasibility gate",
+    desc: "Validate kiln, material, routing, and schedule before charging",
     to: "/activated-carbon/feasibility"
   },
   {
+    n: 5,
+    title: "Kiln feed",
+    desc: "Charge the activation kiln after feasibility passes",
+    to: "/activated-carbon/kiln-feed"
+  },
+  {
     n: 6,
-    title: "Execution → stock",
-    desc: "Complete routing — finished goods added to inventory",
-    to: "/activated-carbon/execution"
+    title: "Lot routing & execution",
+    desc: "Generate work orders and run shop-floor steps",
+    to: "/activated-carbon/routing"
   },
   {
     n: 7,
+    title: "Quality → stock",
+    desc: "Finished-goods testing and inventory",
+    to: "/activated-carbon/quality-testing"
+  },
+  {
+    n: 8,
     title: "Customer PO",
     desc: "Check stock or tentative delivery from raw + lead time",
     to: "/activated-carbon/customer-sales"
   },
   {
-    n: 8,
+    n: 9,
     title: "Dispatch",
     desc: "Ship from stock when available",
     to: "/activated-carbon/dispatch"
@@ -59,8 +65,9 @@ function AcManufacturingFlowGuide({ highlightStep = null, className = "" }) {
       </div>
       <p className="wf-ac-flow-guide-intro">
         <strong>Suppliers</strong> deliver raw material; that inward is not a customer order.
-        After QC you <strong>release to production</strong> (make-to-stock). Kiln feed and
-        execution build <strong>finished-goods stock</strong>. A <strong>customer PO</strong>{" "}
+        After QC you <strong>release to production</strong> on the Feasibility Gate page, run the
+        six checks, then <strong>charge the kiln</strong>. Routing and execution build{" "}
+        <strong>finished-goods stock</strong>. A <strong>customer PO</strong>{" "}
         checks stock first — dispatch immediately if enough is on hand, otherwise the system
         suggests a <strong>tentative delivery date</strong> from raw material on hand and routing
         duration.

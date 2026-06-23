@@ -4,6 +4,7 @@ import { Link, NavLink } from "react-router-dom";
 import nyraLogo from "../../../assets/nyra-logo.png";
 import { useAppContext } from "../../../context/AppContext";
 import { getActivatedCarbonMenu } from "../menu/activatedCarbonMenu";
+import { resolveAcAppContext } from "../utils/acContextUtils";
 
 function SidebarLink({ to, label, end = false }) {
   return (
@@ -20,21 +21,24 @@ function SidebarLink({ to, label, end = false }) {
 }
 
 const SECTIONS = [
-  { id: "overview", label: "Overview", ids: ["dashboard"] },
+  { id: "overview", label: "Overview", ids: ["dashboard", "kiln-telemetry"] },
   {
     id: "production",
     label: "Production Flow",
     ids: [
       "raw-material",
       "raw-material-qc",
-      "kiln-feed",
+      "bag-tracing",
       "feasibility",
+      "kiln-feed",
       "routing",
       "execution",
+      "screening",
       "kiln-parameters",
       "quality-testing",
       "customer-sales",
       "dispatch",
+      "reports",
       "yield",
       "traceability"
     ]
@@ -48,7 +52,9 @@ const SECTIONS = [
 
 function AcSidebar() {
   const { context } = useAppContext();
-  const menuItems = getActivatedCarbonMenu(context.enabled_capabilities);
+  const menuItems = getActivatedCarbonMenu(
+    resolveAcAppContext(context).enabled_capabilities
+  );
   const byId = Object.fromEntries(menuItems.map((item) => [item.id, item]));
   const [openSections, setOpenSections] = useState({
     overview: true,

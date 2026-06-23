@@ -13,7 +13,7 @@ import {
   fetchMesCoreEquipment,
   runMesCoreFeasibilityCheck
 } from "./mesCoreApi";
-import { isFeasibilityReady } from "../utils/workflowValidation";
+import { isFeasibilityReady, feasibilityLabel } from "../utils/workflowValidation";
 
 import { mergeRawMaterialTypes, saveLocalRawMaterialType, mergeRawProductsFromMaterialTypes } from "../industries/activated-carbon/utils/rawMaterialTypeStore";
 import {
@@ -30,6 +30,30 @@ function normalizeList(data) {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.items)) return data.items;
   return [];
+}
+
+function asMasterList(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+/** Ensure list fields are always arrays — API may omit keys or send null. */
+export function normalizeAcMastersRecord(data = {}) {
+  return {
+    customers: asMasterList(data.customers),
+    suppliers: asMasterList(data.suppliers),
+    raw_products: asMasterList(data.raw_products),
+    raw_material_types: asMasterList(data.raw_material_types),
+    finished_products: asMasterList(data.finished_products),
+    production_orders: asMasterList(data.production_orders),
+    production_lots: asMasterList(data.production_lots),
+    kilns: asMasterList(data.kilns),
+    machines: asMasterList(data.machines),
+    tools: asMasterList(data.tools),
+    labor_pools: asMasterList(data.labor_pools),
+    equipment: asMasterList(data.equipment),
+    kiln_parameter_definitions: asMasterList(data.kiln_parameter_definitions),
+    routing_master: data.routing_master ?? null
+  };
 }
 
 function normalizeAcRoutingPlan(data) {
@@ -236,6 +260,7 @@ async function fetchAcMastersFromCore() {
   const labor_pools = list.filter((r) => (r.resource_type || "").toUpperCase() === "LABOR");
   return {
     customers: [],
+    suppliers: [],
     raw_products: [],
     finished_products: [],
     production_orders: [],
@@ -259,21 +284,35 @@ export async function fetchAcMasters() {
     if (e?.response?.status !== 404) throw e;
     data = await fetchAcMastersFromCore();
   }
-  const types =
-    data.raw_material_types?.length > 0
-      ? data.raw_material_types
-      : await fetchAcRawMaterialTypes().catch(() => mergeRawMaterialTypes([]));
-  const catalogProducts = await fetchMesCoreProducts().catch(() => []);
-  const raw_products = mergeRawProductsFromMaterialTypes(
-    data.raw_products || [],
-    types,
-    catalogProducts
-  );
-  return {
-    ...data,
+
+  const base = normalizeAcMastersRecord(data);
+
+  const typeSource = base.raw_material_types.length
+    ? base.raw_material_types
+    : await fetchAcRawMaterialTypes().catch(() => []);
+  const types = mergeRawMaterialTypes(typeSource);
+
+  const [catalogProducts, suppliers, customers] = await Promise.all([
+    fetchMesCoreProducts().catch(() => []),
+    base.suppliers.length
+      ? Promise.resolve(base.suppliers)
+      : fetchAcSuppliers().catch(() => []),
+    base.customers.length
+      ? Promise.resolve(base.customers)
+      : fetchAcCustomers().catch(() => [])
+  ]);
+
+  return normalizeAcMastersRecord({
+    ...base,
+    customers,
+    suppliers,
     raw_material_types: types,
-    raw_products
-  };
+    raw_products: mergeRawProductsFromMaterialTypes(
+      base.raw_products,
+      types,
+      catalogProducts
+    )
+  });
 }
 
 async function resolveAcProductUuid({ product_id, product_code, product_name }) {
@@ -337,6 +376,13 @@ export async function fetchAcRawMaterialTypes() {
   }
 }
 
+export async function fetchAcRawMaterialType(productId) {
+  const res = await api.get(
+    `/api/activated-carbon/masters/raw-material-types/${encodeURIComponent(productId)}`
+  );
+  return res.data;
+}
+
 export async function createAcRawMaterialType(payload) {
   try {
     const res = await api.post("/api/activated-carbon/masters/raw-material-types", payload);
@@ -348,6 +394,14 @@ export async function createAcRawMaterialType(payload) {
     }
     throw error;
   }
+}
+
+export async function updateAcRawMaterialType(productId, payload) {
+  const res = await api.put(
+    `/api/activated-carbon/masters/raw-material-types/${encodeURIComponent(productId)}`,
+    payload
+  );
+  return res.data;
 }
 
 /** @deprecated use fetchAcMasters — kept for direct calls */
@@ -447,6 +501,31 @@ export async function createAcKilnParameter(payload) {
   return res.data;
 }
 
+/** Ontology-linked UI config: QC parameters + dashboard panels (per tenant/workspace). */
+export async function fetchAcOntologyConfig() {
+  try {
+    const res = await api.get("/api/activated-carbon/masters/ontology-config");
+    return res.data;
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function saveAcOntologyConfig(payload) {
+  try {
+    const res = await api.post("/api/activated-carbon/masters/ontology-config", payload);
+    return res.data;
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export async function createAcResource(payload) {
   const res = await api.post("/api/activated-carbon/masters/resources", payload);
   return res.data;
@@ -491,6 +570,11 @@ export async function fetchAcDashboard() {
       })),
       process_steps: [],
       lot_lines: [],
+      grade_stock: [],
+      open_customer_orders: [],
+      recent_dispatches: [],
+      dispatched_kg_total: 0,
+      finished_goods_stock_kg: 0,
       quality_check_count: qc?.length ?? 0,
       dispatch_count: 0,
       kiln_parameter_definitions: masters.kiln_parameter_definitions || []
@@ -499,8 +583,15 @@ export async function fetchAcDashboard() {
 }
 
 export async function fetchAcCustomers() {
-  const res = await api.get("/api/activated-carbon/customers");
-  return normalizeList(res.data);
+  try {
+    const res = await api.get("/api/activated-carbon/customers");
+    return normalizeList(res.data);
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return [];
+    }
+    throw error;
+  }
 }
 
 export async function createAcCustomer(payload) {
@@ -550,6 +641,27 @@ export async function createAcDispatch(payload) {
   return res.data;
 }
 
+export const AC_QC_PASS_STATUSES = new Set([
+  "PASS",
+  "PASSED",
+  "QC_PASSED",
+  "APPROVED",
+  "CLOSED"
+]);
+
+/** True when raw material inward has passed QC (order status or QC metadata). */
+export function isAcInwardQcPassed(order) {
+  if (!order || typeof order !== "object") return false;
+  const orderStatus = String(order.status || "").toUpperCase();
+  if (orderStatus === "QC_PASSED") return true;
+  const qcStatus = String(
+    order.qc_status ||
+      order.metadata?.raw_material_qc?.qc_status ||
+      ""
+  ).toUpperCase();
+  return AC_QC_PASS_STATUSES.has(qcStatus);
+}
+
 export function enrichAcInwardOrder(order) {
   if (!order || typeof order !== "object") return order;
   const rawLine = (order.lines || []).find((line) => {
@@ -563,13 +675,28 @@ export function enrichAcInwardOrder(order) {
   const available = Number(
     order.available_quantity_kg ?? Math.max(qty - allocated, 0)
   );
+  const qcStatus =
+    order.qc_status ||
+    order.metadata?.raw_material_qc?.qc_status ||
+    (String(order.status || "").toUpperCase() === "QC_PASSED" ? "QC_PASSED" : null);
   return {
     ...order,
     raw_product_code: order.raw_product_code || rawLine?.product_code,
     inward_quantity_kg: qty,
     allocated_to_production_kg: allocated,
-    available_quantity_kg: available
+    available_quantity_kg: available,
+    qc_status: qcStatus,
+    production_order_code:
+      order.production_order_code ||
+      order.metadata?.production_order_code ||
+      null
   };
+}
+
+/** QC-passed inward orders eligible for release-to-production on the feasibility gate. */
+export async function fetchAcReleaseEligibleInward() {
+  const rows = await fetchAcRawMaterialQc();
+  return rows.filter(isAcInwardQcPassed).map(enrichAcInwardOrder);
 }
 
 function mapInwardOrderToQcRow(order) {
@@ -593,8 +720,11 @@ function mapInwardOrderToQcRow(order) {
     moisture_pct: meta.moisture_pct ?? null,
     ash_pct: meta.ash_pct ?? null,
     foreign_matter_pct: meta.foreign_matter_pct ?? null,
+    stones_kg: meta.stones_kg ?? null,
+    unburnt_kg: meta.unburnt_kg ?? null,
+    minus20_kg: meta.minus20_kg ?? null,
     operator_remarks: meta.operator_remarks ?? null,
-    qc_status: meta.qc_status || "PENDING",
+    qc_status: enriched.qc_status || meta.qc_status || "PENDING",
     qc_at: meta.qc_at ?? null
   };
 }
@@ -602,6 +732,48 @@ function mapInwardOrderToQcRow(order) {
 export async function fetchAcRawMaterialInward() {
   const res = await api.get("/api/activated-carbon/raw-material-inward");
   return normalizeList(res.data).map(enrichAcInwardOrder);
+}
+
+function getAcTenantScope() {
+  return {
+    tenantCode: api.defaults.headers?.["X-Tenant-Code"] || "default",
+    workspaceCode: api.defaults.headers?.["X-Workspace-Code"] || "default"
+  };
+}
+
+export async function fetchAcInwardBags(orderCode) {
+  try {
+    const path = orderCode
+      ? `/api/activated-carbon/inward-bags?order_code=${encodeURIComponent(orderCode)}`
+      : "/api/activated-carbon/inward-bags";
+    const res = await api.get(path);
+    return normalizeList(res.data);
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      const { listLocalInwardBags } = await import(
+        "../industries/activated-carbon/utils/acBagStore"
+      );
+      const { tenantCode, workspaceCode } = getAcTenantScope();
+      return listLocalInwardBags(tenantCode, workspaceCode, orderCode);
+    }
+    throw error;
+  }
+}
+
+export async function createAcInwardBag(payload) {
+  try {
+    const res = await api.post("/api/activated-carbon/inward-bags", payload);
+    return res.data;
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      const { createLocalInwardBag } = await import(
+        "../industries/activated-carbon/utils/acBagStore"
+      );
+      const { tenantCode, workspaceCode } = getAcTenantScope();
+      return createLocalInwardBag(payload, tenantCode, workspaceCode);
+    }
+    throw error;
+  }
 }
 
 export async function createAcRawMaterialInward(payload) {
@@ -614,13 +786,12 @@ export async function createAcRawMaterialInward(payload) {
     throw new Error("Select a supplier before recording inward.");
   }
   const body = {
-    ...payload,
     supplier_id: String(payload.supplier_id),
-    product_id
+    product_id,
+    quantity: Number(payload.quantity),
+    uom: payload.uom || "KG",
+    create_production_order: false
   };
-  delete body.customer_id;
-  delete body.product_name;
-  delete body.product_code;
   const res = await api.post("/api/activated-carbon/raw-material-inward", body);
   return res.data;
 }
@@ -756,6 +927,21 @@ export async function createAcCustomerSalesOrder(payload) {
   }
 }
 
+export async function fetchAcOpenCustomerOrders() {
+  const res = await api.get("/api/activated-carbon/customer-sales-orders");
+  return normalizeList(res.data);
+}
+
+export async function fetchAcGradeStock() {
+  const res = await api.get("/api/activated-carbon/grade-stock");
+  return normalizeList(res.data);
+}
+
+export async function createAcDispatchFromOrder(payload) {
+  const res = await api.post("/api/activated-carbon/dispatch-from-order", payload);
+  return res.data;
+}
+
 export async function fetchAcKilnParameters(lotCode) {
   const params = lotCode ? { lot_code: lotCode } : {};
   const res = await api.get("/api/activated-carbon/kiln-parameters", { params });
@@ -803,6 +989,58 @@ export { formatApiError as formatAcApiError };
 
 export const AC_DEMO_LOT_COMPLETE = "LOT-AC-002";
 
+function sortAcLotsByCodeSuffix(lots) {
+  const suffix = (code) => {
+    const m = String(code || "").match(/(\d+)$/);
+    return m ? Number(m[1]) : 0;
+  };
+  return [...lots].sort(
+    (a, b) =>
+      suffix(b.lot_id || b.lot_code) - suffix(a.lot_id || a.lot_code)
+  );
+}
+
+/** Map `/open-lots` row to legacy lot shape used by workflow screens. */
+export function mapAcOpenLotRow(row) {
+  if (!row || typeof row !== "object") return row;
+  const lotCode = row.lot_code || row.lot_id;
+  return {
+    ...row,
+    lot_id: lotCode,
+    lot_code: lotCode,
+    production_lot_id: row.production_lot_id,
+    production_order_id: row.production_order_code || row.production_order_id,
+    order_code: row.order_code,
+    lot_quantity: Number(row.lot_quantity),
+    feasibility_ready: isFeasibilityReady(row.feasibility_status),
+    routing_complete: Boolean(row.routing_complete)
+  };
+}
+
+/** Server-filtered open lots — preferred source for AC workflow dropdowns. */
+export async function fetchAcOpenLots() {
+  try {
+    const res = await api.get("/api/activated-carbon/open-lots");
+    return sortAcLotsByCodeSuffix(normalizeList(res.data).map(mapAcOpenLotRow));
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return fetchAcRoutingLots({ excludeRoutingComplete: true });
+    }
+    throw error;
+  }
+}
+
+/** Label for lot dropdowns — shows lot code and linked inward order. */
+export function formatAcLotOptionLabel(lot) {
+  const id = lot?.lot_id || lot?.lot_code || "—";
+  const inward = lot?.order_code ? ` · ${lot.order_code}` : "";
+  const qty = lot?.lot_quantity != null ? ` · ${lot.lot_quantity} KG` : "";
+  const gate = lot?.feasibility_status
+    ? ` · ${feasibilityLabel(lot.feasibility_status)}`
+    : " · Not checked";
+  return `${id}${inward}${qty}${gate}`;
+}
+
 /** Lots for routing / execution dropdowns. */
 export async function fetchAcRoutingLots(options = {}) {
   const { excludeRoutingComplete = false } = options;
@@ -832,6 +1070,13 @@ export async function fetchAcRoutingLots(options = {}) {
   }
 
   const lots = Array.from(byCode.values());
+  lots.sort((a, b) => {
+    const suffix = (code) => {
+      const m = String(code || "").match(/(\d+)$/);
+      return m ? Number(m[1]) : 0;
+    };
+    return suffix(b.lot_id || b.lot_code) - suffix(a.lot_id || a.lot_code);
+  });
   const enriched = await Promise.all(
     lots.map(async (lot) => {
       const id = lot.lot_id || lot.lot_code;
@@ -881,21 +1126,87 @@ export async function fetchAcRoutingLots(options = {}) {
   });
 }
 
-/** Lots eligible for feasibility gate (excludes finished / dispatched pipeline). */
-export async function fetchAcFeasibilityLots() {
-  return fetchAcRoutingLots({ excludeRoutingComplete: true });
-}
-
-/** Lots ready for finished-goods quality testing (shop-floor routing complete). */
-export async function fetchAcCompletedLots() {
-  const lots = await fetchAcRoutingLots();
+/** Lots eligible for kiln charge (feasibility passed, not yet charged). */
+export async function fetchAcKilnChargeLots() {
+  const lots = await fetchAcOpenLots();
   return lots.filter((lot) => {
     const status = (lot.status || "").toUpperCase();
-    return (
-      lot.routing_complete ||
-      status === "COMPLETED" ||
-      status === "QC_PENDING" ||
-      status === "STOCKED"
-    );
+    return status === "CREATED" && isFeasibilityReady(lot.feasibility_status);
+  });
+}
+
+/** Lots eligible for feasibility gate (excludes finished / dispatched pipeline). */
+export async function fetchAcFeasibilityLots() {
+  return fetchAcOpenLots();
+}
+
+/** Lots in finished-goods stock — eligible for dispatch (enriched with grade/product). */
+export async function fetchAcStockedLots() {
+  try {
+    const res = await api.get("/api/activated-carbon/stocked-lots");
+    return normalizeList(res.data);
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      const { fetchMesCoreProductionLots } = await import("./mesCoreApi");
+      const lots = await fetchMesCoreProductionLots().catch(() => []);
+      return lots.filter((lot) => (lot.status || "").toUpperCase() === "STOCKED");
+    }
+    throw error;
+  }
+}
+
+export function lotMatchesDispatchOrder(lot, order) {
+  if (!order) return true;
+  if (
+    lot.product_id &&
+    order.product_id &&
+    String(lot.product_id) === String(order.product_id)
+  ) {
+    return true;
+  }
+  const lotKey = String(lot.product_code || lot.grade_code || "").toUpperCase();
+  const wanted = String(order.product_code || "").toUpperCase();
+  if (!wanted || !lotKey) return true;
+  return (
+    lotKey === wanted ||
+    lotKey.includes(wanted) ||
+    wanted.includes(lotKey)
+  );
+}
+
+/** Lots ready for finished-goods quality testing (routing + screening complete, not yet stocked). */
+export async function fetchAcCompletedLots() {
+  const [lots, screening] = await Promise.all([
+    fetchAcRoutingLots(),
+    fetchAcScreening().catch(() => [])
+  ]);
+  const screenedLotIds = new Set(
+    (screening || []).map((row) => String(row.production_lot_id))
+  );
+  return lots.filter((lot) => {
+    const status = (lot.status || "").toUpperCase();
+    if (status === "STOCKED" || status === "DISPATCHED") return false;
+    const routingDone =
+      lot.routing_complete || status === "QC_PENDING" || status === "COMPLETED";
+    if (!routingDone) return false;
+    return screenedLotIds.has(String(lot.production_lot_id));
+  });
+}
+
+/** Lots awaiting screening after shop-floor execution completes. */
+export async function fetchAcLotsAwaitingScreening() {
+  const [lots, screening] = await Promise.all([
+    fetchAcRoutingLots(),
+    fetchAcScreening().catch(() => [])
+  ]);
+  const screenedLotIds = new Set(
+    (screening || []).map((row) => String(row.production_lot_id))
+  );
+  return lots.filter((lot) => {
+    const status = (lot.status || "").toUpperCase();
+    if (status === "STOCKED" || status === "DISPATCHED") return false;
+    const routingDone =
+      lot.routing_complete || status === "QC_PENDING" || status === "COMPLETED";
+    return routingDone && !screenedLotIds.has(String(lot.production_lot_id));
   });
 }

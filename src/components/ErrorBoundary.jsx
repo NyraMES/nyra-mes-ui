@@ -14,6 +14,12 @@ export default class ErrorBoundary extends Component {
     console.error("Nyra MES UI error:", error, info);
   }
 
+  componentDidUpdate(prevProps) {
+    if (this.state.error && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
+  }
+
   render() {
     if (this.state.error) {
       return (
@@ -31,7 +37,7 @@ export default class ErrorBoundary extends Component {
         >
           <div style={{ maxWidth: "32rem", textAlign: "center" }}>
             <h1 style={{ fontSize: "1.25rem", marginBottom: "0.75rem" }}>
-              Nyra MES could not start
+              Nyra MES encountered an error
             </h1>
             <p style={{ color: "#475569", marginBottom: "1rem", lineHeight: 1.5 }}>
               {this.state.error?.message ||

@@ -160,3 +160,35 @@ export function sortOperations(operations = []) {
     (a, b) => Number(a.operation_seq) - Number(b.operation_seq)
   );
 }
+
+export const KILN_CORE_OPERATION_CODES = new Set(["KILN_FEED", "KILN_ACTIVATION"]);
+export const KILN_LINE_OPERATION_CODES = new Set(["KILN_FEED", "KILN_ACTIVATION", "COOLING"]);
+
+export function isKilnCoreOperation(operation) {
+  const code = String(operation?.operation_code || "").trim().toUpperCase();
+  return KILN_CORE_OPERATION_CODES.has(code);
+}
+
+export function isKilnLineOperation(operation) {
+  const code = String(operation?.operation_code || "").trim().toUpperCase();
+  return KILN_LINE_OPERATION_CODES.has(code);
+}
+
+/** Table rows with optional kiln-line group header before feed/activation steps. */
+export function buildRoutingTableRows(operations = []) {
+  const rows = [];
+  let kilnHeaderShown = false;
+  for (const operation of sortOperations(operations)) {
+    if (isKilnCoreOperation(operation) && !kilnHeaderShown) {
+      rows.push({
+        type: "group",
+        id: "kiln-line",
+        label: "Kiln line",
+        hint: "Kiln feed and activation run on the kiln resource; cooling follows discharge."
+      });
+      kilnHeaderShown = true;
+    }
+    rows.push({ type: "operation", operation });
+  }
+  return rows;
+}

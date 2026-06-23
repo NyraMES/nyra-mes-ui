@@ -47,6 +47,11 @@ function RoutingFlow({
   const [lotFeasibility, setLotFeasibility] = useState(null);
   const [lotFeasibilityLoading, setLotFeasibilityLoading] = useState(false);
 
+  const selectLot = (value) => {
+    setLotId(value);
+    if (value) update({ lotId: value });
+  };
+
   useEffect(() => {
     setLotsLoading(true);
     const loader = loadLots || fetchMesCoreProductionLots;
@@ -57,23 +62,45 @@ function RoutingFlow({
   }, [location.pathname, location.key, loadLots]);
 
   useEffect(() => {
+    if (!lots.length || lotId) return;
+    const terminal = new Set([
+      "COMPLETED",
+      "QC_PENDING",
+      "STOCKED",
+      "DISPATCHED",
+      "CLOSED",
+      "CANCELLED"
+    ]);
+    const open = lots.filter((l) => {
+      const status = (l.status || "").toUpperCase();
+      return !l.routing_complete && !terminal.has(status);
+    });
+    const preferred = context.lotId;
+    const pick =
+      (preferred &&
+        open.find(
+          (l) =>
+            l.lot_id === preferred ||
+            l.lot_code === preferred ||
+            l.production_lot_id === preferred
+        )) ||
+      open[0] ||
+      lots[0];
+    if (pick) selectLot(pick.lot_id || pick.lot_code);
+  }, [lots, lotId, context.lotId]);
+
+  useEffect(() => {
     if (!lots.length) return;
     const preferred = context.lotId;
     if (!preferred) return;
     const match = lots.find(
-      (l) => l.lot_id === preferred || l.production_lot_id === preferred
+      (l) =>
+        l.lot_id === preferred ||
+        l.lot_code === preferred ||
+        l.production_lot_id === preferred
     );
-    if (match) setLotId(match.lot_id);
+    if (match) setLotId(match.lot_id || match.lot_code);
   }, [context.lotId, lots]);
-
-  useEffect(() => {
-    if (context.lotId && !lotId) setLotId(context.lotId);
-  }, [context.lotId, lotId]);
-
-  const selectLot = (value) => {
-    setLotId(value);
-    if (value) update({ lotId: value });
-  };
 
   useEffect(() => {
     if (lotId) loadRoutingPlan(lotId);
@@ -184,10 +211,11 @@ function RoutingFlow({
 
   function lotOptionLabel(l) {
     const id = l.lot_id || l.lot_code;
+    const inward = l.order_code ? ` · ${l.order_code}` : "";
     const feas = l.feasibility_status
       ? feasibilityLabel(l.feasibility_status)
       : "Feasibility not checked";
-    return `${id} · PO ${l.production_order_id ?? "—"} · qty ${l.lot_quantity ?? "—"} · ${feas}`;
+    return `${id}${inward} · PO ${l.production_order_id ?? "—"} · qty ${l.lot_quantity ?? "—"} · ${feas}`;
   }
 
   const flowSteps = useMemo(() => {
@@ -542,9 +570,9 @@ function RoutingFlow({
               {feasibilityFirst ? (
                 <>
                   <p>
-                    3. Complete <strong>Feasibility Gate</strong> for the lot (after Kiln Feed).
+                    3. Complete <strong>Feasibility Gate</strong> for the lot (before Kiln Feed).
                   </p>
-                  <p>4. Click Generate / Sync to create work orders for pending operations.</p>
+                  <p>4. Charge the kiln on <strong>Kiln Feed</strong>, then generate work orders here.</p>
                   <p>5. Continue to Execution to run each operation on the shop floor.</p>
                 </>
               ) : (

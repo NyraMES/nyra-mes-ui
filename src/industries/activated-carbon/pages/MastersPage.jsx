@@ -12,15 +12,16 @@ import {
   fetchAcMasters,
   fetchAcRawMaterialTypes,
   fetchAcSuppliers,
-  formatAcApiError
+  formatAcApiError,
+  updateAcRawMaterialType
 } from "../../../services/activatedCarbonApi";
 import { AC_KILN_PARAMETER_DEFINITIONS } from "../constants/kilnParameters";
 import { AC_KILN_UOM_OPTIONS } from "../constants/uomOptions";
-import RawMaterialTypeEditor from "../components/RawMaterialTypeEditor";
+import RawMaterialProcessFlowEditor from "../components/RawMaterialProcessFlowEditor";
 import AcAlert from "../components/AcAlert";
 import AcCreatedIdsDialog from "../components/AcCreatedIdsDialog";
-import RawMaterialRoutingPreview from "../components/RawMaterialRoutingPreview";
 import AcManufacturingFlowGuide from "../components/AcManufacturingFlowGuide";
+import AcOntologyAdminPanel from "../components/AcOntologyAdminPanel";
 import AcSaveBar from "../components/AcSaveBar";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
 
@@ -107,7 +108,6 @@ function MastersPage() {
     labor_pools: [],
     equipment: []
   });
-  const [selectedTypeCode, setSelectedTypeCode] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [supplierName, setSupplierName] = useState("");
   const [kilnName, setKilnName] = useState("");
@@ -281,6 +281,24 @@ function MastersPage() {
         ]
       );
       await reloadKilnParams();
+      return row;
+    } catch (e) {
+      setError(formatAcApiError(e, "Save failed"));
+      throw e;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUpdateRawMaterialType = async (productId, payload) => {
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      const row = await updateAcRawMaterialType(productId, payload);
+      setSuccess(`Routing map saved for ${row.product_name}`);
+      await reloadKilnParams();
+      return row;
     } catch (e) {
       setError(formatAcApiError(e, "Save failed"));
       throw e;
@@ -371,19 +389,15 @@ function MastersPage() {
   const tabs = [
     { id: "customers", label: "Customers" },
     { id: "suppliers", label: "Suppliers" },
-    { id: "raw-material-types", label: "Raw material types" },
+    { id: "raw-material-types", label: "Material & routing" },
     { id: "plant-resources", label: "Plant resources" },
-    { id: "routing", label: "Routing" },
-    { id: "kiln-parameters", label: "Kiln parameters" }
+    { id: "routing", label: "Routing reference" },
+    { id: "kiln-parameters", label: "Kiln parameters" },
+    { id: "ontology-ui", label: "Ontology & UI" }
   ];
 
-  const selectedType =
-    rawMaterialTypes.find((t) => t.product_code === selectedTypeCode) ||
-    rawMaterialTypes[0] ||
-    null;
-
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-6xl">
       <AcCreatedIdsDialog
         open={idsDialog.open}
         title={idsDialog.title}
@@ -396,21 +410,19 @@ function MastersPage() {
       <SectionHeader
         eyebrow="Setup"
         title="Masters"
-        subtitle="Customers (end buyers), suppliers (raw material vendors), raw material types, plant resources, routing reference, and kiln parameter catalog."
+        subtitle="Customers, suppliers, raw material types, plant resources, routing, kiln parameters, and ontology-linked dashboard / QC configuration."
       />
 
       {error && <AcAlert variant="error">{error}</AcAlert>}
       {success && <AcAlert variant="success">{success}</AcAlert>}
 
-      <div className="flex gap-2 mb-4 border-b border-slate-200">
+      <div className="ac-masters-tabs flex gap-2 mb-4 border-b border-white/15">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-              tab === t.id
-                ? "border-blue-600 text-blue-700"
-                : "border-transparent text-slate-600 hover:text-slate-900"
+              tab === t.id ? "ac-masters-tab--active" : ""
             }`}
             onClick={() => setTab(t.id)}
           >
@@ -533,64 +545,19 @@ function MastersPage() {
         <>
           <WfCard className="mb-6">
             <WfCardHeader
-              title="Add raw material type"
-              subtitle="Enter names and process steps only — RAW-AC-*, FG-AC-*, and RT-AC-* codes appear in a popup after save."
+              title="Raw material → process routing"
+              subtitle="Select raw material (left) to load its finished product (right) and linear process chain. Add or edit processes on a separate entry screen."
             />
             <WfCardBody>
-              <RawMaterialTypeEditor onSave={handleSaveRawMaterialType} saving={saving} />
-            </WfCardBody>
-          </WfCard>
-
-          <WfCard>
-            <WfCardHeader
-              title="Raw material type registry"
-              subtitle="Each feedstock type maps to a fixed routing used at kiln feed and execution."
-            />
-            <WfCardBody>
-              {rawMaterialTypes.length === 0 ? (
-                <p className="text-sm text-slate-600">No raw material types configured.</p>
+              {loading ? (
+                <p className="text-sm text-slate-600">Loading…</p>
               ) : (
-                <div className="wf-light-panel rounded-xl p-4 space-y-4">
-                  <label className="text-sm block max-w-md">
-                    <span className="block mb-1 font-medium text-slate-700">View process for</span>
-                    <select
-                      className="w-full rounded border border-slate-300 px-3 py-2"
-                      value={selectedTypeCode || selectedType?.product_code || ""}
-                      onChange={(e) => setSelectedTypeCode(e.target.value)}
-                    >
-                      {rawMaterialTypes.map((t) => (
-                        <option key={t.product_code} value={t.product_code}>
-                          {t.product_code} — {t.product_name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <RawMaterialRoutingPreview materialType={selectedType} />
-                  <table className="w-full text-sm mt-4">
-                    <thead>
-                      <tr className="text-left text-slate-500 border-b">
-                        <th className="py-2">Code</th>
-                        <th className="py-2">Name</th>
-                        <th className="py-2">Finished product</th>
-                        <th className="py-2">Routing</th>
-                        <th className="py-2">Steps</th>
-                        <th className="py-2">Parameters</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rawMaterialTypes.map((t) => (
-                        <tr key={t.product_code} className="border-b border-slate-100">
-                          <td className="py-2 font-mono">{t.product_code}</td>
-                          <td className="py-2">{t.product_name}</td>
-                          <td className="py-2 font-mono">{t.finished_product_code}</td>
-                          <td className="py-2 font-mono">{t.routing_code}</td>
-                          <td className="py-2">{(t.operations || []).length}</td>
-                          <td className="py-2">{(t.process_parameters || []).length}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <RawMaterialProcessFlowEditor
+                  materialTypes={rawMaterialTypes}
+                  onCreate={handleSaveRawMaterialType}
+                  onUpdate={handleUpdateRawMaterialType}
+                  saving={saving}
+                />
               )}
             </WfCardBody>
           </WfCard>
@@ -734,16 +701,28 @@ function MastersPage() {
       {tab === "routing" && (
         <WfCard>
           <WfCardHeader
-            title="Finished product routing (reference)"
-            subtitle="Execution routing for lots (RT-AC-8x30-V1 → AC-GRAN-8x30). Routing Builder defines the workspace process template; this is the product route used when generating work orders per lot."
+            title="Finished product routing (reference only)"
+            subtitle="Read-only seed summary — not the editable routing map."
           />
           <WfCardBody>
+            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+              <strong>To edit Raw → P1 → P2 → … → Finished goods,</strong> open the{" "}
+              <button
+                type="button"
+                className="font-semibold underline text-blue-800"
+                onClick={() => setTab("raw-material-types")}
+              >
+                Material &amp; routing
+              </button>{" "}
+              tab (raw material dropdown on the left, finished product on the right, process flow
+              in the center).
+            </div>
             {!routingMaster ? (
               <p className="text-sm text-slate-600">
                 No routing loaded from API. Default types still use{" "}
                 <code className="font-mono text-xs">RT-AC-8x30-V1</code> for product{" "}
                 <code className="font-mono text-xs">AC-GRAN-8x30</code>. Run your local seed
-                script or add types under <strong>Raw material types</strong>.
+                script or add types under <strong>Material &amp; routing</strong>.
               </p>
             ) : (
               <div className="wf-light-panel rounded-xl p-4 space-y-4">
@@ -899,6 +878,8 @@ function MastersPage() {
           </WfCard>
         </>
       )}
+
+      {tab === "ontology-ui" && <AcOntologyAdminPanel />}
 
       <AcManufacturingFlowGuide className="mt-10" />
     </div>

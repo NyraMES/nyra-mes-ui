@@ -1,7 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import ProtectedRoute from "./auth/ProtectedRoute";
 import DemoRouteGuard from "./components/DemoRouteGuard";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { ROUTER_BASENAME } from "./basePath";
 import Layout from "./components/Layout";
 
@@ -47,9 +48,11 @@ import RoutingMaster from "./workflow/pages/RoutingMaster";
 import IndustryModuleLoader from "./components/IndustryModuleLoader";
 
 
-function App() {
+function AppRoutes() {
+  const location = useLocation();
+
   return (
-    <BrowserRouter basename={ROUTER_BASENAME}>
+    <ErrorBoundary resetKey={location.pathname}>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
@@ -107,6 +110,14 @@ function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+    </ErrorBoundary>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter basename={ROUTER_BASENAME}>
+      <AppRoutes />
     </BrowserRouter>
   );
 }

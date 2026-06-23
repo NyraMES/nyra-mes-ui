@@ -63,6 +63,7 @@ function ParameterEditorDialog({ open, title, initial, onClose, onSave }) {
               type="text"
               value={form.parameter_code}
               onChange={(e) => setField("parameter_code", e.target.value)}
+              readOnly={Boolean(initial?.parameter_id && String(initial.parameter_id).startsWith("param-") === false)}
               required
             />
           </label>

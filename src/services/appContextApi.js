@@ -1,6 +1,9 @@
 import { apiBaseUrl } from "../auth/cognitoConfig";
 
-import { ACTIVATED_CARBON_DEV_TENANT } from "../config/industrySelection";
+import {
+  ACTIVATED_CARBON_DEV_TENANT,
+  mergeIndustrySelectionFallback
+} from "../config/industrySelection";
 import {
   DEFAULT_WORKSPACE_BY_TENANT,
   resolveDefaultWorkspaceCode
@@ -200,34 +203,31 @@ export async function fetchAppContext(apiClient, scope = {}) {
     lastError?.message ||
     "Context API unavailable";
 
-  return applyAcDisplayBranding({
+  const isAcTenant =
+    envTenant === "SAM_CARBONS" || envTenant === "SAM_CARBONS_DEMO";
+
+  let fallback = applyAcDisplayBranding({
     ...DEFAULT_APP_CONTEXT,
     tenant_code: envTenant,
     workspace_code: envWorkspace,
-    industry_template_code:
-      envTenant === "SAM_CARBONS" || envTenant === "SAM_CARBONS_DEMO"
-        ? "ACTIVATED_CARBON"
-        : null,
-    industry_template_name:
-      envTenant === "SAM_CARBONS" || envTenant === "SAM_CARBONS_DEMO"
-        ? "Activated Carbon"
-        : null,
-    tenant_name:
-      envTenant === "SAM_CARBONS" || envTenant === "SAM_CARBONS_DEMO"
-        ? "Activated Carbon Plant"
-        : DEFAULT_APP_CONTEXT.tenant_name,
-    tenant_display_name:
-      envTenant === "SAM_CARBONS" || envTenant === "SAM_CARBONS_DEMO"
-        ? "Activated Carbon Plant"
-        : DEFAULT_APP_CONTEXT.tenant_display_name,
-    workspace_name:
-      envTenant === "SAM_CARBONS" || envTenant === "SAM_CARBONS_DEMO"
-        ? "Activated Carbon"
-        : null,
+    industry_template_code: isAcTenant ? "ACTIVATED_CARBON" : null,
+    industry_template_name: isAcTenant ? "Activated Carbon" : null,
+    tenant_name: isAcTenant ? "Activated Carbon Plant" : DEFAULT_APP_CONTEXT.tenant_name,
+    tenant_display_name: isAcTenant
+      ? "Activated Carbon Plant"
+      : DEFAULT_APP_CONTEXT.tenant_display_name,
+    workspace_name: isAcTenant ? "Activated Carbon" : null,
+    module_code: isAcTenant ? "activated-carbon" : null,
     fromFallback: true,
     loaded: Boolean(envTenant),
     loadError: typeof detail === "string" ? detail : "Context API unavailable"
   });
+
+  if (isAcTenant) {
+    fallback = mergeIndustrySelectionFallback(fallback, "activated-carbon");
+  }
+
+  return fallback;
 }
 
 export function applyTenantHeaders(apiClient, context) {

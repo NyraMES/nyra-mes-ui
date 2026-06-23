@@ -5,6 +5,8 @@ export const AC_CAPABILITIES = {
   KILN_FEED: "AC_KILN_FEED",
   HOURLY_KILN_PARAMETERS: "AC_HOURLY_KILN_PARAMETERS",
   SCREENING: "AC_SCREENING",
+  BAG_TRACING: "AC_BAG_TRACING",
+  REPORTS: "AC_REPORTS",
   QUALITY_TESTING: "AC_QUALITY_TESTING",
   YIELD_ANALYSIS: "AC_YIELD_ANALYSIS",
   TRACEABILITY: "AC_TRACEABILITY",
@@ -25,6 +27,12 @@ export const ACTIVATED_CARBON_MENU = [
     capability: null
   },
   {
+    id: "kiln-telemetry",
+    to: `${BASE}/kiln-telemetry`,
+    label: "Kiln Telemetry",
+    capability: null
+  },
+  {
     id: "raw-material",
     to: `${BASE}/raw-material-inward`,
     label: "Raw Material Inward",
@@ -37,16 +45,22 @@ export const ACTIVATED_CARBON_MENU = [
     capability: AC_CAPABILITIES.RAW_MATERIAL_QC
   },
   {
-    id: "kiln-feed",
-    to: `${BASE}/kiln-feed`,
-    label: "Kiln Feed",
-    capability: AC_CAPABILITIES.KILN_FEED
+    id: "bag-tracing",
+    to: `${BASE}/bag-tracing`,
+    label: "Bag traceability",
+    capability: AC_CAPABILITIES.BAG_TRACING
   },
   {
     id: "feasibility",
     to: `${BASE}/feasibility`,
     label: "Feasibility Gate",
     capability: null
+  },
+  {
+    id: "kiln-feed",
+    to: `${BASE}/kiln-feed`,
+    label: "Kiln Feed",
+    capability: AC_CAPABILITIES.KILN_FEED
   },
   {
     id: "routing",
@@ -59,6 +73,12 @@ export const ACTIVATED_CARBON_MENU = [
     to: `${BASE}/execution`,
     label: "Execution",
     capability: null
+  },
+  {
+    id: "screening",
+    to: `${BASE}/screening`,
+    label: "Screening",
+    capability: AC_CAPABILITIES.SCREENING
   },
   {
     id: "kiln-parameters",
@@ -82,7 +102,13 @@ export const ACTIVATED_CARBON_MENU = [
     id: "dispatch",
     to: `${BASE}/dispatch`,
     label: "Dispatch",
-    capability: AC_CAPABILITIES.DISPATCH
+    capability: null
+  },
+  {
+    id: "reports",
+    to: `${BASE}/reports`,
+    label: "Reports",
+    capability: AC_CAPABILITIES.REPORTS
   },
   {
     id: "yield",

@@ -28,10 +28,13 @@ export function mergeRawMaterialTypes(apiTypes = []) {
     byCode.set(row.product_code, { ...row, source: "default" });
   }
   for (const row of readLocalTypes()) {
-    byCode.set(row.product_code, { ...row, source: "local" });
+    const base = byCode.get(row.product_code);
+    byCode.set(row.product_code, { ...(base || {}), ...row, source: "local" });
   }
   for (const row of apiTypes) {
-    byCode.set(row.product_code, { ...row, source: "api" });
+    const code = row.product_code;
+    const base = byCode.get(code);
+    byCode.set(code, { ...(base || {}), ...row, source: "api" });
   }
 
   return Array.from(byCode.values()).sort((a, b) =>
@@ -107,7 +110,10 @@ export function saveLocalRawMaterialType(payload) {
 
 export function findRawMaterialType(types, productCode) {
   if (!productCode) return null;
-  return (types || []).find((t) => t.product_code === productCode) || null;
+  const key = normalizeProductCode(productCode);
+  return (
+    (types || []).find((t) => normalizeProductCode(t.product_code) === key) || null
+  );
 }
 
 export function findRawMaterialTypeByProductId(types, rawProducts, productId) {

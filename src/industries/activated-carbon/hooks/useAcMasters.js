@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useAppContext } from "../../../context/AppContext";
-import { fetchAcMasters, formatAcApiError } from "../../../services/activatedCarbonApi";
+import { fetchAcMasters, formatAcApiError, normalizeAcMastersRecord } from "../../../services/activatedCarbonApi";
 import {
   mergeRawMaterialTypes,
   mergeRawProductsFromMaterialTypes
@@ -9,17 +9,7 @@ import {
 import { isAcContextReady } from "../utils/acContextUtils";
 import useAcPageRefresh from "./useAcPageRefresh";
 
-const EMPTY_MASTERS = {
-  customers: [],
-  suppliers: [],
-  raw_products: [],
-  raw_material_types: [],
-  finished_products: [],
-  production_orders: [],
-  production_lots: [],
-  kilns: [],
-  routing_master: null
-};
+const EMPTY_MASTERS = normalizeAcMastersRecord({});
 
 /**
  * Loads /api/activated-carbon/masters for dropdowns on data-entry pages.
@@ -42,18 +32,20 @@ export function useAcMasters() {
     setLoading(true);
     setError("");
     try {
-      const data = await fetchAcMasters();
+      const data = normalizeAcMastersRecord(await fetchAcMasters());
       setMasters(data);
       return data;
     } catch (e) {
       const types = mergeRawMaterialTypes([]);
       const raw_products = mergeRawProductsFromMaterialTypes([], types);
       if (raw_products.length) {
-        setMasters({
-          ...EMPTY_MASTERS,
-          raw_material_types: types,
-          raw_products
-        });
+        setMasters(
+          normalizeAcMastersRecord({
+            ...EMPTY_MASTERS,
+            raw_material_types: types,
+            raw_products
+          })
+        );
         setError(
           formatAcApiError(e, "Masters API unavailable — showing saved raw material types only")
         );
@@ -74,7 +66,7 @@ export function useAcMasters() {
   const initialLoad = loading && masters === null;
 
   return {
-    masters: masters || EMPTY_MASTERS,
+    masters: normalizeAcMastersRecord(masters || EMPTY_MASTERS),
     /** True only before first successful/failed masters fetch — keeps dropdown options visible during refresh. */
     loading: contextLoading || !contextReady || initialLoad,
     error,

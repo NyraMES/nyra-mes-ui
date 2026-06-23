@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useLocation } from "react-router-dom";
 
 import { useAppContext } from "../../../context/AppContext";
@@ -10,6 +11,13 @@ import {
 import AcFormSelect from "../components/AcFormSelect";
 import AcAlert from "../components/AcAlert";
 import AcSaveBar from "../components/AcSaveBar";
+import {
+  AcQcFieldInput,
+  buildQcPayload,
+  emptyQcForm
+} from "../components/AcQcDynamicFields";
+import useAcOntologyConfig from "../hooks/useAcOntologyConfig";
+import { getEnabledQcParameters } from "../utils/acOntologyConfigStore";
 import { isAcContextReady } from "../utils/acContextUtils";
 import useAcPageRefresh from "../hooks/useAcPageRefresh";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader, StatusPill } from "../../../workflow/ui";
@@ -27,21 +35,51 @@ function qcPillKind(status) {
   return "neutral";
 }
 
+function formatCellValue(row, field) {
+  const v = row[field.key];
+  if (v == null || v === "") return "—";
+  if (field.fieldType === "textarea") return String(v).slice(0, 40);
+  if (field.unit === "kg") return `${v} kg`;
+  if (field.unit === "%") return `${v}%`;
+  return String(v);
+}
+
 function RawMaterialQcPage() {
   const { context, loading: contextLoading } = useAppContext();
   const location = useLocation();
   const { focusTick } = useAcPageRefresh();
+  const { config: ontologyConfig, loading: configLoading } = useAcOntologyConfig();
+
+  const qcFields = useMemo(
+    () => getEnabledQcParameters(ontologyConfig).filter((f) => f.key !== "operator_remarks"),
+    [ontologyConfig]
+  );
+  const remarksField = useMemo(
+    () => getEnabledQcParameters(ontologyConfig).find((f) => f.key === "operator_remarks"),
+    [ontologyConfig]
+  );
+  const historyFields = useMemo(
+    () => getEnabledQcParameters(ontologyConfig).filter((f) => f.fieldType !== "textarea"),
+    [ontologyConfig]
+  );
+
   const [rows, setRows] = useState([]);
   const [orderId, setOrderId] = useState("");
-  const [moisturePct, setMoisturePct] = useState("");
-  const [ashPct, setAshPct] = useState("");
-  const [foreignMatterPct, setForeignMatterPct] = useState("");
-  const [operatorRemarks, setOperatorRemarks] = useState("");
+  const [formValues, setFormValues] = useState({});
   const [qcStatus, setQcStatus] = useState("PASS");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const allInputFields = useMemo(
+    () => [...qcFields, ...(remarksField ? [remarksField] : [])],
+    [qcFields, remarksField]
+  );
+
+  useEffect(() => {
+    setFormValues((prev) => ({ ...emptyQcForm(allInputFields), ...prev }));
+  }, [allInputFields]);
 
   const pendingOrders = rows.filter((r) => !isQcComplete(r.qc_status));
 
@@ -88,7 +126,11 @@ function RawMaterialQcPage() {
 
   const noOrders = !loading && isAcContextReady(context, contextLoading) && pendingOrders.length === 0;
   const noQcHistory = !loading && isAcContextReady(context, contextLoading) && rows.length === 0;
-  const pageLoading = loading || !isAcContextReady(context, contextLoading);
+  const pageLoading = loading || configLoading || !isAcContextReady(context, contextLoading);
+
+  const setField = (key, value) => {
+    setFormValues((prev) => ({ ...prev, [key]: value }));
+  };
 
   const handleSave = async () => {
     if (!orderId) return;
@@ -98,17 +140,11 @@ function RawMaterialQcPage() {
     try {
       const saved = await createAcRawMaterialQc({
         customer_order_id: orderId,
-        moisture_pct: moisturePct ? Number(moisturePct) : undefined,
-        ash_pct: ashPct ? Number(ashPct) : undefined,
-        foreign_matter_pct: foreignMatterPct ? Number(foreignMatterPct) : undefined,
-        operator_remarks: operatorRemarks.trim() || undefined,
-        qc_status: qcStatus
+        qc_status: qcStatus,
+        ...buildQcPayload(formValues, allInputFields)
       });
       setSuccess(`QC saved for ${saved.order_code} · ${saved.qc_status}`);
-      setMoisturePct("");
-      setAshPct("");
-      setForeignMatterPct("");
-      setOperatorRemarks("");
+      setFormValues(emptyQcForm(allInputFields));
       await reloadRows();
     } catch (e) {
       setError(formatAcApiError(e, "Save failed"));
@@ -122,7 +158,7 @@ function RawMaterialQcPage() {
       <SectionHeader
         eyebrow="Inbound quality"
         title="Raw Material QC"
-        subtitle="Inspect feedstock at inward — moisture, ash, and foreign matter before kiln feed."
+        subtitle="Inspect feedstock at inward — fields configured in Masters → Ontology & UI (triplet-linked)."
       />
 
       {error && <AcAlert variant="error">{error}</AcAlert>}
@@ -172,51 +208,22 @@ function RawMaterialQcPage() {
                 </select>
               </label>
 
-              <label className="text-sm block">
-                <span className="block mb-1 font-medium text-slate-200">Moisture (%)</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="w-full rounded border border-slate-300 px-3 py-2"
-                  value={moisturePct}
-                  onChange={(e) => setMoisturePct(e.target.value)}
-                  placeholder="e.g. 8.5"
+              {qcFields.map((field) => (
+                <AcQcFieldInput
+                  key={field.key}
+                  field={field}
+                  value={formValues[field.key]}
+                  onChange={setField}
                 />
-              </label>
+              ))}
 
-              <label className="text-sm block">
-                <span className="block mb-1 font-medium text-slate-200">Ash (%)</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="w-full rounded border border-slate-300 px-3 py-2"
-                  value={ashPct}
-                  onChange={(e) => setAshPct(e.target.value)}
-                  placeholder="e.g. 2.1"
+              {remarksField ? (
+                <AcQcFieldInput
+                  field={remarksField}
+                  value={formValues[remarksField.key]}
+                  onChange={setField}
                 />
-              </label>
-
-              <label className="text-sm block">
-                <span className="block mb-1 font-medium text-slate-200">Foreign matter (%)</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="w-full rounded border border-slate-300 px-3 py-2"
-                  value={foreignMatterPct}
-                  onChange={(e) => setForeignMatterPct(e.target.value)}
-                  placeholder="e.g. 0.5"
-                />
-              </label>
-
-              <label className="text-sm block md:col-span-2">
-                <span className="block mb-1 font-medium text-slate-200">Operator remarks</span>
-                <textarea
-                  className="w-full rounded border border-slate-300 px-3 py-2 min-h-[72px]"
-                  value={operatorRemarks}
-                  onChange={(e) => setOperatorRemarks(e.target.value)}
-                  placeholder="Visual inspection notes"
-                />
-              </label>
+              ) : null}
             </div>
           )}
 
@@ -231,7 +238,10 @@ function RawMaterialQcPage() {
 
           {pendingOrders.length > 0 && (
             <p className="mt-3 text-xs text-slate-400">
-              {pendingOrders.length} order(s) pending QC.
+              {pendingOrders.length} order(s) pending QC.{" "}
+              <Link to="/activated-carbon/masters?tab=ontology-ui" className="text-cyan-400 underline">
+                Configure QC fields
+              </Link>
             </p>
           )}
         </WfCardBody>
@@ -245,32 +255,38 @@ function RawMaterialQcPage() {
           ) : rows.length === 0 ? (
             <p className="text-sm text-slate-300">No records yet.</p>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-slate-400 border-b border-white/10">
-                  <th className="py-2">Order</th>
-                  <th className="py-2">Material</th>
-                  <th className="py-2">Moisture</th>
-                  <th className="py-2">Ash</th>
-                  <th className="py-2">Foreign</th>
-                  <th className="py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.customer_order_id} className="border-b border-white/5">
-                    <td className="py-2 font-mono">{r.order_code}</td>
-                    <td className="py-2">{r.product_code}</td>
-                    <td className="py-2">{r.moisture_pct ?? "—"}</td>
-                    <td className="py-2">{r.ash_pct ?? "—"}</td>
-                    <td className="py-2">{r.foreign_matter_pct ?? "—"}</td>
-                    <td className="py-2">
-                      <StatusPill kind={qcPillKind(r.qc_status)}>{r.qc_status}</StatusPill>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-white/10">
+                    <th className="py-2 pr-2">Order</th>
+                    <th className="py-2 pr-2">Material</th>
+                    {historyFields.map((field) => (
+                      <th key={field.key} className="py-2 pr-2">
+                        {field.label}
+                      </th>
+                    ))}
+                    <th className="py-2">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.customer_order_id} className="border-b border-white/5">
+                      <td className="py-2 font-mono">{r.order_code}</td>
+                      <td className="py-2">{r.product_code}</td>
+                      {historyFields.map((field) => (
+                        <td key={field.key} className="py-2">
+                          {formatCellValue(r, field)}
+                        </td>
+                      ))}
+                      <td className="py-2">
+                        <StatusPill kind={qcPillKind(r.qc_status)}>{r.qc_status}</StatusPill>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </WfCardBody>
       </WfCard>

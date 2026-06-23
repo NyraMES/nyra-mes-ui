@@ -1284,6 +1284,22 @@ body:has(.wf-shell) #root {
   color: #ffffff !important;
 }
 
+.wf-shell .wf-section-header a.wf-btn,
+.wf-shell .wf-section-header a.wf-btn:visited {
+  text-decoration: none;
+}
+
+.wf-shell .wf-section-header a.wf-btn-ghost {
+  background: transparent !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+}
+
+.wf-shell .wf-section-header a.wf-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
 .wf-shell .wf-section-header .wf-btn-primary {
   background: #ffffff !important;
   color: var(--nyra-navy) !important;
@@ -1726,6 +1742,20 @@ body:has(.wf-shell) #root {
   min-height: calc(100vh - 4rem);
 }
 
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-masters-tabs button {
+  color: rgba(203, 213, 225, 0.92) !important;
+  border-bottom-color: transparent !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-masters-tabs button:hover {
+  color: #ffffff !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-masters-tabs button.ac-masters-tab--active {
+  color: #ffffff !important;
+  border-bottom-color: #22d3ee !important;
+}
+
 /* Undo light-theme Tailwind remaps inside the navy AC center pane */
 .wf-shell.wf-ac-shell .wf-ac-page-frame .text-slate-100,
 .wf-shell.wf-ac-shell .wf-ac-page-frame .text-slate-200 {
@@ -1817,6 +1847,69 @@ body:has(.wf-shell) #root {
   font-size: 0.8125rem;
   line-height: 1.25;
   margin-top: 0.25rem;
+}
+
+.wf-shell.wf-ac-shell .wf-card .wf-flow-node--dense {
+  min-height: 0;
+  padding: 0.35rem 0.4rem 0.4rem;
+}
+
+.wf-shell.wf-ac-shell .wf-card .wf-flow-node--dense .wf-flow-node-count {
+  font-size: 1.05rem;
+  line-height: 1.1;
+  margin-top: 0.1rem;
+}
+
+.wf-shell.wf-ac-shell .wf-card .wf-flow-node--dense .wf-flow-node-title {
+  font-size: 0.6875rem;
+  line-height: 1.15;
+  margin-top: 0.1rem;
+}
+
+.wf-shell.wf-ac-shell .wf-card .wf-flow-node--dense .wf-flow-node-top {
+  margin-bottom: 0;
+  min-height: 0;
+}
+
+.wf-shell.wf-ac-shell .wf-card .wf-flow-node-top--dense {
+  justify-content: flex-start;
+}
+
+.wf-shell.wf-ac-shell .wf-card .wf-flow-diagram--dense {
+  padding-bottom: 0;
+}
+
+.wf-shell.wf-ac-shell .wf-card .wf-flow-node--dense.wf-flow-node {
+  min-height: 0 !important;
+}
+
+.wf-shell.wf-ac-shell .wf-card .wf-flow-node--dense .wf-flow-node-seq {
+  font-size: 0.625rem;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.wf-shell.wf-ac-shell .wf-card .wf-flow-node--dense .wf-pill {
+  font-size: 0.5625rem;
+  padding: 0.1rem 0.35rem;
+}
+
+.wf-shell.wf-ac-shell .wf-flow-diagram--dense .wf-connector svg {
+  width: 18px;
+  height: 14px;
+}
+
+.wf-shell.wf-ac-shell .wf-flow-node--tile {
+  min-width: 0;
+  padding: 0.35rem;
+  border-radius: 0.5rem;
+}
+
+.wf-shell.wf-ac-shell .wf-flow-node--tile .wf-flow-node-seq {
+  font-size: 0.5625rem;
+  width: 1rem;
+  height: 1rem;
+  line-height: 1rem;
 }
 
 .wf-ac-process-flow {
@@ -2067,4 +2160,77 @@ body:has(.wf-shell) #root {
   color: #92400e !important;
   background-color: #fffbeb !important;
   border-color: #fde68a !important;
+}
+
+/* AC white/light panels — dark text (override navy-pane slate remaps) */
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel p,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel td,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel th,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel li,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel label,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel h3,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel h4 {
+  color: #0f172a !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-300,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-400,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-500,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-600,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-700,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-800,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-900 {
+  color: #0f172a !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-500 {
+  color: #475569 !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-blue-700,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-blue-800 {
+  color: #1d4ed8 !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-emerald-700,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-emerald-800,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-emerald-900 {
+  color: #065f46 !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-sky-900 {
+  color: #0c4a6e !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-amber-950 {
+  color: #451a03 !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-amber-800,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-amber-900 {
+  color: #92400e !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .border-sky-200.bg-sky-50,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .border-sky-200.bg-sky-50 {
+  color: #0c4a6e !important;
+  background-color: #f0f9ff !important;
+  border-color: #bae6fd !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .border-sky-200.bg-sky-50 .text-slate-900,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .border-sky-200.bg-sky-50 .text-sky-900 {
+  color: #0f172a !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel input,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel select,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel textarea {
+  color: #0f172a !important;
+  background: #ffffff !important;
 }

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { Link } from "react-router-dom";
+
 import {
   createAcCustomerSalesOrder,
   fetchAcDeliveryCommitment,
@@ -7,12 +9,14 @@ import {
   fetchAcMasters,
   formatAcApiError
 } from "../../../services/activatedCarbonApi";
+import useIndustryBasePath from "../../../hooks/useIndustryBasePath";
 import AcAlert from "../components/AcAlert";
 import AcFormSelect from "../components/AcFormSelect";
 import AcSaveBar from "../components/AcSaveBar";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
 
 function CustomerSalesPage() {
+  const basePath = useIndustryBasePath();
   const [masters, setMasters] = useState(null);
   const [stock, setStock] = useState([]);
   const [customerId, setCustomerId] = useState("");
@@ -80,6 +84,11 @@ function CustomerSalesPage() {
       setLastOrder(result);
       setSuccess(`Customer order ${result.order.order_code} created.`);
       setStock(await fetchAcFinishedGoodsStock());
+      if (result.commitment?.can_dispatch_from_stock) {
+        setSuccess(
+          `Customer order ${result.order.order_code} created — stock available. Proceed to Dispatch.`
+        );
+      }
     } catch (e) {
       setError(formatAcApiError(e, "Failed to create customer order"));
     } finally {
@@ -102,7 +111,7 @@ function CustomerSalesPage() {
       {success && <AcAlert variant="success">{success}</AcAlert>}
 
       <WfCard className="mb-6">
-        <WfCardHeader title="Finished goods on hand" subtitle="Increments when all lot operations complete." />
+        <WfCardHeader title="Finished goods on hand" subtitle="Increments when all lot operations complete on the shop floor." />
         <WfCardBody>
           <div className="wf-light-panel rounded-xl p-4">
             {stock.length === 0 ? (
@@ -195,9 +204,17 @@ function CustomerSalesPage() {
         <WfCard>
           <WfCardHeader title="Last commitment" />
           <WfCardBody>
-            <div className="wf-light-panel rounded-xl p-4 text-sm text-slate-800">
+            <div className="wf-light-panel rounded-xl p-4 text-sm text-slate-800 space-y-3">
               <p>Order: {lastOrder.order.order_code}</p>
-              <p className="mt-2">{lastOrder.commitment.message}</p>
+              <p>{lastOrder.commitment.message}</p>
+              {lastOrder.commitment.can_dispatch_from_stock ? (
+                <Link
+                  to={`${basePath}/dispatch?order=${encodeURIComponent(lastOrder.order.order_code)}`}
+                  className="inline-flex text-sm font-medium text-emerald-700 underline"
+                >
+                  Go to Dispatch →
+                </Link>
+              ) : null}
             </div>
           </WfCardBody>
         </WfCard>

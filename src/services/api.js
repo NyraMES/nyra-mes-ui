@@ -99,6 +99,10 @@ export function formatApiError(error, fallback = "Request failed") {
   if (detail === "Demo environment is read-only. Contact Nyra for a full evaluation.") {
     return "Demo mode is read-only. Use “Start demo walkthrough” with the pre-seeded Apex Automotive order instead of creating new records.";
   }
+  if (error.response?.status === 500) {
+    if (typeof detail === "string" && detail.trim()) return detail;
+    return "Server error — the API could not complete this request. If this persists, check database connectivity on the server.";
+  }
   if (!detail) return error?.message || fallback;
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {

@@ -14,6 +14,7 @@ import {
   applyTenantHeaders,
   fetchAppContext
 } from "../services/appContextApi";
+import { resolveAcAppContext } from "../industries/activated-carbon/utils/acContextUtils";
 import { resolveDefaultWorkspaceCode } from "../services/mesCorePaths";
 
 const AppContext = createContext(null);
@@ -81,7 +82,10 @@ export function AppProvider({ children }) {
           isAuthenticated ? user : null,
           pathname
         );
-        const next = await fetchAppContext(api, envScope);
+        let next = await fetchAppContext(api, envScope);
+        if (pathname.includes("/activated-carbon")) {
+          next = resolveAcAppContext(next);
+        }
         if (!active) return;
         setContext(next);
         applyTenantHeaders(api, next);
@@ -91,7 +95,7 @@ export function AppProvider({ children }) {
           isAuthenticated ? user : null,
           pathname
         );
-        const fallback = {
+        let fallback = {
           ...DEFAULT_APP_CONTEXT,
           tenant_code: envScope.tenant_code || null,
           workspace_code: envScope.workspace_code || null,
@@ -99,6 +103,9 @@ export function AppProvider({ children }) {
           loadError: "Context API unavailable",
           loaded: Boolean(envScope.tenant_code)
         };
+        if (pathname.includes("/activated-carbon")) {
+          fallback = resolveAcAppContext(fallback);
+        }
         setContext(fallback);
         applyTenantHeaders(api, fallback);
       } finally {

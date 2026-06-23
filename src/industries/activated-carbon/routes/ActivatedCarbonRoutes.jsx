@@ -4,7 +4,7 @@ import { AC_CAPABILITIES } from "../menu/activatedCarbonMenu";
 import ActivatedCarbonLayout from "../ActivatedCarbonLayout";
 import ActivatedCarbonDashboard from "../pages/ActivatedCarbonDashboard";
 import { useAppContext } from "../../../context/AppContext";
-import { isAcContextReady } from "../utils/acContextUtils";
+import { isAcContextReady, resolveAcAppContext } from "../utils/acContextUtils";
 import { lazy, Suspense } from "react";
 const RawMaterialInwardPage = lazy(() => import("../pages/RawMaterialInwardPage"));
 const KilnFeedPage = lazy(() => import("../pages/KilnFeedPage"));
@@ -22,6 +22,10 @@ const ActivatedCarbonRoutingBuilderPage = lazy(
 );
 const RawMaterialQcPage = lazy(() => import("../pages/RawMaterialQcPage"));
 const QualityTestingPage = lazy(() => import("../pages/QualityTestingPage"));
+const ScreeningPage = lazy(() => import("../pages/ScreeningPage"));
+const AcReportsPage = lazy(() => import("../pages/AcReportsPage"));
+const BagTraceabilityPage = lazy(() => import("../pages/BagTraceabilityPage"));
+const KilnTelemetryPage = lazy(() => import("../pages/KilnTelemetryPage"));
 
 function PageLoading() {
   return <p className="text-sm text-slate-300 py-8">Loading page…</p>;
@@ -33,11 +37,12 @@ function LazyPage({ children }) {
 
 function CapabilityRoute({ capability, children }) {
   const { context, loading } = useAppContext();
+  const resolved = resolveAcAppContext(context);
   if (capability) {
-    if (!isAcContextReady(context, loading)) {
+    if (!isAcContextReady(resolved, loading)) {
       return <PageLoading />;
     }
-    const caps = new Set(context.enabled_capabilities || []);
+    const caps = new Set(resolved.enabled_capabilities || []);
     if (!caps.has(capability)) {
       return <Navigate to="/activated-carbon/dashboard" replace />;
     }
@@ -54,6 +59,14 @@ export default function ActivatedCarbonRoutes() {
       <Route element={<ActivatedCarbonLayout />}>
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<ActivatedCarbonDashboard />} />
+        <Route
+          path="kiln-telemetry"
+          element={
+            <LazyPage>
+              <KilnTelemetryPage />
+            </LazyPage>
+          }
+        />
         <Route
           path="raw-material-inward"
           element={
@@ -80,6 +93,26 @@ export default function ActivatedCarbonRoutes() {
             <CapabilityRoute capability={AC_CAPABILITIES.RAW_MATERIAL_QC}>
               <LazyPage>
                 <RawMaterialQcPage />
+              </LazyPage>
+            </CapabilityRoute>
+          }
+        />
+        <Route
+          path="bag-tracing"
+          element={
+            <CapabilityRoute capability={AC_CAPABILITIES.BAG_TRACING}>
+              <LazyPage>
+                <BagTraceabilityPage />
+              </LazyPage>
+            </CapabilityRoute>
+          }
+        />
+        <Route
+          path="reports"
+          element={
+            <CapabilityRoute capability={AC_CAPABILITIES.REPORTS}>
+              <LazyPage>
+                <AcReportsPage />
               </LazyPage>
             </CapabilityRoute>
           }
@@ -118,7 +151,13 @@ export default function ActivatedCarbonRoutes() {
         />
         <Route
           path="screening"
-          element={<Navigate to="execution" replace />}
+          element={
+            <CapabilityRoute capability={AC_CAPABILITIES.SCREENING}>
+              <LazyPage>
+                <ScreeningPage />
+              </LazyPage>
+            </CapabilityRoute>
+          }
         />
         <Route
           path="quality-testing"
@@ -179,11 +218,9 @@ export default function ActivatedCarbonRoutes() {
         <Route
           path="dispatch"
           element={
-            <CapabilityRoute capability={AC_CAPABILITIES.DISPATCH}>
-              <LazyPage>
-                <DispatchPage />
-              </LazyPage>
-            </CapabilityRoute>
+            <LazyPage>
+              <DispatchPage />
+            </LazyPage>
           }
         />
         <Route path="*" element={<Navigate to="dashboard" replace />} />

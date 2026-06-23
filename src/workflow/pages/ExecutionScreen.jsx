@@ -521,12 +521,20 @@ function ExecutionScreen() {
         <div
           className={[
             "rounded-xl border px-4 py-3 text-sm",
-            executionReady
+            executionReady || allComplete
               ? "bg-emerald-500/10 border-emerald-400/30 text-emerald-100"
               : "bg-amber-500/10 border-amber-400/30 text-amber-100"
           ].join(" ")}
         >
-          {executionReady ? (
+          {allComplete ? (
+            <>
+              <span className="font-semibold">Routing complete.</span>{" "}
+              {summary.operations_completed} of {summary.operations_total} steps finished.
+              {isAcExecution
+                ? " Kiln and crew were released when each step was completed — the kiln is free for the next lot."
+                : " Machine and crew resources were released when each step was completed."}
+            </>
+          ) : executionReady ? (
             <>
               <span className="font-semibold">Shop floor ready.</span>{" "}
               {isAcExecution

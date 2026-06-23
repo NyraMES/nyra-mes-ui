@@ -23,10 +23,12 @@ export const INDUSTRY_SELECTION = {
     default_enabled_capabilities: [
       "AC_RAW_MATERIAL_INWARD",
       "AC_RAW_MATERIAL_QC",
+      "AC_BAG_TRACING",
       "AC_KILN_FEED",
       "AC_HOURLY_KILN_PARAMETERS",
       "AC_SCREENING",
       "AC_QUALITY_TESTING",
+      "AC_REPORTS",
       "AC_YIELD_ANALYSIS",
       "AC_TRACEABILITY",
       "AC_DISPATCH",

@@ -21,7 +21,12 @@ dist-ssr
 .env.ac
 .vite/
 
-# Editor directories and files
+# Playwright
+test-results/
+playwright-report/
+tests/e2e-report/
+blob-report/
+playwright/.cache/
 .vscode/*
 !.vscode/extensions.json
 .idea

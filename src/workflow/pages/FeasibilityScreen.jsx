@@ -146,12 +146,21 @@ function FeasibilityScreen({
   machineLabel = "Machine",
   machineHint = "Required machines available & uptime",
   runCheck,
-  loadLots
+  loadLots,
+  initialLotId,
+  afterPassHint,
+  afterPassPath,
+  afterPassLabel
 }) {
   const { context, markStage, update } = useWorkflow();
   const nav = useWorkflowNavPaths();
+  const passPath = afterPassPath || nav.afterFeasibility;
+  const passLabel = afterPassLabel || nav.afterFeasibilityLabel;
+  const passHint =
+    afterPassHint ||
+    "Feasibility gate passed — you can proceed to the next step in the manufacturing flow.";
   const [lots, setLots] = useState([]);
-  const [lotId, setLotId] = useState(context.lotId || "");
+  const [lotId, setLotId] = useState(initialLotId || context.lotId || "");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -179,6 +188,12 @@ function FeasibilityScreen({
   useEffect(() => {
     if (context.lotId && !lotId) setLotId(context.lotId);
   }, [context.lotId, lotId]);
+
+  useEffect(() => {
+    if (!initialLotId) return;
+    setLotId(initialLotId);
+    update({ lotId: initialLotId });
+  }, [initialLotId, update]);
 
   const selectLot = (value) => {
     setLotId(value);
@@ -276,12 +291,14 @@ function FeasibilityScreen({
                   <option value="">-- Pick a lot --</option>
                   {lots.map((l) => {
                     const id = l.lot_id || l.lot_code;
+                    const inward = l.order_code ? ` · ${l.order_code}` : "";
                     const gateLabel = l.feasibility_status
                       ? feasibilityLabel(l.feasibility_status)
                       : "Not checked";
                     return (
                       <option key={id} value={id}>
-                        {id} · qty {l.lot_quantity ?? "—"} · {gateLabel}
+                        {id}
+                        {inward} · qty {l.lot_quantity ?? "—"} · {gateLabel}
                       </option>
                     );
                   })}
@@ -328,7 +345,10 @@ function FeasibilityScreen({
 
             {result && isReady && (
               <div className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-                Feasibility gate passed — you can proceed to Lot Routing and Execution.
+                {passHint}{" "}
+                <Link to={passPath} className="underline font-semibold text-emerald-50">
+                  {passLabel}
+                </Link>
               </div>
             )}
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import {
@@ -10,6 +10,9 @@ import {
 import AcSaveBar from "../components/AcSaveBar";
 import AcAlert from "../components/AcAlert";
 import QualityResultForm from "../components/QualityResultForm";
+import { buildQcPayload, emptyQcForm } from "../components/AcQcDynamicFields";
+import useAcOntologyConfig from "../hooks/useAcOntologyConfig";
+import { getEnabledQualityParameters } from "../utils/acOntologyConfigStore";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
 
 function lotOptionValue(lot) {
@@ -18,6 +21,11 @@ function lotOptionValue(lot) {
 
 function QualityTestingPage() {
   const location = useLocation();
+  const { config: ontologyConfig, loading: configLoading } = useAcOntologyConfig();
+  const qualityFields = useMemo(
+    () => getEnabledQualityParameters(ontologyConfig),
+    [ontologyConfig]
+  );
   const [lots, setLots] = useState([]);
   const [lotsLoading, setLotsLoading] = useState(true);
   const [checks, setChecks] = useState([]);
@@ -26,6 +34,10 @@ function QualityTestingPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setValues((prev) => ({ ...emptyQcForm(qualityFields), qc_status: prev.qc_status || "PASSED", ...prev }));
+  }, [qualityFields]);
 
   useEffect(() => {
     setLotsLoading(true);
@@ -59,20 +71,20 @@ function QualityTestingPage() {
     try {
       const check = await createAcQualityTest({
         production_lot_id,
-        iodine_mg_g: values.iodine_mg_g || undefined,
-        ash_pct: values.ash_pct || undefined,
-        moisture_pct: values.moisture_pct || undefined,
-        bulk_density: values.bulk_density || undefined,
-        remarks: values.remarks || undefined,
-        status: values.qc_status || "PASSED"
+        status: values.qc_status || "PASSED",
+        ...buildQcPayload(values, qualityFields)
       });
-      const passed = (values.qc_status || "PASSED").toUpperCase() === "PASSED";
+      const disposition = (values.qc_status || "PASSED").toUpperCase();
+      const released = disposition === "PASSED";
+      const scrapped = disposition === "SCRAPPED" || disposition === "SCRAP";
       setSuccess(
-        passed
-          ? `Quality check ${check.check_code} passed — lot added to finished-goods stock.`
-          : `Quality check ${check.check_code} saved.`
+        scrapped
+          ? `Quality check ${check.check_code} saved — lot marked scrapped.`
+          : released
+            ? `Quality check ${check.check_code} — released to finished-goods stock (visible on Dispatch).`
+            : `Quality check ${check.check_code} saved — lot held, not stocked.`
       );
-      setValues({});
+      setValues({ ...emptyQcForm(qualityFields), qc_status: "PASSED" });
       await reloadChecks();
     } catch (e) {
       setError(formatAcApiError(e, "Save failed"));
@@ -86,7 +98,7 @@ function QualityTestingPage() {
       <SectionHeader
         eyebrow="Quality"
         title="Finished product quality testing"
-        subtitle="Final lot QC (iodine, ash, moisture, bulk density) — separate from the OP-QC step on Execution."
+        subtitle="Fields configured in Masters → Ontology & UI — stages testedBy / captures triples on save."
       />
 
       <p className="text-sm text-slate-300 mb-4 max-w-3xl">
@@ -95,7 +107,15 @@ function QualityTestingPage() {
           Execution
         </Link>{" "}
         records in-process inspection. This page stores the formal finished-goods quality check
-        for dispatch and traceability.
+        for dispatch and traceability. Configure parameters in{" "}
+        <Link to="/activated-carbon/masters?tab=ontology-ui" className="text-cyan-300 underline">
+          Ontology & UI
+        </Link>{" "}
+        · preview triples on{" "}
+        <Link to="/workflow/kg" className="text-cyan-300 underline">
+          KG Triples
+        </Link>
+        .
       </p>
 
       {error && <AcAlert variant="error">{error}</AcAlert>}
@@ -124,17 +144,20 @@ function QualityTestingPage() {
         <WfCardHeader title="New test result" subtitle="Check ID auto-generated (QC-AC-*)." />
         <WfCardBody>
           <div className="wf-light-panel rounded-xl p-4">
+            {configLoading ? (
+              <p className="text-sm text-slate-600 mb-4">Loading ontology configuration…</p>
+            ) : null}
             {lots.length === 0 && !lotsLoading ? (
               <p className="text-sm text-amber-800 mb-4">
-                No lots with completed shop-floor routing yet. Finish all steps on{" "}
+                No screened lots awaiting final QC. Finish{" "}
                 <Link to="/activated-carbon/execution" className="text-blue-700 underline">
                   Execution
-                </Link>{" "}
-                first, then return here. Or create a{" "}
-                <Link to="/activated-carbon/kiln-feed" className="text-blue-700 underline">
-                  kiln feed
-                </Link>{" "}
-                first.
+                </Link>
+                , record{" "}
+                <Link to="/activated-carbon/screening" className="text-blue-700 underline">
+                  Screening
+                </Link>
+                , then pass quality testing here to move the lot to in-stock for dispatch.
               </p>
             ) : null}
             <QualityResultForm
@@ -143,13 +166,14 @@ function QualityTestingPage() {
               lotsLoading={lotsLoading}
               onLotChange={setLotId}
               values={values}
+              fields={qualityFields}
               onChange={(field, val) => setValues((prev) => ({ ...prev, [field]: val }))}
             />
             <AcSaveBar
               onSave={handleSave}
               saving={saving}
               saveLabel="Save test result"
-              disabled={!lotId || lots.length === 0}
+              disabled={!lotId || lots.length === 0 || configLoading}
             />
           </div>
         </WfCardBody>

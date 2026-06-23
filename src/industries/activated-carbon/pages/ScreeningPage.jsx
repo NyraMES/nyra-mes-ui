@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import {
   createAcScreening,
+  fetchAcLotsAwaitingScreening,
   fetchAcScreening,
   formatAcApiError
 } from "../../../services/activatedCarbonApi";
@@ -17,6 +18,7 @@ function ScreeningPage() {
   const { masters, loading: mastersLoading, error: mastersError, reload: reloadMasters, ready } =
     useAcMasters();
   const [rows, setRows] = useState([]);
+  const [awaitingLots, setAwaitingLots] = useState([]);
   const [lotId, setLotId] = useState("");
   const [meshSize, setMeshSize] = useState("8x30");
   const [goodKg, setGoodKg] = useState("");
@@ -28,10 +30,17 @@ function ScreeningPage() {
 
   useEffect(() => {
     if (!ready) return;
-    if (!lotId && masters.production_lots[0]) {
-      setLotId(masters.production_lots[0].production_lot_id);
-    }
-  }, [ready, masters, lotId]);
+    fetchAcLotsAwaitingScreening()
+      .then((list) => {
+        setAwaitingLots(list || []);
+        if (list?.[0]) {
+          setLotId((prev) => prev || list[0].production_lot_id);
+        }
+      })
+      .catch(() => setAwaitingLots([]));
+  }, [ready, location.key]);
+
+  const lotOptions = awaitingLots.length ? awaitingLots : masters.production_lots;
 
   const reloadRows = async () => {
     setRows(await fetchAcScreening());
@@ -54,7 +63,9 @@ function ScreeningPage() {
         overs_kg: oversKg ? Number(oversKg) : undefined,
         fines_kg: finesKg ? Number(finesKg) : undefined
       });
-      setSuccess(`Screening saved · ${row.execution_code}`);
+      setSuccess(
+        `Screening saved · ${row.execution_code}. Complete Quality Testing to move this lot to in-stock.`
+      );
       setGoodKg("");
       setOversKg("");
       setFinesKg("");
@@ -72,16 +83,37 @@ function ScreeningPage() {
       <SectionHeader
         eyebrow="Post-activation"
         title="Screening"
-        subtitle="Classify output by mesh size and record overs / fines recovery."
+        subtitle="Classify output by mesh size and record overs / fines recovery. Saves stage Material:ProductionLot → screenedAt → Screening Cell triples."
       />
 
       {(mastersError || error) && <AcAlert variant="error">{mastersError || error}</AcAlert>}
       {success && <AcAlert variant="success">{success}</AcAlert>}
 
+      <p className="text-sm text-slate-300 mb-4">
+        Ontology-linked save — preview staged triples on{" "}
+        <Link to="/workflow/kg" className="text-cyan-300 underline">
+          KG Triples
+        </Link>{" "}
+        or configure fields in{" "}
+        <Link to="/activated-carbon/masters?tab=ontology-ui" className="text-cyan-300 underline">
+          Masters → Ontology & UI
+        </Link>
+        .
+      </p>
+
       <WfCard className="mb-6">
         <WfCardHeader title="Record screening" />
         <WfCardBody>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+          <div className="wf-light-panel rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+            {lotOptions.length === 0 && !mastersLoading ? (
+              <p className="text-sm text-amber-800 md:col-span-2">
+                No lots awaiting screening. Finish all steps on{" "}
+                <Link to="/activated-carbon/execution" className="text-blue-700 underline">
+                  Execution
+                </Link>{" "}
+                first.
+              </p>
+            ) : null}
             <AcFormSelect
               label="Lot"
               className="md:col-span-2"
@@ -89,7 +121,7 @@ function ScreeningPage() {
               loading={mastersLoading}
               onChange={(e) => setLotId(e.target.value)}
             >
-              {masters.production_lots.map((lot) => (
+              {lotOptions.map((lot) => (
                 <option key={lot.production_lot_id} value={lot.production_lot_id}>
                   {lot.lot_code}
                 </option>
