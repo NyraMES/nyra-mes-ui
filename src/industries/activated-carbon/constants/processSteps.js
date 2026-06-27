@@ -1,11 +1,13 @@
 /** Standard AC process steps for routing nodes. */
 export const AC_PROCESS_STEP_OPTIONS = [
+  { value: "KILN_FEED", label: "Kiln Feed / Charge" },
   { value: "PYROLYSIS", label: "Pyrolysis / Carbonization" },
   { value: "ACTIVATION", label: "Steam Activation" },
   { value: "DRYING", label: "Drying" },
   { value: "GRINDING", label: "Grinding / Milling" },
+  { value: "DESTONING", label: "Destoning" },
   { value: "SCREENING", label: "Screening & Classification" },
-  { value: "QC", label: "Quality Testing" },
+  { value: "QC", label: "Quality Testing (→ in stock)" },
   { value: "PACKING", label: "Packing" }
 ];
 

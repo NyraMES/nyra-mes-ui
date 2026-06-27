@@ -1,6 +1,6 @@
 import useIndustryBasePath from "../../../hooks/useIndustryBasePath";
 import {
-  fetchAcFeasibilityLots,
+  fetchAcOpenLots,
   fetchAcRoutingPlan,
   generateAcRoute
 } from "../../../services/activatedCarbonApi";
@@ -14,10 +14,10 @@ export default function AcRoutingPage() {
       <RoutingFlow
         loadPlan={fetchAcRoutingPlan}
         generatePlan={generateAcRoute}
-        loadLots={fetchAcFeasibilityLots}
+        loadLots={fetchAcOpenLots}
         feasibilityPath={`${base}/feasibility`}
         mastersPath={`${base}/masters`}
-        emptyLotsHint="No open lots — release on Feasibility Gate, run the check, charge the kiln, then generate routing here."
+        emptyLotsHint="No open lots — release on Raw Material → Release to Production, run feasibility, charge the kiln, then generate routing here."
         stageEyebrow="Stage 05 · Lot Routing · Activated Carbon"
         showOemRoutingMaster={false}
         feasibilityFirst

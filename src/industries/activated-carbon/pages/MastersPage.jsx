@@ -1,6 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 
+import { useAuth } from "../../../auth/AuthContext";
+import {
+  userCanConfigureProcessRouting,
+  userCanManageTenantMasters
+} from "../../../auth/roles";
 import {
   createAcCustomer,
   createAcKiln,
@@ -22,8 +27,13 @@ import AcAlert from "../components/AcAlert";
 import AcCreatedIdsDialog from "../components/AcCreatedIdsDialog";
 import AcManufacturingFlowGuide from "../components/AcManufacturingFlowGuide";
 import AcOntologyAdminPanel from "../components/AcOntologyAdminPanel";
+import AcPermissionNotice from "../components/AcPermissionNotice";
 import AcSaveBar from "../components/AcSaveBar";
+import AcSimpleMasterForm from "../components/AcSimpleMasterForm";
+import AcFriendlyRegistryList from "../components/AcFriendlyRegistryList";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
+
+import "../styles/acMasters.css";
 
 function ResourceTable({ rows, emptyLabel, showHeadcount = false }) {
   if (!rows?.length) {
@@ -69,8 +79,8 @@ function KilnTable({ kilns, equipment, emptyLabel }) {
       <thead>
         <tr className="text-left text-slate-500 border-b">
           <th className="py-2">Kiln name</th>
-          <th className="py-2">Planning code</th>
-          <th className="py-2">Asset code</th>
+          <th className="py-2">Reference</th>
+          <th className="py-2">Machine ID</th>
           <th className="py-2">Status</th>
         </tr>
       </thead>
@@ -92,9 +102,15 @@ function KilnTable({ kilns, equipment, emptyLabel }) {
 }
 
 function MastersPage() {
+  const { user } = useAuth();
+  const roles = user?.roles || [];
+  const canManageMasters = userCanManageTenantMasters(roles);
+  const canConfigureProcess = userCanConfigureProcessRouting(roles);
+
   const location = useLocation();
+  const defaultTab = canManageMasters ? "customers" : "raw-material-types";
   const initialTab =
-    new URLSearchParams(location.search).get("tab") || "raw-material-types";
+    new URLSearchParams(location.search).get("tab") || defaultTab;
   const [tab, setTab] = useState(initialTab);
   const [customers, setCustomers] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -237,7 +253,15 @@ function MastersPage() {
   };
 
   const handleSaveKilnParameter = async () => {
-    if (!paramKey.trim() || !paramLabel.trim()) return;
+    if (!paramLabel.trim()) return;
+    const key =
+      paramKey.trim() ||
+      paramLabel
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_|_$/g, "");
+    if (!key) return;
     const unit =
       paramUnit === "__custom__"
         ? paramUnitCustom.trim()
@@ -247,7 +271,7 @@ function MastersPage() {
     setSuccess("");
     try {
       const row = await createAcKilnParameter({
-        key: paramKey.trim(),
+        key,
         label: paramLabel.trim(),
         unit: unit || undefined
       });
@@ -386,15 +410,18 @@ function MastersPage() {
     }
   };
 
-  const tabs = [
-    { id: "customers", label: "Customers" },
-    { id: "suppliers", label: "Suppliers" },
-    { id: "raw-material-types", label: "Material & routing" },
-    { id: "plant-resources", label: "Plant resources" },
-    { id: "routing", label: "Routing reference" },
-    { id: "kiln-parameters", label: "Kiln parameters" },
-    { id: "ontology-ui", label: "Ontology & UI" }
-  ];
+  const tabs = useMemo(
+    () => [
+      { id: "customers", label: "Customers", hint: "Who you sell to" },
+      { id: "suppliers", label: "Suppliers", hint: "Who delivers raw material" },
+      { id: "raw-material-types", label: "Materials & steps", hint: "Super Admin only" },
+      { id: "plant-resources", label: "Machines & kilns", hint: "Plant equipment" },
+      { id: "routing", label: "Routing reference", hint: "Read-only summary" },
+      { id: "kiln-parameters", label: "Kiln readings", hint: "Shift data fields" },
+      { id: "ontology-ui", label: "Advanced settings", hint: "Super Admin" }
+    ],
+    []
+  );
 
   return (
     <div className="max-w-6xl">
@@ -409,24 +436,41 @@ function MastersPage() {
       />
       <SectionHeader
         eyebrow="Setup"
-        title="Masters"
-        subtitle="Customers, suppliers, raw material types, plant resources, routing, kiln parameters, and ontology-linked dashboard / QC configuration."
+        title="Plant setup"
+        subtitle="Add customers and suppliers here. Raw materials and production steps are set up by a Super Administrator."
       />
+
+      {!canManageMasters && !canConfigureProcess ? (
+        <AcPermissionNotice
+          title="You can view setup data"
+          message="Your account can look up customers, suppliers, and materials. Ask a Super Administrator or Plant Administrator if something needs to be added or changed."
+        />
+      ) : null}
+
+      {canManageMasters && !canConfigureProcess ? (
+        <AcPermissionNotice
+          variant="info"
+          title="Administrator access"
+          message="You can add customers, suppliers, and plant equipment. Adding new raw materials or changing process steps requires a Super Administrator."
+        />
+      ) : null}
 
       {error && <AcAlert variant="error">{error}</AcAlert>}
       {success && <AcAlert variant="success">{success}</AcAlert>}
 
-      <div className="ac-masters-tabs flex gap-2 mb-4 border-b border-white/15">
+      <div className="ac-masters-tabs flex flex-wrap gap-2 mb-4 border-b border-white/15">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px text-left ${
               tab === t.id ? "ac-masters-tab--active" : ""
             }`}
             onClick={() => setTab(t.id)}
+            title={t.hint}
           >
-            {t.label}
+            <span className="block">{t.label}</span>
+            <span className="block text-[10px] font-normal opacity-70">{t.hint}</span>
           </button>
         ))}
       </div>
@@ -437,52 +481,41 @@ function MastersPage() {
 
       {tab === "customers" && (
         <>
-          <WfCard className="mb-6">
-            <WfCardHeader
-              title="New customer"
-              subtitle="Enter name only — code auto-generated (CUST-AC-*)."
+          {canManageMasters ? (
+            <div className="mb-6">
+              <AcSimpleMasterForm
+                step={1}
+                title="Add a customer"
+                helpText="Type the company name only. The system creates a customer code for you — no need to remember numbers."
+                fieldLabel="Customer company name"
+                placeholder="e.g. Acme Carbon Ltd"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                onSave={handleSaveCustomer}
+                saving={saving}
+                saveLabel="Add customer"
+              />
+            </div>
+          ) : (
+            <AcPermissionNotice
+              title="Cannot add customers"
+              message="Only a Plant Administrator can register new customers."
             />
-            <WfCardBody>
-              <label className="text-sm block max-w-md">
-                <span className="block mb-1 font-medium text-slate-700">Customer name</span>
-                <input
-                  className="w-full rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="e.g. Acme Carbon Ltd"
-                />
-              </label>
-              <AcSaveBar onSave={handleSaveCustomer} saving={saving} saveLabel="Add customer" />
-            </WfCardBody>
-          </WfCard>
+          )}
 
           <WfCard>
-            <WfCardHeader title="Customer registry" />
+            <WfCardHeader
+              title="Customer list"
+              subtitle={`${customers.length} customer${customers.length === 1 ? "" : "s"} registered`}
+            />
             <WfCardBody>
-              {customers.length === 0 ? (
-                <p className="text-sm text-slate-600">
-                  No customers yet. Add one above or run the demo seed script.
-                </p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-slate-500 border-b">
-                      <th className="py-2">Code</th>
-                      <th className="py-2">Name</th>
-                      <th className="py-2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {customers.map((c) => (
-                      <tr key={c.customer_id} className="border-b border-slate-100">
-                        <td className="py-2 font-mono text-slate-900">{c.customer_code}</td>
-                        <td className="py-2 text-slate-900">{c.customer_name}</td>
-                        <td className="py-2 text-slate-700">{c.status || "ACTIVE"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+              <AcFriendlyRegistryList
+                items={customers}
+                idKey="customer_id"
+                nameKey="customer_name"
+                codeKey="customer_code"
+                emptyLabel="No customers yet. Add one using the form above."
+              />
             </WfCardBody>
           </WfCard>
         </>
@@ -490,52 +523,41 @@ function MastersPage() {
 
       {tab === "suppliers" && (
         <>
-          <WfCard className="mb-6">
-            <WfCardHeader
-              title="New supplier"
-              subtitle="Vendors who deliver raw feedstock. ID auto-generated (e.g. SUP-AC-1001)."
+          {canManageMasters ? (
+            <div className="mb-6">
+              <AcSimpleMasterForm
+                step={1}
+                title="Add a supplier"
+                helpText="Suppliers deliver raw material to your plant. Enter their name — the system assigns a supplier code automatically."
+                fieldLabel="Supplier company name"
+                placeholder="e.g. Coastal Shell Traders"
+                value={supplierName}
+                onChange={(e) => setSupplierName(e.target.value)}
+                onSave={handleSaveSupplier}
+                saving={saving}
+                saveLabel="Add supplier"
+              />
+            </div>
+          ) : (
+            <AcPermissionNotice
+              title="Cannot add suppliers"
+              message="Only a Plant Administrator can register new suppliers."
             />
-            <WfCardBody>
-              <label className="text-sm block max-w-md">
-                <span className="block mb-1 font-medium text-slate-700">Supplier name</span>
-                <input
-                  className="w-full rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
-                  value={supplierName}
-                  onChange={(e) => setSupplierName(e.target.value)}
-                  placeholder="e.g. Coastal Shell Traders"
-                />
-              </label>
-              <AcSaveBar onSave={handleSaveSupplier} saving={saving} saveLabel="Add supplier" />
-            </WfCardBody>
-          </WfCard>
+          )}
 
           <WfCard>
-            <WfCardHeader title="Supplier registry" />
+            <WfCardHeader
+              title="Supplier list"
+              subtitle={`${suppliers.length} supplier${suppliers.length === 1 ? "" : "s"} registered`}
+            />
             <WfCardBody>
-              {suppliers.length === 0 ? (
-                <p className="text-sm text-slate-600">
-                  No suppliers yet. Add one above — used on Raw Material Inward.
-                </p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-slate-500 border-b">
-                      <th className="py-2">Code</th>
-                      <th className="py-2">Name</th>
-                      <th className="py-2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {suppliers.map((s) => (
-                      <tr key={s.supplier_id} className="border-b border-slate-100">
-                        <td className="py-2 font-mono text-slate-900">{s.supplier_code}</td>
-                        <td className="py-2 text-slate-900">{s.supplier_name}</td>
-                        <td className="py-2 text-slate-700">{s.status || "ACTIVE"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+              <AcFriendlyRegistryList
+                items={suppliers}
+                idKey="supplier_id"
+                nameKey="supplier_name"
+                codeKey="supplier_code"
+                emptyLabel="No suppliers yet. Add one using the form above — they appear when recording raw material inward."
+              />
             </WfCardBody>
           </WfCard>
         </>
@@ -545,8 +567,8 @@ function MastersPage() {
         <>
           <WfCard className="mb-6">
             <WfCardHeader
-              title="Raw material → process routing"
-              subtitle="Select raw material (left) to load its finished product (right) and linear process chain. Add or edit processes on a separate entry screen."
+              title="Raw materials and production steps"
+              subtitle="Pick a material from the list to see its steps from intake to finished product. Super Administrators can add new materials and change steps."
             />
             <WfCardBody>
               {loading ? (
@@ -557,6 +579,7 @@ function MastersPage() {
                   onCreate={handleSaveRawMaterialType}
                   onUpdate={handleUpdateRawMaterialType}
                   saving={saving}
+                  canEdit={canConfigureProcess}
                 />
               )}
             </WfCardBody>
@@ -566,96 +589,101 @@ function MastersPage() {
 
       {tab === "plant-resources" && (
         <>
-          <WfCard className="mb-6">
-            <WfCardHeader
-              title="Add activation kiln"
-              subtitle="Enter a name only — the system assigns RES-KILN-* (resource) and EQ-KILN-* (machine) automatically."
-            />
-            <WfCardBody>
-              <label className="text-sm block max-w-md">
-                <span className="block mb-1 font-medium text-slate-700">Kiln name</span>
-                <input
-                  className="w-full rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
-                  value={kilnName}
-                  onChange={(e) => setKilnName(e.target.value)}
-                  placeholder="e.g. Activation Kiln 02"
+          {canManageMasters ? (
+            <>
+              <WfCard className="mb-6">
+                <WfCardHeader
+                  title="Add activation kiln"
+                  subtitle="Enter a name only — codes are assigned automatically."
                 />
-              </label>
-              <AcSaveBar
-                onSave={handleSaveKiln}
-                saving={saving}
-                saveLabel="Add kiln"
-                disabled={!kilnName.trim()}
-              />
-            </WfCardBody>
-          </WfCard>
+                <WfCardBody>
+                  <label className="text-sm block max-w-md">
+                    <span className="block mb-1 font-medium text-slate-700">Kiln name</span>
+                    <input
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
+                      value={kilnName}
+                      onChange={(e) => setKilnName(e.target.value)}
+                      placeholder="e.g. Activation Kiln 02"
+                    />
+                  </label>
+                  <AcSaveBar
+                    onSave={handleSaveKiln}
+                    saving={saving}
+                    saveLabel="Add kiln"
+                    disabled={!kilnName.trim()}
+                  />
+                </WfCardBody>
+              </WfCard>
+
+              <WfCard className="mb-6">
+                <WfCardHeader
+                  title="Register plant resource"
+                  subtitle="Name and type only — the system assigns codes for you."
+                />
+                <WfCardBody>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+                    <label className="text-sm block">
+                      <span className="block mb-1 font-medium text-slate-700">Name</span>
+                      <input
+                        className="w-full rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
+                        value={resourceName}
+                        onChange={(e) => setResourceName(e.target.value)}
+                        placeholder="e.g. Vibrating Screen Line 2"
+                      />
+                    </label>
+                    <label className="text-sm block">
+                      <span className="block mb-1 font-medium text-slate-700">Type</span>
+                      <select
+                        className="w-full rounded border border-slate-300 px-3 py-2"
+                        value={resourceType}
+                        onChange={(e) => setResourceType(e.target.value)}
+                      >
+                        <option value="MACHINE">Machine</option>
+                        <option value="TOOL">Tool</option>
+                        <option value="LABOR">Labor pool</option>
+                      </select>
+                    </label>
+                    {resourceType === "LABOR" && (
+                      <label className="text-sm block sm:col-span-2">
+                        <span className="block mb-1 font-medium text-slate-700">
+                          How many operators in this pool?
+                        </span>
+                        <input
+                          type="number"
+                          min="1"
+                          className="w-full max-w-[8rem] rounded border border-slate-300 px-3 py-2"
+                          value={laborHeadcount}
+                          onChange={(e) => setLaborHeadcount(e.target.value)}
+                        />
+                      </label>
+                    )}
+                  </div>
+                  <AcSaveBar
+                    onSave={handleSaveResource}
+                    saving={saving}
+                    saveLabel="Add resource"
+                    disabled={!resourceName.trim()}
+                  />
+                </WfCardBody>
+              </WfCard>
+            </>
+          ) : (
+            <AcPermissionNotice
+              title="View only"
+              message="Only a Plant Administrator can register kilns and other equipment."
+            />
+          )}
 
           <WfCard className="mb-6">
             <WfCardHeader
               title="Activation kilns"
-              subtitle="One physical line — planning code (RES-KILN-*) and shop-floor asset (EQ-KILN-*). Feasibility uses time on the kiln; codes use 3-digit suffixes."
+              subtitle="Registered kilns on your plant floor."
             />
             <WfCardBody>
               <KilnTable
                 kilns={plantResources.kilns}
                 equipment={plantResources.equipment}
-                emptyLabel="No kilns registered — seed includes RES-KILN-001 or add one above."
-              />
-            </WfCardBody>
-          </WfCard>
-
-          <WfCard className="mb-6">
-            <WfCardHeader
-              title="Register plant resource"
-              subtitle="Name and type only — codes auto-assigned with 3-digit suffix (e.g. RES-LAB-001)."
-            />
-            <WfCardBody>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
-                <label className="text-sm block">
-                  <span className="block mb-1 font-medium text-slate-700">Name</span>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
-                    value={resourceName}
-                    onChange={(e) => setResourceName(e.target.value)}
-                    placeholder="e.g. Vibrating Screen Line 2"
-                  />
-                </label>
-                <label className="text-sm block">
-                  <span className="block mb-1 font-medium text-slate-700">Type</span>
-                  <select
-                    className="w-full rounded border border-slate-300 px-3 py-2"
-                    value={resourceType}
-                    onChange={(e) => setResourceType(e.target.value)}
-                  >
-                    <option value="MACHINE">Machine</option>
-                    <option value="TOOL">Tool</option>
-                    <option value="LABOR">Labor pool</option>
-                  </select>
-                </label>
-                {resourceType === "LABOR" && (
-                  <label className="text-sm block sm:col-span-2">
-                    <span className="block mb-1 font-medium text-slate-700">
-                      Available operators in pool
-                    </span>
-                    <input
-                      type="number"
-                      min="1"
-                      className="w-full max-w-[8rem] rounded border border-slate-300 px-3 py-2"
-                      value={laborHeadcount}
-                      onChange={(e) => setLaborHeadcount(e.target.value)}
-                    />
-                    <p className="text-xs text-slate-500 mt-1">
-                      Headcount for feasibility (e.g. 2 of 4 needed on a step). Not the same as
-                      machine process time — time-based labor scheduling is a later enhancement.
-                    </p>
-                  </label>
-                )}
-              </div>
-              <AcSaveBar
-                onSave={handleSaveResource}
-                saving={saving}
-                saveLabel="Add resource"
-                disabled={!resourceName.trim()}
+                emptyLabel="No kilns registered yet."
               />
             </WfCardBody>
           </WfCard>
@@ -727,11 +755,13 @@ function MastersPage() {
             ) : (
               <div className="wf-light-panel rounded-xl p-4 space-y-4">
                 <p className="text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
-                  <strong>Routing Builder vs this tab:</strong>{" "}
-                  <em>Routing Builder</em> (menu) is your editable workspace process flow
-                  (copy from AC_STANDARD_PROCESS). <em>This tab</em> shows the finished-product
-                  route used at <strong>lot execution</strong> after kiln feed. Raw material types
-                  map feedstock → this routing.
+                  <strong>Per raw material (Material &amp; routing tab):</strong> Super Admin
+                  defines which shop-floor processes apply to each feedstock — kiln feed,
+                  screening, destoning, QC — with tracking fields and mandatory/optional flags.
+                  Inward and incoming QC are always required on the Raw Material page.
+                  <br />
+                  <strong>Routing Builder (menu):</strong> optional workspace template reference
+                  only — execution follows the raw material type definition above.
                 </p>
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                   <div>
@@ -791,64 +821,76 @@ function MastersPage() {
 
       {tab === "kiln-parameters" && (
         <>
-          <WfCard className="mb-6">
-            <WfCardHeader
-              title="Add kiln parameter"
-              subtitle="New fields appear on the Kiln Parameters data-entry page."
-            />
-            <WfCardBody>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl">
-                <label className="text-sm block">
-                  <span className="block mb-1 font-medium text-slate-700">Field key</span>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white font-mono text-sm"
-                    value={paramKey}
-                    onChange={(e) => setParamKey(e.target.value)}
-                    placeholder="e.g. co2_pct"
-                  />
-                </label>
-                <label className="text-sm block">
-                  <span className="block mb-1 font-medium text-slate-700">Label</span>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
-                    value={paramLabel}
-                    onChange={(e) => setParamLabel(e.target.value)}
-                    placeholder="e.g. CO₂ (%)"
-                  />
-                </label>
-                <label className="text-sm block">
-                  <span className="block mb-1 font-medium text-slate-700">Unit of measure</span>
-                  <select
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
-                    value={paramUnit}
-                    onChange={(e) => setParamUnit(e.target.value)}
-                  >
-                    {AC_KILN_UOM_OPTIONS.map((opt) => (
-                      <option key={opt.value || "none"} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {paramUnit === "__custom__" && (
-                  <label className="text-sm block md:col-span-3">
-                    <span className="block mb-1 font-medium text-slate-700">Custom unit</span>
+          {canManageMasters ? (
+            <WfCard className="mb-6">
+              <WfCardHeader
+                title="Add kiln reading field"
+                subtitle="New fields appear when operators enter kiln data each shift."
+              />
+              <WfCardBody>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+                  <label className="text-sm block md:col-span-2">
+                    <span className="block mb-1 font-medium text-slate-700">
+                      What should operators read on the form?
+                    </span>
                     <input
-                      className="w-full max-w-xs rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
-                      value={paramUnitCustom}
-                      onChange={(e) => setParamUnitCustom(e.target.value)}
-                      placeholder="e.g. m³/h"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 bg-white"
+                      value={paramLabel}
+                      onChange={(e) => setParamLabel(e.target.value)}
+                      placeholder="e.g. CO₂ level (%)"
                     />
                   </label>
-                )}
-              </div>
-              <AcSaveBar
-                onSave={handleSaveKilnParameter}
-                saving={saving}
-                saveLabel="Add parameter"
-              />
-            </WfCardBody>
-          </WfCard>
+                  <label className="text-sm block">
+                    <span className="block mb-1 font-medium text-slate-700">Unit</span>
+                    <select
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
+                      value={paramUnit}
+                      onChange={(e) => setParamUnit(e.target.value)}
+                    >
+                      {AC_KILN_UOM_OPTIONS.map((opt) => (
+                        <option key={opt.value || "none"} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-sm block">
+                    <span className="block mb-1 font-medium text-slate-700">
+                      Short code (optional)
+                    </span>
+                    <input
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
+                      value={paramKey}
+                      onChange={(e) => setParamKey(e.target.value)}
+                      placeholder="Auto-generated if blank"
+                    />
+                  </label>
+                  {paramUnit === "__custom__" && (
+                    <label className="text-sm block md:col-span-2">
+                      <span className="block mb-1 font-medium text-slate-700">Custom unit</span>
+                      <input
+                        className="w-full max-w-xs rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
+                        value={paramUnitCustom}
+                        onChange={(e) => setParamUnitCustom(e.target.value)}
+                        placeholder="e.g. m³/h"
+                      />
+                    </label>
+                  )}
+                </div>
+                <AcSaveBar
+                  onSave={handleSaveKilnParameter}
+                  saving={saving}
+                  saveLabel="Add field"
+                  disabled={!paramLabel.trim()}
+                />
+              </WfCardBody>
+            </WfCard>
+          ) : (
+            <AcPermissionNotice
+              title="View only"
+              message="Only a Plant Administrator can add new kiln reading fields."
+            />
+          )}
 
           <WfCard>
             <WfCardHeader
@@ -879,9 +921,22 @@ function MastersPage() {
         </>
       )}
 
-      {tab === "ontology-ui" && <AcOntologyAdminPanel />}
+      {tab === "ontology-ui" &&
+        (canConfigureProcess ? (
+          <AcOntologyAdminPanel />
+        ) : (
+          <AcPermissionNotice
+            title="Advanced settings — Super Administrator only"
+            message="Dashboard layout and ontology configuration can only be changed by a Super Administrator."
+          />
+        ))}
 
-      <AcManufacturingFlowGuide className="mt-10" />
+      <details className="mt-10 wf-ac-flow-guide-collapse">
+        <summary className="text-sm font-medium text-slate-300 cursor-pointer py-2">
+          Need help? How the plant workflow fits together
+        </summary>
+        <AcManufacturingFlowGuide className="mt-2" />
+      </details>
     </div>
   );
 }

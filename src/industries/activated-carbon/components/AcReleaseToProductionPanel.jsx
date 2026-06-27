@@ -93,12 +93,12 @@ export default function AcReleaseToProductionPanel({ onReleased }) {
       const poCode = result.production_order?.production_order_code;
       setSuccess(
         lotCode && poCode
-          ? `PO ${poCode} · lot ${lotCode} created — run the feasibility check below, then charge the kiln.`
+          ? `PO ${poCode} · lot ${lotCode} created — open Feasibility Gate to run checks, then charge the kiln.`
           : lotCode
-            ? `Lot ${lotCode} created — run the feasibility check below, then charge the kiln.`
+            ? `Lot ${lotCode} created — open Feasibility Gate to run checks, then charge the kiln.`
             : poCode
-              ? `PO ${poCode} ready — run feasibility.`
-              : `Production order ready — run feasibility.`
+              ? `PO ${poCode} ready — open Feasibility Gate.`
+              : `Production order ready — open Feasibility Gate.`
       );
       if (onReleased) {
         await onReleased({ lotCode, result });
@@ -154,13 +154,16 @@ export default function AcReleaseToProductionPanel({ onReleased }) {
             <p className="text-xs text-amber-800">
               {fullyReleasedCount > 0 ? (
                 <>
-                  All QC-passed inward is already released — select the new lot (LOT-AC-*) in the
-                  feasibility dropdown below, not the inward order code.
+                  All QC-passed inward is already released — open{" "}
+                  <Link to={`${basePath}/feasibility`} className="text-blue-700 underline">
+                    Feasibility Gate
+                  </Link>{" "}
+                  and select the new lot (LOT-AC-*), not the inward order code.
                 </>
               ) : (
                 <>
                   No QC-passed inward orders. Complete{" "}
-                  <Link to={`${basePath}/raw-material-qc`} className="text-blue-700 underline">
+                  <Link to={`${basePath}/raw-material?tab=qc`} className="text-blue-700 underline">
                     Raw Material QC
                   </Link>{" "}
                   first.

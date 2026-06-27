@@ -12,10 +12,10 @@ export function useWorkflowNavPaths() {
 
   if (pathname.startsWith("/activated-carbon")) {
     return {
-      afterFeasibility: `${base}/kiln-feed`,
-      afterFeasibilityLabel: "Proceed to Kiln Feed →",
-      afterExecution: `${base}/quality-testing`,
-      afterExecutionLabel: "Proceed to Quality Testing →",
+      afterFeasibility: `${base}/execution`,
+      afterFeasibilityLabel: "Proceed to Execution →",
+      afterExecution: `${base}/dispatch`,
+      afterExecutionLabel: "Proceed to Dispatch →",
       prerequisiteForExecution: `${base}/feasibility`,
       prerequisiteLabel: "Feasibility Gate"
     };

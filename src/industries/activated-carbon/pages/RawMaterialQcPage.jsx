@@ -44,7 +44,7 @@ function formatCellValue(row, field) {
   return String(v);
 }
 
-function RawMaterialQcPage() {
+function RawMaterialQcPage({ embedded = false }) {
   const { context, loading: contextLoading } = useAppContext();
   const location = useLocation();
   const { focusTick } = useAcPageRefresh();
@@ -155,11 +155,13 @@ function RawMaterialQcPage() {
 
   return (
     <div className="max-w-5xl space-y-6">
-      <SectionHeader
-        eyebrow="Inbound quality"
-        title="Raw Material QC"
-        subtitle="Inspect feedstock at inward — fields configured in Masters → Ontology & UI (triplet-linked)."
-      />
+      {!embedded && (
+        <SectionHeader
+          eyebrow="Inbound quality"
+          title="Raw Material QC"
+          subtitle="Inspect feedstock at inward — fields configured in Masters → Ontology & UI."
+        />
+      )}
 
       {error && <AcAlert variant="error">{error}</AcAlert>}
       {success && <AcAlert variant="success">{success}</AcAlert>}
@@ -177,7 +179,7 @@ function RawMaterialQcPage() {
               {noQcHistory
                 ? "No raw material inward orders yet. Create one under "
                 : "All inward orders have completed QC. Create a new one under "}
-              <strong>Raw Material Inward</strong> first.
+              <strong>Raw Material Inward</strong> tab first.
             </p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl">

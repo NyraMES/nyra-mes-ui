@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 
 import DemoWatermark from "../../components/DemoWatermark";
@@ -12,9 +12,14 @@ import api from "../../services/api";
 import { AC_ASK_NYRA_SUGGESTIONS } from "./constants/askNyraSuggestions";
 import AcSidebar from "./components/AcSidebar";
 import AcTopbar from "./components/AcTopbar";
+import AcMenuRouteGuard from "./components/AcMenuRouteGuard";
+import { useAuth } from "../../auth/AuthContext";
+import { userIsAcDemoViewer } from "./utils/acMenuAccess";
 
 function ActivatedCarbonLayout() {
   const { context } = useAppContext();
+  const { user } = useAuth();
+  const hideAskNyra = userIsAcDemoViewer(user?.roles || []);
   const [askOpen, setAskOpen] = useState(false);
 
   useEffect(() => {
@@ -40,36 +45,42 @@ function ActivatedCarbonLayout() {
           <ContextLoadWarning />
           <AcTopbar />
           <main className="p-6 flex-1 wf-page-frame wf-ac-page-frame overflow-y-auto">
-            <Outlet />
+            <AcMenuRouteGuard>
+              <Outlet />
+            </AcMenuRouteGuard>
           </main>
         </div>
 
-        <button
-          type="button"
-          className="wf-ask-fab"
-          onClick={() => setAskOpen((v) => !v)}
-          title="Ask Nyra"
-        >
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M12 2 4 6v6c0 4.5 3.5 8.5 8 9 4.5-.5 8-4.5 8-9V6z" />
-            <path d="M9 12h6M9 9h6M9 15h4" />
-          </svg>
-        </button>
+        {!hideAskNyra && (
+          <>
+            <button
+              type="button"
+              className="wf-ask-fab"
+              onClick={() => setAskOpen((v) => !v)}
+              title="Ask Nyra"
+            >
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 2 4 6v6c0 4.5 3.5 8.5 8 9 4.5-.5 8-4.5 8-9V6z" />
+                <path d="M9 12h6M9 9h6M9 15h4" />
+              </svg>
+            </button>
 
-        {askOpen && (
-          <AskNyraPanel
-            onClose={() => setAskOpen(false)}
-            suggestions={AC_ASK_NYRA_SUGGESTIONS}
-          />
+            {askOpen && (
+              <AskNyraPanel
+                onClose={() => setAskOpen(false)}
+                suggestions={AC_ASK_NYRA_SUGGESTIONS}
+              />
+            )}
+          </>
         )}
       </div>
     </WorkflowProvider>

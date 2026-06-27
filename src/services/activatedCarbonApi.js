@@ -1126,6 +1126,16 @@ export async function fetchAcRoutingLots(options = {}) {
   });
 }
 
+/** Lots ready for unified shop-floor execution (feasibility passed, routing not complete). */
+export async function fetchAcExecutionLots() {
+  const lots = await fetchAcRoutingLots({ excludeRoutingComplete: true });
+  return lots.filter((lot) => {
+    const status = (lot.status || "").toUpperCase();
+    if (lot.feasibility_ready) return true;
+    return status === "IN_PROGRESS" || status === "QC_PENDING";
+  });
+}
+
 /** Lots eligible for kiln charge (feasibility passed, not yet charged). */
 export async function fetchAcKilnChargeLots() {
   const lots = await fetchAcOpenLots();
@@ -1135,9 +1145,16 @@ export async function fetchAcKilnChargeLots() {
   });
 }
 
-/** Lots eligible for feasibility gate (excludes finished / dispatched pipeline). */
+/** Lots awaiting feasibility — released to production, execution not yet started. */
 export async function fetchAcFeasibilityLots() {
-  return fetchAcOpenLots();
+  const lots = await fetchAcOpenLots();
+  return lots.filter((lot) => {
+    const stage = (lot.pipeline_stage || "").trim();
+    const status = (lot.status || "").toUpperCase();
+    if (stage === "Awaiting feasibility") return true;
+    if (status === "CREATED" && !lot.routing_complete) return true;
+    return false;
+  });
 }
 
 /** Lots in finished-goods stock — eligible for dispatch (enriched with grade/product). */

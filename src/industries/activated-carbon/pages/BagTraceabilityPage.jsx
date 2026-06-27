@@ -127,7 +127,7 @@ function BagTraceabilityPage() {
             ) : orders.length === 0 ? (
               <p className="text-sm text-amber-800 md:col-span-2">
                 No inward orders yet.{" "}
-                <Link to="/activated-carbon/raw-material-inward" className="text-blue-700 underline">
+                <Link to="/activated-carbon/raw-material?tab=inward" className="text-blue-700 underline">
                   Record raw material inward
                 </Link>{" "}
                 first.

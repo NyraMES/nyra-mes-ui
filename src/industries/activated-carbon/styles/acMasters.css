@@ -1,0 +1,106 @@
+/** Larger tap targets and card lists for Plant setup (Masters). */
+
+.ac-friendly-registry {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ac-friendly-registry-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.ac-friendly-registry-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+}
+
+.ac-friendly-registry-code {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin: 0.2rem 0 0;
+}
+
+.ac-friendly-registry-badge {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.ac-friendly-registry-badge--active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.ac-masters-tabs button {
+  min-height: 3rem;
+  min-width: 7rem;
+  padding: 0.5rem 1rem !important;
+  border-radius: 8px 8px 0 0;
+}
+
+.ac-rm-flow-select {
+  font-size: 16px !important;
+  padding: 0.65rem 0.85rem !important;
+  min-height: 2.75rem;
+}
+
+.ac-rm-flow-data-summary--compact {
+  padding: 0.75rem 1rem;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  color: #14532d;
+}
+
+.ac-process-entry-form .ac-process-entry-grid label input,
+.ac-process-entry-form .ac-process-entry-grid label select {
+  font-size: 16px;
+  padding: 0.65rem 0.75rem;
+  min-height: 2.75rem;
+}
+
+.ac-triplet-params--friendly .ac-triplet-card {
+  border-color: #cbd5e1;
+}
+
+.ac-triplet-params--friendly .ac-triplet-friendly-label input {
+  font-size: 16px;
+  padding: 0.65rem 0.75rem;
+}
+
+.ac-triplet-technical-details {
+  margin-top: 0.75rem;
+  border-top: 1px dashed #e2e8f0;
+  padding-top: 0.75rem;
+}
+
+.ac-triplet-technical-details summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: #64748b;
+  user-select: none;
+}
+
+.ac-triplet-technical-details summary:hover {
+  color: #334155;
+}

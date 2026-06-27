@@ -13,29 +13,32 @@ function QualityResultForm({
   values = {},
   onChange,
   fields = [],
-  disabled = false
+  disabled = false,
+  hideLotSelect = false
 }) {
   const inputFields = fields.filter((f) => f.fieldType !== "textarea");
   const textareaFields = fields.filter((f) => f.fieldType === "textarea");
 
   return (
     <form className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
-      <AcFormSelect
-        label="Production lot"
-        className="md:col-span-2"
-        value={lotId}
-        loading={lotsLoading}
-        onChange={(e) => onLotChange?.(e.target.value)}
-      >
-        {lots.map((lot) => {
-          const value = lotOptionValue(lot);
-          return (
-            <option key={value || lot.lot_code} value={value}>
-              {lot.lot_code || value} · {lot.lot_quantity} KG
-            </option>
-          );
-        })}
-      </AcFormSelect>
+      {!hideLotSelect && (
+        <AcFormSelect
+          label="Production lot"
+          className="md:col-span-2"
+          value={lotId}
+          loading={lotsLoading}
+          onChange={(e) => onLotChange?.(e.target.value)}
+        >
+          {lots.map((lot) => {
+            const value = lotOptionValue(lot);
+            return (
+              <option key={value || lot.lot_code} value={value}>
+                {lot.lot_code || value} · {lot.lot_quantity} KG
+              </option>
+            );
+          })}
+        </AcFormSelect>
+      )}
 
       {inputFields.map((field) => (
         <AcQcFieldInput

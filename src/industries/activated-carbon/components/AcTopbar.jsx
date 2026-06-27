@@ -8,7 +8,9 @@ import TenantContextBar from "../../../components/TenantContextBar";
 
 const PATH_LABELS = {
   dashboard: "Intelligence Hub",
-  "raw-material-inward": "Raw Material Inward",
+  "raw-material": "Raw Material",
+  "raw-material-inward": "Raw Material",
+  "raw-material-qc": "Raw Material",
   "kiln-feed": "Kiln Feed",
   routing: "Lot Routing",
   "routing-builder": "Routing Builder",

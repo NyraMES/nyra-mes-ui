@@ -52,7 +52,7 @@ function AcRoutingBuilderGuide() {
           Masters
         </Link>{" "}
         — add customers, raw material types, and kiln parameter catalog.{" "}
-        <Link to="/activated-carbon/raw-material-inward" className="text-blue-700 underline">
+        <Link to="/activated-carbon/raw-material?tab=inward" className="text-blue-700 underline">
           Raw Material Inward
         </Link>{" "}
         — create customer orders using those masters.

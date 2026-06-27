@@ -6,7 +6,7 @@ import AcAlert from "./AcAlert";
 /**
  * Grade-wise in-stock summary for dashboard and dispatch readiness.
  */
-export default function AcGradeStockAlert({ gradeStock = [], openOrders = [] }) {
+export default function AcGradeStockAlert({ gradeStock = [], openOrders = [], readOnly = false }) {
   const basePath = useIndustryBasePath();
   const rows = gradeStock.filter((g) => Number(g.quantity_kg) > 0);
   const pendingDispatch = openOrders.filter((o) => Number(o.remaining_kg) > 0);
@@ -17,9 +17,13 @@ export default function AcGradeStockAlert({ gradeStock = [], openOrders = [] }) 
       <AcAlert variant="warning">
         No finished-goods stock by grade yet. Complete execution, screening, and quality testing on a
         lot, then raise a{" "}
-        <Link to={`${basePath}/customer-sales`} className="underline font-medium text-amber-900">
-          Customer PO
-        </Link>{" "}
+        {readOnly ? (
+          <span className="underline font-medium text-amber-900/60">Customer PO</span>
+        ) : (
+          <Link to={`${basePath}/customer-sales`} className="underline font-medium text-amber-900">
+            Customer PO
+          </Link>
+        )}{" "}
         before dispatch.
       </AcAlert>
     );
@@ -57,12 +61,18 @@ export default function AcGradeStockAlert({ gradeStock = [], openOrders = [] }) 
               </li>
             ))}
           </ul>
-          <Link
-            to={`${basePath}/dispatch`}
-            className="inline-block mt-2 text-xs font-semibold text-emerald-900 underline"
-          >
-            View stocked lots & dispatch →
-          </Link>
+          {readOnly ? (
+            <span className="inline-block mt-2 text-xs font-semibold text-emerald-900/50">
+              View stocked lots & dispatch →
+            </span>
+          ) : (
+            <Link
+              to={`${basePath}/dispatch`}
+              className="inline-block mt-2 text-xs font-semibold text-emerald-900 underline"
+            >
+              View stocked lots & dispatch →
+            </Link>
+          )}
         </div>
       ) : null}
 
@@ -87,12 +97,18 @@ export default function AcGradeStockAlert({ gradeStock = [], openOrders = [] }) 
               </li>
             ))}
           </ul>
-          <Link
-            to={`${basePath}/dispatch`}
-            className="inline-block mt-2 text-xs font-semibold text-amber-900 underline"
-          >
-            Open Dispatch →
-          </Link>
+          {readOnly ? (
+            <span className="inline-block mt-2 text-xs font-semibold text-amber-900/50">
+              Open Dispatch →
+            </span>
+          ) : (
+            <Link
+              to={`${basePath}/dispatch`}
+              className="inline-block mt-2 text-xs font-semibold text-amber-900 underline"
+            >
+              Open Dispatch →
+            </Link>
+          )}
         </div>
       ) : null}
     </div>

@@ -6,11 +6,20 @@ import {
   suggestPredicateUriFromKey
 } from "../constants/processTripletTemplates";
 
+function slugFromLabel(label) {
+  return String(label || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
 function AcTripletParameterEditor({
   parameters = [],
   onChange,
   processStep = "",
-  requireExecutionTriplets = true
+  requireExecutionTriplets = true,
+  friendlyMode = true
 }) {
   const updateParameter = (index, field, value) => {
     const next = parameters.map((row, i) => {
@@ -18,6 +27,13 @@ function AcTripletParameterEditor({
       const updated = { ...row, [field]: value };
       if (field === "key" && !row.predicate_uri?.startsWith("urn:nyra:has")) {
         updated.predicate_uri = suggestPredicateUriFromKey(value);
+      }
+      if (friendlyMode && field === "label") {
+        const slug = slugFromLabel(value);
+        if (slug && (!row.key?.trim() || row.key === slugFromLabel(row.label))) {
+          updated.key = slug;
+          updated.predicate_uri = suggestPredicateUriFromKey(slug);
+        }
       }
       return updated;
     });
@@ -47,27 +63,30 @@ function AcTripletParameterEditor({
   };
 
   return (
-    <div className="ac-triplet-params">
+    <div className={`ac-triplet-params${friendlyMode ? " ac-triplet-params--friendly" : ""}`}>
       <div className="ac-triplet-params-header">
         <div>
           <h4 className="text-sm font-semibold text-slate-800">
-            Execution capture triplets
+            {friendlyMode ? "What should operators enter at this step?" : "Execution capture triplets"}
           </h4>
           <p className="text-xs text-slate-500 mt-0.5">
-            Each row defines a value the operator must enter when this process runs.
-            Saved as <strong>Subject → Predicate → Object</strong> in the knowledge graph.
+            {friendlyMode
+              ? "These are the values shop-floor staff will type in when this step is completed — for example temperature or weight."
+              : "Each row defines a value the operator must enter when this process runs. Saved as Subject → Predicate → Object in the knowledge graph."}
           </p>
         </div>
         <button type="button" className="text-xs text-blue-700 hover:underline" onClick={addParameter}>
-          + Add triplet parameter
+          {friendlyMode ? "+ Add another field" : "+ Add triplet parameter"}
         </button>
       </div>
 
       {!parameters.length ? (
         <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           {requireExecutionTriplets
-            ? "Add at least one execution triplet — what must be captured when P1 (or this step) runs on the shop floor."
-            : "No execution parameters defined."}
+            ? friendlyMode
+              ? "Add at least one field — what must be recorded when this step finishes."
+              : "Add at least one execution triplet — what must be captured when this step runs on the shop floor."
+            : "No fields defined yet."}
         </p>
       ) : null}
 
@@ -77,9 +96,11 @@ function AcTripletParameterEditor({
           return (
             <div key={index} className="ac-triplet-card">
               <div className="ac-triplet-card-title">
-                <span>Parameter {index + 1}</span>
+                <span>{friendlyMode ? `Field ${index + 1}` : `Parameter ${index + 1}`}</span>
                 {param.mandatory !== false ? (
-                  <span className="ac-triplet-required">Required at execution</span>
+                  <span className="ac-triplet-required">
+                    {friendlyMode ? "Required" : "Required at execution"}
+                  </span>
                 ) : (
                   <span className="ac-triplet-optional">Optional</span>
                 )}
@@ -94,27 +115,71 @@ function AcTripletParameterEditor({
                 ) : null}
               </div>
 
-              <div className="ac-triplet-preview">
-                <div className="ac-triplet-preview-col">
-                  <span className="ac-triplet-preview-label">Subject</span>
-                  <code className="ac-triplet-preview-uri">{preview.subject_uri}</code>
+              {!friendlyMode ? (
+                <div className="ac-triplet-preview">
+                  <div className="ac-triplet-preview-col">
+                    <span className="ac-triplet-preview-label">Subject</span>
+                    <code className="ac-triplet-preview-uri">{preview.subject_uri}</code>
+                  </div>
+                  <div className="ac-triplet-preview-arrow">→</div>
+                  <div className="ac-triplet-preview-col">
+                    <span className="ac-triplet-preview-label">Predicate</span>
+                    <code className="ac-triplet-preview-uri">{preview.predicate_uri}</code>
+                  </div>
+                  <div className="ac-triplet-preview-arrow">→</div>
+                  <div className="ac-triplet-preview-col">
+                    <span className="ac-triplet-preview-label">Object (field)</span>
+                    <span className="ac-triplet-preview-object">
+                      {preview.object_label}
+                      <code className="ac-triplet-preview-hint">{preview.object_hint}</code>
+                    </span>
+                  </div>
                 </div>
-                <div className="ac-triplet-preview-arrow">→</div>
-                <div className="ac-triplet-preview-col">
-                  <span className="ac-triplet-preview-label">Predicate</span>
-                  <code className="ac-triplet-preview-uri">{preview.predicate_uri}</code>
-                </div>
-                <div className="ac-triplet-preview-arrow">→</div>
-                <div className="ac-triplet-preview-col">
-                  <span className="ac-triplet-preview-label">Object (field)</span>
-                  <span className="ac-triplet-preview-object">
-                    {preview.object_label}
-                    <code className="ac-triplet-preview-hint">{preview.object_hint}</code>
-                  </span>
-                </div>
-              </div>
+              ) : null}
 
               <div className="ac-triplet-fields">
+                {friendlyMode ? (
+                  <>
+                    <label className="text-sm block ac-triplet-friendly-label sm:col-span-2">
+                      <span className="block mb-1 font-medium text-slate-700">
+                        Label shown to operator *
+                      </span>
+                      <input
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                        value={param.label}
+                        onChange={(e) => updateParameter(index, "label", e.target.value)}
+                        placeholder="e.g. Activation temperature"
+                      />
+                    </label>
+                    <label className="text-sm block">
+                      <span className="block mb-1 font-medium text-slate-700">Unit (optional)</span>
+                      <input
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                        value={param.unit || ""}
+                        onChange={(e) => updateParameter(index, "unit", e.target.value)}
+                        placeholder="°C, kg, %"
+                      />
+                    </label>
+                    <label className="text-sm block">
+                      <span className="block mb-1 font-medium text-slate-700">Target value (optional)</span>
+                      <input
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                        value={param.default_value || ""}
+                        onChange={(e) => updateParameter(index, "default_value", e.target.value)}
+                        placeholder="Expected reading"
+                      />
+                    </label>
+                    <label className="text-sm block flex items-center gap-2 pb-1 sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        checked={param.mandatory !== false}
+                        onChange={(e) => updateParameter(index, "mandatory", e.target.checked)}
+                      />
+                      <span className="text-slate-700">Operator must fill this in before finishing the step</span>
+                    </label>
+                  </>
+                ) : (
+                  <>
                 <label className="text-xs block">
                   <span className="block mb-1 text-slate-600">Field key *</span>
                   <input
@@ -150,6 +215,58 @@ function AcTripletParameterEditor({
                     onChange={(e) => updateParameter(index, "default_value", e.target.value)}
                   />
                 </label>
+                  </>
+                )}
+
+                {friendlyMode ? (
+                  <details className="ac-triplet-technical-details sm:col-span-2">
+                    <summary>Technical settings (optional — for IT staff)</summary>
+                    <div className="ac-triplet-fields mt-3">
+                      <label className="text-xs block">
+                        <span className="block mb-1 text-slate-600">Field key</span>
+                        <input
+                          className="w-full rounded border border-slate-300 px-2 py-1 font-mono"
+                          value={param.key}
+                          onChange={(e) => updateParameter(index, "key", e.target.value)}
+                          placeholder="Auto-generated from label"
+                        />
+                      </label>
+                      <label className="text-xs block">
+                        <span className="block mb-1 text-slate-600">Subject URI template</span>
+                        <select
+                          className="w-full rounded border border-slate-300 px-2 py-1 font-mono text-[11px]"
+                          value={param.subject_uri_template || "urn:nyra:ac:lot:{lot_code}"}
+                          onChange={(e) =>
+                            updateParameter(index, "subject_uri_template", e.target.value)
+                          }
+                        >
+                          {AC_TRIPLET_SUBJECT_TEMPLATES.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs block">
+                        <span className="block mb-1 text-slate-600">Predicate (ontology)</span>
+                        <select
+                          className="w-full rounded border border-slate-300 px-2 py-1"
+                          value={param.ontology_predicate || ""}
+                          onChange={(e) =>
+                            updateParameter(index, "ontology_predicate", e.target.value)
+                          }
+                        >
+                          {AC_ONTOLOGY_PREDICATE_OPTIONS.filter((o) => o.value).map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  </details>
+                ) : (
+                  <>
                 <label className="text-xs block">
                   <span className="block mb-1 text-slate-600">Subject URI template *</span>
                   <select
@@ -211,6 +328,8 @@ function AcTripletParameterEditor({
                   />
                   <span className="text-slate-600">Mandatory when completing this operation</span>
                 </label>
+                  </>
+                )}
               </div>
             </div>
           );

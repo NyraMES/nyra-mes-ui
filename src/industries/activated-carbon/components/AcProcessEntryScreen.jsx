@@ -15,7 +15,8 @@ import "../styles/rawMaterialFlow.css";
 const EMPTY_PROCESS = {
   operation_name: "",
   operation_code: "",
-  process_step: "ACTIVATION",
+  process_step: "KILN_FEED",
+  is_mandatory: true,
   parameters: []
 };
 
@@ -41,7 +42,8 @@ function AcProcessEntryScreen({
       setForm({
         operation_name: initial.operation_name || "",
         operation_code: initial.operation_code || "",
-        process_step: initial.process_step || "ACTIVATION",
+        process_step: initial.process_step || "KILN_FEED",
+        is_mandatory: initial.is_mandatory !== false,
         parameters: execParams.length
           ? execParams.map((p) => normalizeTripletParameter({ ...p, process_step: initial.process_step }))
           : defaultExecutionParametersForStep(initial.process_step)
@@ -49,7 +51,7 @@ function AcProcessEntryScreen({
       setInsertAt(stepNumber);
       setSeededDefaults(false);
     } else {
-      const step = "ACTIVATION";
+      const step = "KILN_FEED";
       setForm({
         ...EMPTY_PROCESS,
         process_step: step,
@@ -94,15 +96,13 @@ function AcProcessEntryScreen({
     const executionParams = (form.parameters || []).filter((p) => p.key?.trim() && p.label?.trim());
 
     if (!executionParams.length) {
-      setError(
-        "Add at least one execution triplet parameter — fields required when this process runs on the shop floor."
-      );
+      setError("Add at least one field — what should operators record when this step is done?");
       return;
     }
 
     for (const p of executionParams) {
       if (!p.ontology_predicate && !p.predicate_uri?.startsWith("urn:")) {
-        setError(`Parameter "${p.label || p.key}" needs a triplet predicate.`);
+        setError(`Field "${p.label || p.key}" needs a predicate — open Technical settings or pick a process type with defaults.`);
         return;
       }
     }
@@ -115,6 +115,7 @@ function AcProcessEntryScreen({
       operation_name: form.operation_name.trim(),
       operation_code: (form.operation_code || suggestOperationCode(processStep, insertAt)).trim(),
       process_step: processStep,
+      is_mandatory: form.is_mandatory !== false,
       insertAt: Number(insertAt) || 1,
       parameters
     });
@@ -132,19 +133,19 @@ function AcProcessEntryScreen({
     <div className="ac-process-entry-screen ac-process-entry-screen--wide wf-light-panel">
       <div className="ac-process-entry-screen-header">
         <button type="button" className="ac-process-entry-back" onClick={onCancel}>
-          ← Back to routing flow
+          ← Back
         </button>
-        <h3 className="text-base font-semibold text-slate-900">
-          {mode === "edit" ? `Edit process P${stepNumber}` : `Add process P${chainLength + 1}`}
+        <h3 className="text-lg font-semibold text-slate-900">
+          {mode === "edit" ? `Edit step ${stepNumber}` : `Add step ${chainLength + 1}`}
         </h3>
-        <p className="text-xs text-slate-500 mt-1">
+        <p className="text-sm text-slate-600 mt-1 leading-relaxed">
           {rawMaterialName ? (
             <>
-              Raw material: <strong>{rawMaterialName}</strong> — define shop-floor execution
-              triplets for this step.
+              For raw material <strong>{rawMaterialName}</strong>. Choose what happens at this
+              stage and which values operators must enter.
             </>
           ) : (
-            "Define shop-floor execution triplets (Subject → Predicate → Object) for this process step."
+            "Describe this production stage and what shop-floor staff should record."
           )}
         </p>
       </div>
@@ -157,10 +158,10 @@ function AcProcessEntryScreen({
 
       <form onSubmit={handleSubmit} className="ac-process-entry-form">
         <div className="ac-process-entry-grid">
-          <label className="text-sm block">
-            <span className="block mb-1 font-medium text-slate-700">Process name</span>
+          <label className="text-sm block sm:col-span-2">
+            <span className="block mb-1 font-medium text-slate-700">Step name</span>
             <input
-              className="w-full rounded border border-slate-300 px-3 py-2"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2"
               value={form.operation_name}
               onChange={(e) => updateField("operation_name", e.target.value)}
               placeholder="e.g. Steam Activation"
@@ -169,9 +170,9 @@ function AcProcessEntryScreen({
           </label>
 
           <label className="text-sm block">
-            <span className="block mb-1 font-medium text-slate-700">Process type</span>
+            <span className="block mb-1 font-medium text-slate-700">Type of work</span>
             <select
-              className="w-full rounded border border-slate-300 px-3 py-2"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2"
               value={form.process_step}
               onChange={(e) => updateField("process_step", e.target.value)}
             >
@@ -183,21 +184,11 @@ function AcProcessEntryScreen({
             </select>
           </label>
 
-          <label className="text-sm block">
-            <span className="block mb-1 font-medium text-slate-700">Operation code</span>
-            <input
-              className="w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm"
-              value={form.operation_code}
-              onChange={(e) => updateField("operation_code", e.target.value)}
-              placeholder="e.g. OP-ACTIVATION"
-            />
-          </label>
-
           {mode === "add" ? (
             <label className="text-sm block">
-              <span className="block mb-1 font-medium text-slate-700">Position in chain</span>
+              <span className="block mb-1 font-medium text-slate-700">Where in the line?</span>
               <select
-                className="w-full rounded border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
                 value={insertAt}
                 onChange={(e) => setInsertAt(Number(e.target.value))}
               >
@@ -209,9 +200,41 @@ function AcProcessEntryScreen({
               </select>
             </label>
           ) : null}
+
+          <details className="sm:col-span-2 ac-triplet-technical-details">
+            <summary>Advanced codes (optional)</summary>
+            <label className="text-sm block mt-3 max-w-md">
+              <span className="block mb-1 font-medium text-slate-700">Operation code</span>
+              <input
+                className="w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm"
+                value={form.operation_code}
+                onChange={(e) => updateField("operation_code", e.target.value)}
+                placeholder="Auto-generated if blank"
+              />
+            </label>
+          </details>
         </div>
 
+        <label className="text-sm block ac-process-mandatory-toggle mb-4">
+          <span className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={form.is_mandatory !== false}
+              onChange={(e) => updateField("is_mandatory", e.target.checked)}
+            />
+            <span>
+              <span className="block font-medium text-slate-700">Mandatory process</span>
+              <span className="block text-xs text-slate-500 mt-0.5">
+                When unchecked, operators may skip this step on Execution if it does not apply to
+                this batch.
+              </span>
+            </span>
+          </span>
+        </label>
+
         <AcTripletParameterEditor
+          friendlyMode
           parameters={form.parameters || []}
           processStep={form.process_step}
           onChange={(parameters) => {
@@ -223,9 +246,9 @@ function AcProcessEntryScreen({
         <div className="flex flex-wrap gap-3 pt-2">
           <button
             type="submit"
-            className="rounded-lg bg-[#08264a] text-white px-4 py-2 text-sm font-medium hover:bg-[#0c3d6e]"
+            className="rounded-lg bg-[#08264a] text-white px-5 py-2.5 text-sm font-medium hover:bg-[#0c3d6e]"
           >
-            {mode === "edit" ? "Update process & triplets" : "Add process to routing"}
+            {mode === "edit" ? "Save step" : "Add step to line"}
           </button>
           <button
             type="button"

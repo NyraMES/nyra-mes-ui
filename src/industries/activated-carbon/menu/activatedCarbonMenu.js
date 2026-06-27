@@ -34,15 +34,9 @@ export const ACTIVATED_CARBON_MENU = [
   },
   {
     id: "raw-material",
-    to: `${BASE}/raw-material-inward`,
-    label: "Raw Material Inward",
+    to: `${BASE}/raw-material?tab=inward`,
+    label: "Raw Material",
     capability: AC_CAPABILITIES.RAW_MATERIAL_INWARD
-  },
-  {
-    id: "raw-material-qc",
-    to: `${BASE}/raw-material-qc`,
-    label: "Raw Material QC",
-    capability: AC_CAPABILITIES.RAW_MATERIAL_QC
   },
   {
     id: "bag-tracing",
@@ -57,40 +51,16 @@ export const ACTIVATED_CARBON_MENU = [
     capability: null
   },
   {
-    id: "kiln-feed",
-    to: `${BASE}/kiln-feed`,
-    label: "Kiln Feed",
-    capability: AC_CAPABILITIES.KILN_FEED
-  },
-  {
-    id: "routing",
-    to: `${BASE}/routing`,
-    label: "Lot Routing",
-    capability: null
-  },
-  {
     id: "execution",
     to: `${BASE}/execution`,
     label: "Execution",
     capability: null
   },
   {
-    id: "screening",
-    to: `${BASE}/screening`,
-    label: "Screening",
-    capability: AC_CAPABILITIES.SCREENING
-  },
-  {
     id: "kiln-parameters",
     to: `${BASE}/kiln-parameters`,
     label: "Kiln Parameters",
     capability: AC_CAPABILITIES.HOURLY_KILN_PARAMETERS
-  },
-  {
-    id: "quality-testing",
-    to: `${BASE}/quality-testing`,
-    label: "Quality Testing",
-    capability: AC_CAPABILITIES.QUALITY_TESTING
   },
   {
     id: "customer-sales",

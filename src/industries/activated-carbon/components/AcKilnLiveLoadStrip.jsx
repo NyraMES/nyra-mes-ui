@@ -105,7 +105,7 @@ function KilnLoadChart({ row, nowMs }) {
   );
 }
 
-function KilnLiveLoadCard({ row, nowMs }) {
+function KilnLiveLoadCard({ row, nowMs, readOnly = false }) {
   const kilnLabel = row.resourceName || row.resourceCode;
   const isLive = row.status === "RUNNING";
 
@@ -128,12 +128,18 @@ function KilnLiveLoadCard({ row, nowMs }) {
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <StatusPill kind={STATUS_KIND[row.status] || "neutral"}>{row.status}</StatusPill>
-          <Link
-            to="/activated-carbon/kiln-feed"
-            className="rounded bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-1"
-          >
-            Load
-          </Link>
+          {readOnly ? (
+            <span className="rounded bg-slate-600/80 text-slate-300 text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 wf-btn--disabled">
+              Load
+            </span>
+          ) : (
+            <Link
+              to="/activated-carbon/execution"
+              className="rounded bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-1"
+            >
+              Load
+            </Link>
+          )}
         </div>
       </div>
 
@@ -164,7 +170,7 @@ function KilnLiveLoadCard({ row, nowMs }) {
   );
 }
 
-export default function AcKilnLiveLoadStrip({ dashboard, refreshedAt }) {
+export default function AcKilnLiveLoadStrip({ dashboard, refreshedAt, readOnly = false }) {
   const [kilnLots, setKilnLots] = useState([]);
   const [loading, setLoading] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -231,7 +237,7 @@ export default function AcKilnLiveLoadStrip({ dashboard, refreshedAt }) {
 
       <div className="flex flex-wrap lg:flex-nowrap gap-3 overflow-x-auto pb-1">
         {rows.map((row) => (
-          <KilnLiveLoadCard key={row.resourceCode} row={row} nowMs={nowMs} />
+          <KilnLiveLoadCard key={row.resourceCode} row={row} nowMs={nowMs} readOnly={readOnly} />
         ))}
       </div>
 
@@ -241,15 +247,19 @@ export default function AcKilnLiveLoadStrip({ dashboard, refreshedAt }) {
             ? `Updated ${formatFeedTime(refreshedAt) || "recently"} · auto-refresh every 10 min`
             : "Auto-refresh every 10 min"}
         </span>
-        <Link
-          to="/activated-carbon/kiln-telemetry"
-          className="text-xs text-cyan-300 hover:text-cyan-100 inline-flex items-center gap-0.5"
-        >
-          Telemetry
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="m9 6 6 6-6 6" />
-          </svg>
-        </Link>
+        {readOnly ? (
+          <span className="text-xs text-slate-500 wf-btn--disabled">Telemetry</span>
+        ) : (
+          <Link
+            to="/activated-carbon/kiln-telemetry"
+            className="text-xs text-cyan-300 hover:text-cyan-100 inline-flex items-center gap-0.5"
+          >
+            Telemetry
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="m9 6 6 6-6 6" />
+            </svg>
+          </Link>
+        )}
       </div>
     </div>
   );

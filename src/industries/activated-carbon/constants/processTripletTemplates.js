@@ -29,6 +29,30 @@ export const AC_OBJECT_DATATYPE_OPTIONS = [
 
 /** Default execution capture triplets per standard AC process step. */
 export const DEFAULT_EXECUTION_TRIPLETS_BY_STEP = {
+  KILN_FEED: [
+    {
+      key: "kiln_resource_code",
+      label: "Kiln assigned",
+      unit: "",
+      default_value: "",
+      used_at: "execution",
+      mandatory: true,
+      ontology_predicate: "assignedTo",
+      subject_uri_template: "urn:nyra:ac:lot:{lot_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#string"
+    },
+    {
+      key: "charge_kg",
+      label: "Charge quantity",
+      unit: "KG",
+      default_value: "",
+      used_at: "execution",
+      mandatory: true,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:lot:{lot_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    }
+  ],
   PYROLYSIS: [
     {
       key: "pyrolysis_peak_temp_c",
@@ -77,6 +101,41 @@ export const DEFAULT_EXECUTION_TRIPLETS_BY_STEP = {
       ontology_predicate: "captures",
       subject_uri_template: "urn:nyra:ac:lot:{lot_code}",
       object_datatype: "http://www.w3.org/2001/XMLSchema#string"
+    },
+    {
+      key: "good_kg",
+      label: "Good fraction",
+      unit: "KG",
+      default_value: "",
+      used_at: "execution",
+      mandatory: true,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:lot:{lot_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    }
+  ],
+  DESTONING: [
+    {
+      key: "stone_removed_kg",
+      label: "Stone / grit removed",
+      unit: "KG",
+      default_value: "",
+      used_at: "execution",
+      mandatory: true,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:lot:{lot_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "destoning_yield_pct",
+      label: "Yield after destoning",
+      unit: "%",
+      default_value: "",
+      used_at: "execution",
+      mandatory: false,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:lot:{lot_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
     }
   ],
   QC: [

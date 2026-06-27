@@ -1,27 +1,48 @@
 export const MES_ROLES = {
+  SUPER_ADMIN: "MES_SuperAdmin",
   ADMIN: "MES_Admin",
   PLANNER: "MES_Planner",
   OPERATOR: "MES_Operator",
   QUALITY: "MES_Quality",
-  VIEWER: "MES_Viewer"
+  VIEWER: "MES_Viewer",
+  DEMO: "MES_Demo"
 };
 
 export const ROLE_LABELS = {
+  [MES_ROLES.SUPER_ADMIN]: "Super Administrator",
   [MES_ROLES.ADMIN]: "Administrator",
   [MES_ROLES.PLANNER]: "Production Planner",
   [MES_ROLES.OPERATOR]: "Shop Floor Operator",
   [MES_ROLES.QUALITY]: "Quality Engineer",
-  [MES_ROLES.VIEWER]: "Read-only Viewer"
+  [MES_ROLES.VIEWER]: "Read-only Viewer",
+  [MES_ROLES.DEMO]: "Demo Viewer"
 };
+
+/** Super Admin — raw materials, process routing, and all admin tasks. */
+export function userIsSuperAdmin(roles = []) {
+  return roles.includes(MES_ROLES.SUPER_ADMIN);
+}
+
+/** Admin or Super Admin — customers, suppliers, plant resources, etc. */
+export function userCanManageTenantMasters(roles = []) {
+  return userIsSuperAdmin(roles) || roles.includes(MES_ROLES.ADMIN);
+}
+
+/** Super Admin only — new raw material types and process steps. */
+export function userCanConfigureProcessRouting(roles = []) {
+  return userIsSuperAdmin(roles);
+}
 
 /** Primary label for the user's highest-privilege role. */
 export function primaryRoleLabel(roles = []) {
   const order = [
+    MES_ROLES.SUPER_ADMIN,
     MES_ROLES.ADMIN,
     MES_ROLES.PLANNER,
     MES_ROLES.QUALITY,
     MES_ROLES.OPERATOR,
-    MES_ROLES.VIEWER
+    MES_ROLES.VIEWER,
+    MES_ROLES.DEMO
   ];
   for (const role of order) {
     if (roles.includes(role)) {
@@ -40,10 +61,12 @@ export function initialsFromUser(user) {
   return String(name).slice(0, 2).toUpperCase();
 }
 
-/** Route-level RBAC for workflow screens. Admin always passes. */
+/** Route-level RBAC for workflow screens. Super Admin and Admin always pass. */
 export function userHasAnyRole(userRoles = [], allowed = []) {
   if (!allowed.length) return true;
-  if (userRoles.includes(MES_ROLES.ADMIN)) return true;
+  if (userRoles.includes(MES_ROLES.SUPER_ADMIN) || userRoles.includes(MES_ROLES.ADMIN)) {
+    return true;
+  }
   return allowed.some((role) => userRoles.includes(role));
 }
 
@@ -52,7 +75,7 @@ export const WORKFLOW_ROUTE_ROLES = {
   "production-order": [MES_ROLES.ADMIN, MES_ROLES.PLANNER, MES_ROLES.VIEWER],
   "lot-split": [MES_ROLES.ADMIN, MES_ROLES.PLANNER, MES_ROLES.VIEWER],
   routing: [MES_ROLES.ADMIN, MES_ROLES.PLANNER, MES_ROLES.VIEWER],
-  feasibility: [MES_ROLES.ADMIN, MES_ROLES.PLANNER, MES_ROLES.VIEWER],
+  feasibility: [MES_ROLES.ADMIN, MES_ROLES.PLANNER, MES_ROLES.VIEWER, MES_ROLES.DEMO],
   scheduling: [MES_ROLES.ADMIN, MES_ROLES.PLANNER, MES_ROLES.VIEWER],
   execution: [MES_ROLES.ADMIN, MES_ROLES.PLANNER, MES_ROLES.OPERATOR, MES_ROLES.VIEWER],
   inspection: [MES_ROLES.ADMIN, MES_ROLES.QUALITY, MES_ROLES.VIEWER],

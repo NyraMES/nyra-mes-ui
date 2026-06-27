@@ -39,8 +39,12 @@ export const DEFAULT_APP_CONTEXT = {
 
 function contextPaths() {
   const base = String(apiBaseUrl || "").replace(/\/$/, "");
-  if (base.endsWith("/api")) {
-    return ["/api/context", "/context"];
+  const inActivatedCarbon =
+    typeof window !== "undefined" &&
+    window.location.pathname.includes("/activated-carbon");
+  // AC shell must use nyra_mes_core only — legacy /context is blocked by legacyApiGuard.
+  if (inActivatedCarbon || base.endsWith("/api")) {
+    return ["/api/context"];
   }
   return ["/api/context", "/context"];
 }
@@ -191,7 +195,14 @@ export async function fetchAppContext(apiClient, scope = {}) {
       const res = await apiClient.get(path, requestConfig);
       return normalizeAppContext(res.data);
     } catch (e) {
-      lastError = e;
+      // Keep the first HTTP/API error; later legacy-route blocks are misleading.
+      if (
+        !lastError ||
+        (e?.response && !lastError?.response) ||
+        lastError?.isLegacyApiBlocked
+      ) {
+        lastError = e;
+      }
     }
   }
 
@@ -200,6 +211,9 @@ export async function fetchAppContext(apiClient, scope = {}) {
     scope.workspace_code || import.meta.env.VITE_WORKSPACE_CODE || null;
   const detail =
     lastError?.response?.data?.detail ||
+    (lastError?.response?.status === 500
+      ? "Server error loading workspace context — check API database connection."
+      : null) ||
     lastError?.message ||
     "Context API unavailable";
 

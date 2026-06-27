@@ -114,7 +114,14 @@ function isShopFloorRouteOperation(routeOp) {
   const code = normalizeCode(routeOp?.operation_code);
   if (code.startsWith("OP_") || code.startsWith("OP-")) return true;
   const step = normalizeCode(routeOp?.process_step || routeOp?.process_id);
-  return ["PYROLYSIS", "ACTIVATION", "SCREENING", "QC"].includes(step);
+  return [
+    "PYROLYSIS",
+    "KILN_FEED",
+    "ACTIVATION",
+    "DESTONING",
+    "SCREENING",
+    "QC"
+  ].includes(step);
 }
 
 function sortExecOps(execOps) {
@@ -169,7 +176,8 @@ export function normalizeAcExecutionOperations(execOps = [], productRouting) {
             [],
           requires_machine: routeOp.requires_machine,
           requires_labor: routeOp.requires_labor,
-          requires_tools: routeOp.requires_tools
+          requires_tools: routeOp.requires_tools,
+          is_mandatory: routeOp.is_mandatory !== false && ex.is_mandatory !== false
         },
         routeOp
       )
@@ -231,3 +239,33 @@ export function summarizeAcExecution(summary, ops) {
 }
 
 export { normalizeCode };
+
+/** Resolve shop-floor process step from an execution operation row. */
+export function resolveAcProcessStep(operation) {
+  if (!operation) return "";
+  const metaStep = operation.process_step || operation.process_id;
+  if (metaStep) return normalizeCode(metaStep);
+  const code = normalizeCode(operation.operation_code || operation.operation_id);
+  if (code.includes("KILN") && code.includes("FEED")) return "KILN_FEED";
+  if (code.includes("DESTON")) return "DESTONING";
+  if (code.includes("PYROLYSIS") || code.includes("CARBON")) return "PYROLYSIS";
+  if (code.includes("ACTIVATION")) return "ACTIVATION";
+  if (code.includes("SCREEN")) return "SCREENING";
+  if (code.includes("QC") || code.includes("QUALITY")) return "QC";
+  return code.replace(/^OP[-_]/, "");
+}
+
+export function isAcKilnChargeStep(operation) {
+  const step = resolveAcProcessStep(operation);
+  return step === "ACTIVATION" || step === "KILN_FEED" || step === "KILN_ACTIVATION";
+}
+
+export function isAcOptionalOperation(operation) {
+  return operation?.is_mandatory === false;
+}
+
+/** Steps with a dedicated Execution panel — hide generic empty parameter block. */
+export function hasAcStepSpecificCapture(processStep) {
+  const step = normalizeCode(processStep);
+  return ["SCREENING", "QC", "KILN_FEED", "ACTIVATION", "DESTONING"].includes(step);
+}

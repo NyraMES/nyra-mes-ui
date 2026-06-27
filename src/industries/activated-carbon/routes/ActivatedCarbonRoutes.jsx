@@ -6,8 +6,7 @@ import ActivatedCarbonDashboard from "../pages/ActivatedCarbonDashboard";
 import { useAppContext } from "../../../context/AppContext";
 import { isAcContextReady, resolveAcAppContext } from "../utils/acContextUtils";
 import { lazy, Suspense } from "react";
-const RawMaterialInwardPage = lazy(() => import("../pages/RawMaterialInwardPage"));
-const KilnFeedPage = lazy(() => import("../pages/KilnFeedPage"));
+const RawMaterialPage = lazy(() => import("../pages/RawMaterialPage"));
 const KilnParametersPage = lazy(() => import("../pages/KilnParametersPage"));
 const YieldAnalysisPage = lazy(() => import("../pages/YieldAnalysisPage"));
 const TraceabilityPage = lazy(() => import("../pages/TraceabilityPage"));
@@ -15,14 +14,10 @@ const MastersPage = lazy(() => import("../pages/MastersPage"));
 const DispatchPage = lazy(() => import("../pages/DispatchPage"));
 const CustomerSalesPage = lazy(() => import("../pages/CustomerSalesPage"));
 const FeasibilityScreen = lazy(() => import("../pages/AcFeasibilityPage"));
-const ExecutionScreen = lazy(() => import("../../../workflow/pages/ExecutionScreen"));
-const AcRoutingPage = lazy(() => import("../pages/AcRoutingPage"));
+const AcExecutionPage = lazy(() => import("../pages/AcExecutionPage"));
 const ActivatedCarbonRoutingBuilderPage = lazy(
   () => import("../pages/ActivatedCarbonRoutingBuilderPage")
 );
-const RawMaterialQcPage = lazy(() => import("../pages/RawMaterialQcPage"));
-const QualityTestingPage = lazy(() => import("../pages/QualityTestingPage"));
-const ScreeningPage = lazy(() => import("../pages/ScreeningPage"));
 const AcReportsPage = lazy(() => import("../pages/AcReportsPage"));
 const BagTraceabilityPage = lazy(() => import("../pages/BagTraceabilityPage"));
 const KilnTelemetryPage = lazy(() => import("../pages/KilnTelemetryPage"));
@@ -68,34 +63,26 @@ export default function ActivatedCarbonRoutes() {
           }
         />
         <Route
-          path="raw-material-inward"
+          path="raw-material"
           element={
             <CapabilityRoute capability={AC_CAPABILITIES.RAW_MATERIAL_INWARD}>
               <LazyPage>
-                <RawMaterialInwardPage />
+                <RawMaterialPage />
               </LazyPage>
             </CapabilityRoute>
           }
+        />
+        <Route
+          path="raw-material-inward"
+          element={<Navigate to="/activated-carbon/raw-material?tab=inward" replace />}
         />
         <Route
           path="kiln-feed"
-          element={
-            <CapabilityRoute capability={AC_CAPABILITIES.KILN_FEED}>
-              <LazyPage>
-                <KilnFeedPage />
-              </LazyPage>
-            </CapabilityRoute>
-          }
+          element={<Navigate to="/activated-carbon/execution" replace />}
         />
         <Route
           path="raw-material-qc"
-          element={
-            <CapabilityRoute capability={AC_CAPABILITIES.RAW_MATERIAL_QC}>
-              <LazyPage>
-                <RawMaterialQcPage />
-              </LazyPage>
-            </CapabilityRoute>
-          }
+          element={<Navigate to="/activated-carbon/raw-material?tab=qc" replace />}
         />
         <Route
           path="bag-tracing"
@@ -127,11 +114,7 @@ export default function ActivatedCarbonRoutes() {
         />
         <Route
           path="routing"
-          element={
-            <LazyPage>
-              <AcRoutingPage />
-            </LazyPage>
-          }
+          element={<Navigate to="/activated-carbon/execution" replace />}
         />
         <Route
           path="feasibility"
@@ -145,29 +128,17 @@ export default function ActivatedCarbonRoutes() {
           path="execution"
           element={
             <LazyPage>
-              <ExecutionScreen />
+              <AcExecutionPage />
             </LazyPage>
           }
         />
         <Route
           path="screening"
-          element={
-            <CapabilityRoute capability={AC_CAPABILITIES.SCREENING}>
-              <LazyPage>
-                <ScreeningPage />
-              </LazyPage>
-            </CapabilityRoute>
-          }
+          element={<Navigate to="/activated-carbon/execution" replace />}
         />
         <Route
           path="quality-testing"
-          element={
-            <CapabilityRoute capability={AC_CAPABILITIES.QUALITY_TESTING}>
-              <LazyPage>
-                <QualityTestingPage />
-              </LazyPage>
-            </CapabilityRoute>
-          }
+          element={<Navigate to="/activated-carbon/execution" replace />}
         />
         <Route
           path="kiln-parameters"

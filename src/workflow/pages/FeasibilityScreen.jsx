@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import {
   fetchMesCoreProductionLots,
+  fetchMesCoreLotFeasibility,
   runMesCoreFeasibilityCheck,
 } from "../../services/mesCoreApi";
 import { isFeasibilityReady, feasibilityLabel } from "../../utils/workflowValidation";
@@ -150,7 +151,8 @@ function FeasibilityScreen({
   initialLotId,
   afterPassHint,
   afterPassPath,
-  afterPassLabel
+  afterPassLabel,
+  readOnly = false
 }) {
   const { context, markStage, update } = useWorkflow();
   const nav = useWorkflowNavPaths();
@@ -173,7 +175,15 @@ function FeasibilityScreen({
   }, [loadLots]);
 
   useEffect(() => {
+    if (!readOnly || !lots.length) return;
+    const first = lots[0];
+    const id = first?.lot_id || first?.lot_code;
+    if (id) setLotId(id);
+  }, [readOnly, lots]);
+
+  useEffect(() => {
     if (!lots.length) return;
+    if (readOnly) return;
     const preferred = context.lotId;
     if (!preferred) return;
     const match = lots.find(
@@ -183,19 +193,21 @@ function FeasibilityScreen({
       const id = match.lot_id || match.lot_code;
       setLotId(id);
     }
-  }, [context.lotId, lots]);
+  }, [context.lotId, lots, readOnly]);
 
   useEffect(() => {
+    if (readOnly) return;
     if (context.lotId && !lotId) setLotId(context.lotId);
-  }, [context.lotId, lotId]);
+  }, [context.lotId, lotId, readOnly]);
 
   useEffect(() => {
-    if (!initialLotId) return;
+    if (readOnly || !initialLotId) return;
     setLotId(initialLotId);
     update({ lotId: initialLotId });
-  }, [initialLotId, update]);
+  }, [initialLotId, update, readOnly]);
 
   const selectLot = (value) => {
+    if (readOnly) return;
     setLotId(value);
     if (value) update({ lotId: value });
   };
@@ -206,10 +218,11 @@ function FeasibilityScreen({
     setError(null);
     setResult(null);
     try {
-      const checkFn = runCheck || runMesCoreFeasibilityCheck;
-      const data = await checkFn(lotId);
+      const data = readOnly
+        ? await fetchMesCoreLotFeasibility(lotId)
+        : await (runCheck || runMesCoreFeasibilityCheck)(lotId);
       setResult(data);
-      if (isFeasibilityReady(data?.overall_status)) {
+      if (!readOnly && isFeasibilityReady(data?.overall_status)) {
         markStage("feasibility");
       }
     } catch (e) {
@@ -263,9 +276,10 @@ function FeasibilityScreen({
           { label: "Status", value: result?.overall_status || "—" }
         ]}
         action={
+          !readOnly &&
           isReady && (
-            <Link to={nav.afterFeasibility} className="wf-btn wf-btn-primary">
-              {nav.afterFeasibilityLabel}
+            <Link to={passPath} className="wf-btn wf-btn-primary">
+              {passLabel}
             </Link>
           )
         }
@@ -275,35 +289,54 @@ function FeasibilityScreen({
         <WfCard className="md:col-span-2" glow>
           <WfCardHeader
             title="Feasibility Reasoning"
-            subtitle={result ? `Overall: ${result.overall_status}` : "Pick a lot to run the check"}
+            subtitle={result ? `Overall: ${result.overall_status}` : readOnly ? "Demo view — sample lot from plant data" : "Pick a lot to run the check"}
             icon={<IconBolt />}
             right={result && <StatusPill kind={overall.kind}>{overall.label}</StatusPill>}
           />
           <WfCardBody className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="md:col-span-2">
+            <div className={`grid grid-cols-1 gap-3 ${readOnly ? "" : "md:grid-cols-3"}`}>
+              <div className={readOnly ? "" : "md:col-span-2"}>
                 <label className="wf-label">Lot</label>
-                <select
-                  className="wf-select"
-                  value={lotId}
-                  onChange={(e) => selectLot(e.target.value)}
-                >
-                  <option value="">-- Pick a lot --</option>
-                  {lots.map((l) => {
-                    const id = l.lot_id || l.lot_code;
-                    const inward = l.order_code ? ` · ${l.order_code}` : "";
-                    const gateLabel = l.feasibility_status
-                      ? feasibilityLabel(l.feasibility_status)
-                      : "Not checked";
-                    return (
-                      <option key={id} value={id}>
-                        {id}
-                        {inward} · qty {l.lot_quantity ?? "—"} · {gateLabel}
-                      </option>
-                    );
-                  })}
-                </select>
+                {readOnly ? (
+                  <div
+                    className="wf-select opacity-60 cursor-not-allowed"
+                    aria-disabled="true"
+                    title="Lot selection is disabled in demo view"
+                  >
+                    {lotId
+                      ? (() => {
+                          const match = lots.find(
+                            (l) => (l.lot_id || l.lot_code) === lotId
+                          );
+                          const inward = match?.order_code ? ` · ${match.order_code}` : "";
+                          return `${lotId}${inward}`;
+                        })()
+                      : "No demo lot available"}
+                  </div>
+                ) : (
+                  <select
+                    className="wf-select"
+                    value={lotId}
+                    onChange={(e) => selectLot(e.target.value)}
+                  >
+                    <option value="">-- Pick a lot --</option>
+                    {lots.map((l) => {
+                      const id = l.lot_id || l.lot_code;
+                      const inward = l.order_code ? ` · ${l.order_code}` : "";
+                      const gateLabel = l.feasibility_status
+                        ? feasibilityLabel(l.feasibility_status)
+                        : "Not checked";
+                      return (
+                        <option key={id} value={id}>
+                          {id}
+                          {inward} · qty {l.lot_quantity ?? "—"} · {gateLabel}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
               </div>
+              {!readOnly ? (
               <div className="flex items-end">
                 <button
                   type="button"
@@ -314,6 +347,7 @@ function FeasibilityScreen({
                   {loading ? "Checking…" : "Re-run Check"}
                 </button>
               </div>
+              ) : null}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -343,7 +377,7 @@ function FeasibilityScreen({
               </div>
             )}
 
-            {result && isReady && (
+            {result && isReady && !readOnly && (
               <div className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
                 {passHint}{" "}
                 <Link to={passPath} className="underline font-semibold text-emerald-50">

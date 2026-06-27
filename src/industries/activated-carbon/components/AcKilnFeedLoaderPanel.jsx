@@ -61,7 +61,7 @@ function KilnLoaderCard({ row }) {
           </div>
         </div>
         <Link
-          to="/activated-carbon/kiln-feed"
+          to="/activated-carbon/execution"
           className="shrink-0 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-1"
         >
           Load

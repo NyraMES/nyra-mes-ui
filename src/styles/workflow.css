@@ -179,6 +179,18 @@ body:has(.wf-shell) #root {
   font-weight: 500;
 }
 
+
+.wf-nav-link--disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  color: rgba(148, 163, 184, 0.75);
+  pointer-events: auto;
+}
+
+.wf-nav-link--disabled:hover {
+  background: transparent;
+  color: rgba(148, 163, 184, 0.75);
+}
 .wf-nav-link-label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -518,6 +530,12 @@ body:has(.wf-shell) #root {
   transition: all 0.15s ease;
   border: 1px solid transparent;
   white-space: nowrap;
+}
+.wf-btn--disabled,
+span.wf-btn.wf-btn--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 .wf-btn-primary {
   background: var(--nyra-navy);

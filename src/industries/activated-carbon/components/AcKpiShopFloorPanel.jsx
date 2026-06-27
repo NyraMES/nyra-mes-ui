@@ -58,7 +58,7 @@ function KpiHeadlineTile({ label, value, hint }) {
   );
 }
 
-function AcKpiShopFloorPanel({ dashboard }) {
+function AcKpiShopFloorPanel({ dashboard, readOnly = false }) {
   const { config: ontologyConfig } = useAcOntologyConfig();
   const impurityFields = useMemo(() => getImpurityChartConfig(ontologyConfig), [ontologyConfig]);
 
@@ -194,9 +194,10 @@ function AcKpiShopFloorPanel({ dashboard }) {
             <AcGradeStockAlert
               gradeStock={dashboard?.grade_stock || []}
               openOrders={dashboard?.open_customer_orders || []}
+              readOnly={readOnly}
             />
 
-            <AcDispatchSummary dashboard={dashboard} />
+            <AcDispatchSummary dashboard={dashboard} readOnly={readOnly} />
 
             {detail?.stages?.length ? (
               <div>

@@ -1,12 +1,26 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 
 import nyraLogo from "../../../assets/nyra-logo.png";
+import { useAuth } from "../../../auth/AuthContext";
 import { useAppContext } from "../../../context/AppContext";
 import { getActivatedCarbonMenu } from "../menu/activatedCarbonMenu";
+import { canAccessAcMenuItem, AC_DEMO_BLOCKED_HINT } from "../utils/acMenuAccess";
 import { resolveAcAppContext } from "../utils/acContextUtils";
 
-function SidebarLink({ to, label, end = false }) {
+function SidebarLink({ to, label, end = false, disabled = false }) {
+  if (disabled) {
+    return (
+      <span
+        className="wf-nav-link wf-nav-link--disabled"
+        title={AC_DEMO_BLOCKED_HINT}
+        aria-disabled="true"
+      >
+        <span className="wf-nav-link-label">{label}</span>
+      </span>
+    );
+  }
+
   return (
     <NavLink
       to={to}
@@ -27,15 +41,10 @@ const SECTIONS = [
     label: "Production Flow",
     ids: [
       "raw-material",
-      "raw-material-qc",
       "bag-tracing",
       "feasibility",
-      "kiln-feed",
-      "routing",
       "execution",
-      "screening",
       "kiln-parameters",
-      "quality-testing",
       "customer-sales",
       "dispatch",
       "reports",
@@ -52,6 +61,8 @@ const SECTIONS = [
 
 function AcSidebar() {
   const { context } = useAppContext();
+  const { user } = useAuth();
+  const roles = user?.roles || [];
   const menuItems = getActivatedCarbonMenu(
     resolveAcAppContext(context).enabled_capabilities
   );
@@ -105,6 +116,7 @@ function AcSidebar() {
                       to={item.to}
                       label={item.label}
                       end={item.end}
+                      disabled={!canAccessAcMenuItem(item.id, roles)}
                     />
                   ))}
                 </div>

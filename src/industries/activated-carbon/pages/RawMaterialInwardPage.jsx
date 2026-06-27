@@ -23,7 +23,7 @@ import useAcMasters from "../hooks/useAcMasters";
 import { isAcContextReady } from "../utils/acContextUtils";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
 
-function RawMaterialInwardPage() {
+function RawMaterialInwardPage({ embedded = false }) {
   const { context, loading: contextLoading } = useAppContext();
   const location = useLocation();
   const { focusTick } = useAcPageRefresh();
@@ -139,11 +139,13 @@ function RawMaterialInwardPage() {
         }}
         onClose={() => setIdsDialog({ open: false, items: [] })}
       />
-      <SectionHeader
-        eyebrow="Inbound"
-        title="Raw Material Inward"
-        subtitle="Supplier receipt only — not linked to a customer PO. After QC, release to production on Feasibility Gate."
-      />
+      {!embedded && (
+        <SectionHeader
+          eyebrow="Inbound"
+          title="Raw Material Inward"
+          subtitle="Supplier receipt only — not linked to a customer PO. After QC, release to production on the Release to Production tab."
+        />
+      )}
 
       {(mastersError || error) && <AcAlert variant="error">{mastersError || error}</AcAlert>}
       {success && <AcAlert variant="success">{success}</AcAlert>}
@@ -221,8 +223,8 @@ function RawMaterialInwardPage() {
             ) : null}
 
             <p className="text-xs text-slate-500 md:col-span-2">
-              Production order and lot are created when you{" "}
-              <strong>release to production</strong> on Feasibility Gate (after QC).
+              Production order and lot are created on the{" "}
+              <strong>Release to Production</strong> tab (after QC).
             </p>
           </div>
           <AcSaveBar

@@ -3,14 +3,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchAcRawMaterialType } from "../../../services/activatedCarbonApi";
 import AcProcessEntryScreen from "./AcProcessEntryScreen";
 import AcSaveBar from "./AcSaveBar";
+import AcPermissionNotice from "./AcPermissionNotice";
 import {
   attachParametersToOperations,
-  buildTripletPreview,
-  executionTripletCount,
   flattenOperationParameters,
   reorderOperations,
   resequenceOperations
 } from "../utils/routingParameterUtils";
+import {
+  AC_MANDATORY_PRE_PROCESSES,
+  AC_TERMINAL_INSTOCK,
+  buildStandardShopFloorOperations
+} from "../constants/acRawMaterialProcessCatalog";
 
 import "../styles/rawMaterialFlow.css";
 
@@ -51,7 +55,8 @@ function RawMaterialProcessFlowEditor({
   materialTypes = [],
   onCreate,
   onUpdate,
-  saving = false
+  saving = false,
+  canEdit = true
 }) {
   const NEW_KEY = "__new__";
   const PLACEHOLDER_KEY = "";
@@ -64,6 +69,7 @@ function RawMaterialProcessFlowEditor({
   const [loadingType, setLoadingType] = useState(false);
   const [dragIndex, setDragIndex] = useState(null);
   const [dropIndex, setDropIndex] = useState(null);
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
 
   const sortedTypes = useMemo(
     () =>
@@ -101,6 +107,7 @@ function RawMaterialProcessFlowEditor({
       setDropIndex(null);
 
       if (key === NEW_KEY) {
+        if (!canEdit) return;
         setSelectedKey(NEW_KEY);
         setDraft(emptyDraft());
         return;
@@ -140,11 +147,13 @@ function RawMaterialProcessFlowEditor({
   };
 
   const openAddProcess = () => {
+    if (!canEdit) return;
     setProcessEntry({ mode: "add", index: null });
     setScreen("process");
   };
 
   const openEditProcess = (index) => {
+    if (!canEdit) return;
     setProcessEntry({ mode: "edit", index });
     setScreen("process");
   };
@@ -218,7 +227,8 @@ function RawMaterialProcessFlowEditor({
         operation_sequence: i + 1,
         operation_name: op.operation_name.trim(),
         operation_code: (op.operation_code || `OP-STEP-${i + 1}`).trim(),
-        process_step: (op.process_step || "").trim().toUpperCase()
+        process_step: (op.process_step || "").trim().toUpperCase(),
+        is_mandatory: op.is_mandatory !== false
       })),
       process_parameters: flattenOperationParameters(ops, draft.process_parameters)
     };
@@ -246,7 +256,15 @@ function RawMaterialProcessFlowEditor({
     }
   };
 
-  if (screen === "process") {
+  const applyStandardTemplate = () => {
+    if (!canEdit) return;
+    patchDraft((prev) => ({
+      ...prev,
+      operations: resequenceOperations(buildStandardShopFloorOperations())
+    }));
+  };
+
+  if (screen === "process" && canEdit) {
     return (
       <AcProcessEntryScreen
         mode={processEntry.mode}
@@ -269,39 +287,54 @@ function RawMaterialProcessFlowEditor({
 
   return (
     <div className="ac-rm-flow-page wf-light-panel">
+      {!canEdit ? (
+        <AcPermissionNotice
+          title="View only — process setup is restricted"
+          message="Adding raw materials and changing process steps requires a Super Administrator. You can still look up existing materials and their production steps below."
+        />
+      ) : null}
+
       <div className="ac-rm-flow-selector-bar">
         <label className="ac-rm-flow-selector ac-rm-flow-selector--raw">
-          <span className="ac-rm-flow-selector-label">Raw material</span>
+          <span className="ac-rm-flow-selector-label">Choose raw material</span>
           <select
             className="ac-rm-flow-select"
             value={selectedKey}
             onChange={(e) => selectTypeByKey(e.target.value)}
             disabled={loadingType}
           >
-            <option value={PLACEHOLDER_KEY}>— Select raw material —</option>
+            <option value={PLACEHOLDER_KEY}>— Pick from list —</option>
             {sortedTypes.map((t) => (
-              <option key={t.product_id || t.product_code} value={String(t.product_id || t.product_code)}>
-                {t.product_code} — {t.product_name}
-                {!t.routing_code ? " (no routing yet)" : ""}
+              <option
+                key={t.product_id || t.product_code}
+                value={String(t.product_id || t.product_code)}
+                title={t.product_code}
+              >
+                {t.product_name || t.product_code}
+                {!t.routing_code ? " (setup incomplete)" : ""}
               </option>
             ))}
-            <option value={NEW_KEY}>+ New raw material…</option>
+            {canEdit ? <option value={NEW_KEY}>+ Add new raw material…</option> : null}
           </select>
         </label>
 
         <div className="ac-rm-flow-selector-arrow" aria-hidden="true">
-          →
+          then becomes
         </div>
 
         <div className="ac-rm-flow-selector ac-rm-flow-selector--finished">
           <span className="ac-rm-flow-selector-label">Finished product</span>
-          {showNewMaterialFields ? (
+          {showNewMaterialFields && canEdit ? (
             <input
               className="ac-rm-flow-select ac-rm-flow-finished-input"
               value={draft.finished_product_name}
               onChange={(e) => patchDraft({ finished_product_name: e.target.value })}
               placeholder="Output product name"
             />
+          ) : showNewMaterialFields ? (
+            <div className="ac-rm-flow-finished-display">
+              <span className="ac-rm-flow-finished-name">{draft.finished_product_name || "—"}</span>
+            </div>
           ) : (
             <div className="ac-rm-flow-finished-display">
               <span className="ac-rm-flow-finished-name">
@@ -323,6 +356,26 @@ function RawMaterialProcessFlowEditor({
       ) : null}
 
       {hasSelection || selectedKey === NEW_KEY ? (
+        <p className="ac-rm-flow-data-summary--compact text-sm text-slate-600 mb-3">
+          Every raw material requires <strong>Inward</strong> and <strong>Incoming QC</strong> on
+          the Raw Material page. Below, configure which shop-floor processes apply to{" "}
+          <strong>{draft.product_name || "this material"}</strong> after release — kiln feed,
+          screening, destoning, finished-goods QC (→ in stock), and their tracking fields.
+        </p>
+      ) : null}
+
+      {hasSelection || selectedKey === NEW_KEY ? (
+        <p className="ac-rm-flow-data-summary--compact">
+          <strong>{draft.product_name || "New material"}</strong>
+          {" → "}
+          {operations.length} shop-floor step{operations.length === 1 ? "" : "s"}
+          {" → "}
+          <strong>{draft.finished_product_name || draft.product_name || "Finished product"}</strong>
+          {" → in stock"}
+        </p>
+      ) : null}
+
+      {showTechnicalDetails && (hasSelection || selectedKey === NEW_KEY) ? (
         <div className="ac-rm-flow-data-summary">
           <dl className="ac-rm-flow-data-grid">
             <div>
@@ -356,11 +409,21 @@ function RawMaterialProcessFlowEditor({
         </div>
       ) : null}
 
-      {showNewMaterialFields ? (
+      {(hasSelection || selectedKey === NEW_KEY) && canEdit ? (
+        <button
+          type="button"
+          className="text-xs text-slate-500 underline mb-2"
+          onClick={() => setShowTechnicalDetails((v) => !v)}
+        >
+          {showTechnicalDetails ? "Hide reference codes" : "Show reference codes"}
+        </button>
+      ) : null}
+
+      {showNewMaterialFields && canEdit ? (
         <label className="text-sm block max-w-md mb-4">
-          <span className="block mb-1 font-medium text-slate-700">New raw material name</span>
+          <span className="block mb-1 font-medium text-slate-700">Name of new raw material</span>
           <input
-            className="w-full rounded border border-slate-300 px-3 py-2"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base"
             value={draft.product_name}
             onChange={(e) => patchDraft({ product_name: e.target.value })}
             placeholder="e.g. Coconut Shell"
@@ -376,6 +439,17 @@ function RawMaterialProcessFlowEditor({
 
       <div className="ac-rm-flow-diagram-wrap">
         <div className="ac-rm-flow-diagram" aria-label="Linear manufacturing routing">
+          {AC_MANDATORY_PRE_PROCESSES.map((pre) => (
+            <div key={pre.id} className="ac-rm-flow-diagram-segment">
+              <div className="ac-rm-flow-node ac-rm-flow-node--fixed">
+                <div className="ac-rm-flow-node-kicker">Required</div>
+                <div className="ac-rm-flow-node-title">{pre.operation_name}</div>
+                <div className="ac-rm-flow-node-step">{pre.description}</div>
+              </div>
+              <div className="ac-rm-flow-link" aria-hidden="true" />
+            </div>
+          ))}
+
           <div className="ac-rm-flow-node ac-rm-flow-node--material">
             <div className="ac-rm-flow-node-kicker">Raw material</div>
             <div className="ac-rm-flow-node-title">
@@ -388,38 +462,50 @@ function RawMaterialProcessFlowEditor({
             <div key={op.operation_code || `p${index}`} className="ac-rm-flow-diagram-segment">
               <div className="ac-rm-flow-link" aria-hidden="true" />
               <div
-                role="button"
-                tabIndex={0}
-                draggable
-                className={`ac-rm-flow-node ac-rm-flow-node--process ac-rm-flow-node--draggable${
+                role={canEdit ? "button" : undefined}
+                tabIndex={canEdit ? 0 : undefined}
+                draggable={canEdit}
+                className={`ac-rm-flow-node ac-rm-flow-node--process${
+                  canEdit ? " ac-rm-flow-node--draggable" : ""
+                }${
                   dragIndex === index ? " ac-rm-flow-node--dragging" : ""
                 }${dropIndex === index && dragIndex !== index ? " ac-rm-flow-node--drop-target" : ""}`}
-                onDragStart={() => handleDragStart(index)}
-                onDragOver={(e) => handleDragOver(e, index)}
-                onDrop={() => handleDrop(index)}
-                onDragEnd={handleDragEnd}
-                onClick={() => openEditProcess(index)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") openEditProcess(index);
-                }}
-                title="Drag to reorder, click to edit"
+                onDragStart={canEdit ? () => handleDragStart(index) : undefined}
+                onDragOver={canEdit ? (e) => handleDragOver(e, index) : undefined}
+                onDrop={canEdit ? () => handleDrop(index) : undefined}
+                onDragEnd={canEdit ? handleDragEnd : undefined}
+                onClick={canEdit ? () => openEditProcess(index) : undefined}
+                onKeyDown={
+                  canEdit
+                    ? (e) => {
+                        if (e.key === "Enter") openEditProcess(index);
+                      }
+                    : undefined
+                }
+                title={canEdit ? "Drag to reorder, click to edit" : op.operation_name}
               >
                 <div className="ac-rm-flow-node-kicker">
                   P{index + 1}
-                  <span className="ac-rm-flow-drag-hint"> ⋮⋮</span>
+                  {canEdit ? <span className="ac-rm-flow-drag-hint"> ⋮⋮</span> : null}
                 </div>
                 <div className="ac-rm-flow-node-title">{op.operation_name}</div>
-                <div className="ac-rm-flow-node-step">{op.process_step || op.operation_code}</div>
-                {executionTripletCount(op) > 0 ? (
-                  <div className="ac-rm-flow-node-meta">
-                    {executionTripletCount(op)} execution triplet
-                    {executionTripletCount(op) === 1 ? "" : "s"}
-                  </div>
-                ) : (
-                  <div className="ac-rm-flow-node-meta ac-rm-flow-node-meta--warn">
-                    No execution triplets
-                  </div>
-                )}
+                <div className="ac-rm-flow-node-step">{op.process_step || "Step"}</div>
+                <div className="ac-rm-flow-node-meta">
+                  {op.is_mandatory === false ? (
+                    <span className="text-amber-700">Optional</span>
+                  ) : (
+                    <span className="text-emerald-700">Mandatory</span>
+                  )}
+                  {(op.parameters || []).length > 0 ? (
+                    <span>
+                      {" · "}
+                      {(op.parameters || []).length} field
+                      {(op.parameters || []).length === 1 ? "" : "s"}
+                    </span>
+                  ) : (
+                    <span className="ac-rm-flow-node-meta--warn"> · No fields set yet</span>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -434,6 +520,12 @@ function RawMaterialProcessFlowEditor({
               <div className="ac-rm-flow-node-step">
                 {draft.finished_product_code || "FG-AC-*"}
               </div>
+            </div>
+            <div className="ac-rm-flow-link" aria-hidden="true" />
+            <div className="ac-rm-flow-node ac-rm-flow-node--instock">
+              <div className="ac-rm-flow-node-kicker">Terminal</div>
+              <div className="ac-rm-flow-node-title">{AC_TERMINAL_INSTOCK.operation_name}</div>
+              <div className="ac-rm-flow-node-step">{AC_TERMINAL_INSTOCK.description}</div>
             </div>
           </div>
         </div>
@@ -451,116 +543,87 @@ function RawMaterialProcessFlowEditor({
         ) : null}
       </div>
 
-      <div className="ac-rm-flow-actions">
-        <button
-          type="button"
-          className="ac-rm-flow-add-process-btn"
-          onClick={openAddProcess}
-          disabled={!hasSelection && selectedKey !== NEW_KEY}
-        >
-          + Add process
-        </button>
-        <p className="text-xs text-slate-500">
-          Drag process nodes to reorder. Each step needs execution triplets (Subject → Predicate →
-          Object) — click a node to edit.
-        </p>
-      </div>
-
-      {operations.length > 0 ? (
-        <div className="ac-rm-flow-triplets-panel">
-          <h4 className="text-sm font-semibold text-slate-800 mb-2">
-            Execution triplets by process step
-          </h4>
-          <p className="text-xs text-slate-500 mb-3">
-            Values captured on the shop floor when each operation completes. Each row is staged as
-            a knowledge-graph triplet on save.
+      {canEdit ? (
+        <div className="ac-rm-flow-actions">
+          <button
+            type="button"
+            className="ac-rm-flow-add-process-btn"
+            onClick={openAddProcess}
+            disabled={!hasSelection && selectedKey !== NEW_KEY}
+          >
+            + Add process step
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            onClick={applyStandardTemplate}
+            disabled={!hasSelection && selectedKey !== NEW_KEY}
+          >
+            Apply standard template
+          </button>
+          <p className="text-xs text-slate-500">
+            Standard template: kiln feed → activation → screening → destoning (optional) → QC.
+            Tap a step to edit fields and mandatory/optional. Drag to reorder.
           </p>
-          {operations.map((op, index) => (
-            <div key={op.operation_code || index} className="ac-rm-flow-step-triplets">
-              <div className="ac-rm-flow-step-triplets-head">
-                <strong>
-                  P{index + 1}: {op.operation_name}
-                </strong>
-                <span className="font-mono text-xs text-slate-500">{op.operation_code}</span>
-                <button
-                  type="button"
-                  className="text-xs text-blue-700 hover:underline ml-auto"
-                  onClick={() => openEditProcess(index)}
-                >
-                  Edit triplets
-                </button>
-              </div>
-              {(op.parameters || []).length ? (
-                <table className="ac-triplet-table w-full text-xs">
-                  <thead>
-                    <tr>
-                      <th>Field</th>
-                      <th>Subject</th>
-                      <th>Predicate</th>
-                      <th>Object (at execution)</th>
-                      <th>Required</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(op.parameters || []).map((param) => {
-                      const preview = buildTripletPreview(param);
-                      return (
-                        <tr key={param.key}>
-                          <td>
-                            <span className="font-medium text-slate-800">{param.label}</span>
-                            <code className="block text-[10px] text-slate-500">{param.key}</code>
-                          </td>
-                          <td>
-                            <code className="ac-triplet-uri">{preview.subject_uri}</code>
-                          </td>
-                          <td>
-                            <code className="ac-triplet-uri">{preview.predicate_uri}</code>
-                          </td>
-                          <td>
-                            {preview.object_hint}
-                            {param.unit ? ` (${param.unit})` : ""}
-                          </td>
-                          <td>{param.mandatory !== false ? "Yes" : "No"}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              ) : (
-                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
-                  No execution triplets — click Edit to add required capture fields.
-                </p>
-              )}
-            </div>
-          ))}
         </div>
       ) : null}
 
       {operations.length > 0 ? (
+        <details className="ac-rm-flow-triplets-panel mb-4">
+          <summary className="text-sm font-semibold text-slate-800 cursor-pointer py-2">
+            Fields recorded at each step ({operations.length} steps)
+          </summary>
+          {operations.map((op, index) => (
+            <div key={op.operation_code || index} className="ac-rm-flow-step-triplets mt-3">
+              <div className="ac-rm-flow-step-triplets-head">
+                <strong>
+                  Step {index + 1}: {op.operation_name}
+                </strong>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    className="text-xs text-blue-700 hover:underline ml-auto"
+                    onClick={() => openEditProcess(index)}
+                  >
+                    Edit
+                  </button>
+                ) : null}
+              </div>
+              {(op.parameters || []).length ? (
+                <ul className="text-sm text-slate-700 mt-2 space-y-1 list-disc pl-5">
+                  {(op.parameters || []).map((param) => (
+                    <li key={param.key}>
+                      {param.label || param.key}
+                      {param.unit ? ` (${param.unit})` : ""}
+                      {param.mandatory !== false ? "" : " — optional"}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 mt-2">
+                  No fields defined for this step yet.
+                </p>
+              )}
+            </div>
+          ))}
+        </details>
+      ) : null}
+
+      {operations.length > 0 && canEdit ? (
         <div className="ac-rm-flow-process-table-wrap">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-slate-500 border-b">
                 <th className="py-2 w-12">#</th>
-                <th className="py-2">Process</th>
-                <th className="py-2">Type</th>
-                <th className="py-2">Execution triplets</th>
+                <th className="py-2">Step name</th>
                 <th className="py-2 w-48">Actions</th>
               </tr>
             </thead>
             <tbody>
               {operations.map((op, index) => (
                 <tr key={op.operation_code || index} className="border-b border-slate-100">
-                  <td className="py-2 font-semibold text-slate-700">P{index + 1}</td>
+                  <td className="py-2 font-semibold text-slate-700">{index + 1}</td>
                   <td className="py-2">{op.operation_name}</td>
-                  <td className="py-2 font-mono text-xs">{op.process_step}</td>
-                  <td className="py-2 text-xs text-slate-600">
-                    {executionTripletCount(op)
-                      ? (op.parameters || [])
-                          .map((p) => p.label || p.key)
-                          .join(", ")
-                      : "— none defined —"}
-                  </td>
                   <td className="py-2">
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -586,12 +649,14 @@ function RawMaterialProcessFlowEditor({
         </div>
       ) : null}
 
-      <AcSaveBar
-        onSave={handleSave}
-        saving={saving}
-        saveLabel={draft.isNew ? "Create raw material & routing" : "Save routing"}
-        disabled={(!dirty && !draft.isNew) || (!hasSelection && selectedKey !== NEW_KEY)}
-      />
+      {canEdit ? (
+        <AcSaveBar
+          onSave={handleSave}
+          saving={saving}
+          saveLabel={draft.isNew ? "Create raw material & routing" : "Save routing"}
+          disabled={(!dirty && !draft.isNew) || (!hasSelection && selectedKey !== NEW_KEY)}
+        />
+      ) : null}
     </div>
   );
 }

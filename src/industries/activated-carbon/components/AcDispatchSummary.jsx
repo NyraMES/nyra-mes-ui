@@ -23,7 +23,7 @@ function formatDate(value) {
 /**
  * Recent customer shipments + totals for dashboard and dispatch context.
  */
-export default function AcDispatchSummary({ dashboard }) {
+export default function AcDispatchSummary({ dashboard, readOnly = false }) {
   const basePath = useIndustryBasePath();
   const dispatchCount = Number(dashboard?.dispatch_count || 0);
   const dispatchedKg = Number(dashboard?.dispatched_kg_total || 0);
@@ -37,12 +37,16 @@ export default function AcDispatchSummary({ dashboard }) {
         <p className="text-xs font-semibold uppercase tracking-wide text-sky-900">
           Outbound & dispatch
         </p>
-        <Link
-          to={`${basePath}/dispatch`}
-          className="text-xs font-semibold text-sky-900 underline"
-        >
-          Open Dispatch →
-        </Link>
+        {readOnly ? (
+          <span className="text-xs font-semibold text-sky-900/50">Open Dispatch →</span>
+        ) : (
+          <Link
+            to={`${basePath}/dispatch`}
+            className="text-xs font-semibold text-sky-900 underline"
+          >
+            Open Dispatch →
+          </Link>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">

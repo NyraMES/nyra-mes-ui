@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { useAuth } from "../../../auth/AuthContext";
 import { fetchAcDashboard, formatAcApiError } from "../../../services/activatedCarbonApi";
 import { apiBaseUrl } from "../../../auth/cognitoConfig";
 import useAcOntologyConfig from "../hooks/useAcOntologyConfig";
 import { getEnabledDashboardPanels } from "../utils/acOntologyConfigStore";
+import { userIsAcDemoViewer } from "../utils/acMenuAccess";
+import AcDemoDisabledAction from "../components/AcDemoDisabledAction";
 import FlowDiagram from "../../../workflow/FlowDiagram";
 import {
   SectionHeader,
@@ -39,6 +42,8 @@ function toFlowStatus(status) {
 
 function ActivatedCarbonDashboard() {
   const { context, loading: contextLoading } = useAppContext();
+  const { user } = useAuth();
+  const demoViewer = userIsAcDemoViewer(user?.roles || []);
   const { config: ontologyConfig } = useAcOntologyConfig();
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState("");
@@ -126,28 +131,45 @@ function ActivatedCarbonDashboard() {
         subtitle="Raw material type → fixed routing → feasibility (kiln + parameters) → execution"
         right={
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost"
-              disabled={loading}
-              onClick={() => loadDashboard({ force: true })}
-            >
-              {loading ? "Refreshing…" : "Refresh"}
-            </button>
-            <Link
-              to="/activated-carbon/masters?tab=ontology-ui"
-              className="wf-btn wf-btn-ghost"
-            >
-              Configure dashboard
-            </Link>
-            <Link to="/activated-carbon/kiln-telemetry" className="wf-btn wf-btn-ghost inline-flex items-center gap-1.5">
-              Kiln telemetry
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6"/></svg>
-            </Link>
-            <Link to="/activated-carbon/raw-material-inward" className="wf-btn wf-btn-primary">
-              Start Production Flow
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6"/></svg>
-            </Link>
+            {demoViewer ? (
+              <>
+                <AcDemoDisabledAction>Refresh</AcDemoDisabledAction>
+                <AcDemoDisabledAction>Configure dashboard</AcDemoDisabledAction>
+                <AcDemoDisabledAction>
+                  Kiln telemetry
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+                </AcDemoDisabledAction>
+                <AcDemoDisabledAction className="wf-btn wf-btn-primary">
+                  Start Production Flow
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+                </AcDemoDisabledAction>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost"
+                  disabled={loading}
+                  onClick={() => loadDashboard({ force: true })}
+                >
+                  {loading ? "Refreshing…" : "Refresh"}
+                </button>
+                <Link
+                  to="/activated-carbon/masters?tab=ontology-ui"
+                  className="wf-btn wf-btn-ghost"
+                >
+                  Configure dashboard
+                </Link>
+                <Link to="/activated-carbon/kiln-telemetry" className="wf-btn wf-btn-ghost inline-flex items-center gap-1.5">
+                  Kiln telemetry
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+                </Link>
+                <Link to="/activated-carbon/raw-material?tab=inward" className="wf-btn wf-btn-primary">
+                  Start Production Flow
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+                </Link>
+              </>
+            )}
           </div>
         }
       />
@@ -171,7 +193,7 @@ function ActivatedCarbonDashboard() {
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
           {showShopFloor ? (
             <div className={COL_SPAN_CLASS[panelById["kpi-shop-floor"]?.colSpan] || "xl:col-span-8"}>
-              <AcKpiShopFloorPanel dashboard={data} />
+              <AcKpiShopFloorPanel dashboard={data} readOnly={demoViewer} />
             </div>
           ) : null}
           {showKpiSidebar ? (
@@ -215,7 +237,7 @@ function ActivatedCarbonDashboard() {
                   right={<StatusPill kind="info">Live</StatusPill>}
                 />
                 <WfCardBody className="py-3">
-                  <AcKilnLiveLoadStrip dashboard={data} refreshedAt={lastRefreshedAt} />
+                  <AcKilnLiveLoadStrip dashboard={data} refreshedAt={lastRefreshedAt} readOnly={demoViewer} />
                 </WfCardBody>
               </WfCard>
             );

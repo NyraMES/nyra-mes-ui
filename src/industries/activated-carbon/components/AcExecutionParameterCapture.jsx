@@ -45,7 +45,8 @@ const AcExecutionParameterCapture = forwardRef(function AcExecutionParameterCapt
     allowEmpty = false,
     seedValues = null,
     title = "Capture parameters",
-    subtitle = "Enter actual values for each parameter defined in Routing Builder."
+    subtitle = "Enter actual values for each parameter defined in Routing Builder.",
+    emptyHint = null
   },
   ref
 ) {
@@ -103,13 +104,21 @@ const AcExecutionParameterCapture = forwardRef(function AcExecutionParameterCapt
   }));
 
   if (!sortedParams.length) {
+    if (emptyHint === null) {
+      return (
+        <div className="text-xs text-slate-200 py-1">
+          No capture parameters defined for this operation.
+          <span className="block mt-1 text-slate-300">
+            Add them in Routing Builder for this step, then return here.
+          </span>
+        </div>
+      );
+    }
+    if (emptyHint === false) {
+      return null;
+    }
     return (
-      <div className="text-xs text-slate-200 py-1">
-        No capture parameters defined for this operation.
-        <span className="block mt-1 text-slate-300">
-          Add them in Routing Builder for this step, then return here.
-        </span>
-      </div>
+      <div className="text-xs text-slate-400 py-1">{emptyHint}</div>
     );
   }
 
