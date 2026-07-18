@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { useAuth } from "./AuthContext";
 import { userHasAnyRole } from "./roles";
+import { inferIndustryFromPath } from "../config/industrySelection";
 
 export function ProtectedRoute({ roles = [] }) {
   const { isAuthenticated, loading, authEnabled, user } = useAuth();
@@ -16,7 +17,18 @@ export function ProtectedRoute({ roles = [] }) {
   }
 
   if (authEnabled && !isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+    const industryKey = inferIndustryFromPath(location.pathname);
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{
+          from: location.pathname + location.search,
+          industry: industryKey || undefined,
+          fromLanding: Boolean(industryKey)
+        }}
+      />
+    );
   }
 
   if (roles.length > 0 && !userHasAnyRole(user?.roles || [], roles)) {

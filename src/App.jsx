@@ -62,6 +62,7 @@ function AppRoutes() {
           {/* Metadata-driven industry modules (lazy-loaded) */}
           <Route path="/automotive-oem/*" element={<IndustryModuleLoader />} />
           <Route path="/activated-carbon/*" element={<IndustryModuleLoader />} />
+          <Route path="/chemical/*" element={<IndustryModuleLoader />} />
 
           {/* Manufacturing Workflow Intelligence experience */}
           <Route path="/workflow" element={<WorkflowLayout />}>

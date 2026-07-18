@@ -118,7 +118,7 @@ function ParameterTrendSparkline({
         ) : null}
       </div>
       <div className="h-24 w-full rounded-md bg-slate-950/40 border border-slate-800/60 px-1 py-1">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={96}>
           <LineChart data={chartData} margin={{ top: 6, right: 8, left: 4, bottom: 2 }}>
             <YAxis hide domain={yDomain} />
             {hasLimits ? (

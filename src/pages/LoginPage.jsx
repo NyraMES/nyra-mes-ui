@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, Navigate, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext";
 import { useAppContext } from "../context/AppContext";
@@ -7,7 +7,6 @@ import {
   getIndustrySelection,
   resolveScopedTenantForIndustry
 } from "../config/industrySelection";
-import { resolveDefaultWorkspaceCode } from "../services/mesCorePaths";
 import {
   resolveAppHostBinding,
   tenantMismatchMessage,
@@ -56,6 +55,7 @@ const PROFILE_ATTRIBUTE_FIELDS = {
 
 function LoginPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const {
     authEnabled,
     cognitoConfigured,
@@ -83,28 +83,28 @@ function LoginPage() {
 
   const industry =
     hostBinding?.industry_key || location.state?.industry;
+  const fromLanding = Boolean(location.state?.fromLanding);
   const industrySelection = industry ? getIndustrySelection(industry) : null;
   const redirectTo =
     location.state?.from ||
     hostBinding?.landing_path ||
     industrySelection?.landing_path ||
     "/workflow";
+  const loginTenantScope = industry
+    ? resolveScopedTenantForIndustry(industry, isAuthenticated ? user : null)
+    : resolveScopedTenantForIndustry(null, isAuthenticated ? user : null);
   const scopedTenantCode =
-    (isAuthenticated && user?.tenant_code) ||
+    loginTenantScope.tenant_code ||
     hostBinding?.tenant_code ||
     location.state?.tenant_code ||
     industrySelection?.tenant_code ||
     user?.tenant_code;
   const scopedWorkspaceCode =
-    (isAuthenticated && user?.tenant_code
-      ? resolveDefaultWorkspaceCode(user.tenant_code)
-      : null) ??
+    loginTenantScope.workspace_code ??
     hostBinding?.workspace_code ??
     location.state?.workspace_code ??
     industrySelection?.workspace_code ??
-    (industry && user?.tenant_code
-      ? resolveScopedTenantForIndustry(industry, user).workspace_code
-      : null);
+    null;
   const needsIndustryContext = Boolean(scopedTenantCode);
   const heroImage =
     industry === "activated-carbon" ? carbonImage : autoImage;
@@ -122,6 +122,19 @@ function LoginPage() {
       if (isAuthenticated && !loading && !needsIndustryContext) {
         setContextReady(true);
       }
+      return;
+    }
+
+    if (
+      industry === "activated-carbon" &&
+      user &&
+      !user.tenant_code
+    ) {
+      setError(
+        "This account has no plant assigned (missing custom:tenant_code in Cognito). " +
+          "Ask your administrator to run scripts/provision_ac_admin1.ps1 or use ac-demo-admin@nyra.local."
+      );
+      void resetLoginFlow();
       return;
     }
 
@@ -145,7 +158,8 @@ function LoginPage() {
     scopedTenantCode,
     scopedWorkspaceCode,
     industry,
-    selectIndustryContext
+    selectIndustryContext,
+    resetLoginFlow
   ]);
 
   useEffect(() => {
@@ -224,11 +238,41 @@ function LoginPage() {
     return <Navigate to={redirectTo} replace />;
   }
 
-  if (!loading && isAuthenticated && (contextReady || !needsIndustryContext)) {
+  if (
+    !loading &&
+    isAuthenticated &&
+    !fromLanding &&
+    (contextReady || !needsIndustryContext)
+  ) {
     return <Navigate to={redirectTo} replace />;
   }
 
-  if (!loading && isAuthenticated && needsIndustryContext && !contextReady) {
+  const onContinueSignedIn = async () => {
+    setSubmitting(true);
+    setError("");
+    try {
+      if (needsIndustryContext) {
+        await selectIndustryContext({
+          tenant_code: scopedTenantCode,
+          workspace_code: scopedWorkspaceCode,
+          industryKey: industry
+        });
+      }
+      navigate(redirectTo, { replace: true });
+    } catch (err) {
+      setError(err?.message || "Could not open workspace");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (
+    !loading &&
+    isAuthenticated &&
+    needsIndustryContext &&
+    !contextReady &&
+    !fromLanding
+  ) {
     return (
       <div className="landing">
         <div className="landing-body">
@@ -263,6 +307,17 @@ function LoginPage() {
           name: current.name || username.trim() || "Admin User"
         }));
         setNeedsNewPassword(true);
+        return;
+      }
+      if (result?.ok) {
+        if (needsIndustryContext) {
+          await selectIndustryContext({
+            tenant_code: scopedTenantCode,
+            workspace_code: scopedWorkspaceCode,
+            industryKey: industry
+          });
+        }
+        navigate(redirectTo, { replace: true });
       }
     } catch (err) {
       setError(err?.message || "Sign-in failed");
@@ -313,6 +368,14 @@ function LoginPage() {
         setError(tenantMismatchMessage(hostBinding));
         return;
       }
+      if (needsIndustryContext) {
+        await selectIndustryContext({
+          tenant_code: scopedTenantCode,
+          workspace_code: scopedWorkspaceCode,
+          industryKey: industry
+        });
+      }
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       setError(err?.message || "Could not set new password");
     } finally {
@@ -483,7 +546,34 @@ function LoginPage() {
                     </button>
                   </form>
                 ) : (
-                  <form onSubmit={onSubmit} className="login-form">
+                  <>
+                    {fromLanding && isAuthenticated && user ? (
+                      <div className="login-form" style={{ marginBottom: 16 }}>
+                        <div className="login-info">
+                          Signed in as{" "}
+                          <strong>{user.email || user.username || "your account"}</strong>
+                          {user.tenant_code ? ` (${user.tenant_code})` : ""}.
+                        </div>
+                        <button
+                          type="button"
+                          disabled={submitting}
+                          className="login-btn login-btn-primary"
+                          onClick={() => void onContinueSignedIn()}
+                        >
+                          {submitting ? "Opening…" : "Continue to workspace"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={submitting}
+                          className="login-btn login-btn-secondary"
+                          onClick={() => void onStartOver()}
+                        >
+                          Sign in as a different user
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <form onSubmit={onSubmit} className="login-form">
                     <div className="login-field">
                       <label htmlFor="login-username">Username or email</label>
                       <input
@@ -537,6 +627,7 @@ function LoginPage() {
                       Start over / reset password flow
                     </button>
                   </form>
+                  </>
                 )}
 
                 <div className="login-secure-note">

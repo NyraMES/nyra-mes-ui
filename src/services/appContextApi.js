@@ -211,11 +211,28 @@ export async function fetchAppContext(apiClient, scope = {}) {
     scope.workspace_code || import.meta.env.VITE_WORKSPACE_CODE || null;
   const detail =
     lastError?.response?.data?.detail ||
+    (lastError?.response?.status === 403
+      ? "Your account tenant does not match this plant. For AC admin use admin1 with SAM_CARBONS_DEMO (see scripts/provision_ac_admin1.ps1)."
+      : null) ||
     (lastError?.response?.status === 500
       ? "Server error loading workspace context — check API database connection."
       : null) ||
     lastError?.message ||
     "Context API unavailable";
+
+  // Unauthenticated visitors cannot call /api/context — not an error on public pages.
+  if (
+    lastError?.response?.status === 401 &&
+    typeof detail === "string" &&
+    detail.toLowerCase().includes("bearer token")
+  ) {
+    return {
+      ...DEFAULT_APP_CONTEXT,
+      fromFallback: false,
+      loadError: null,
+      loaded: false
+    };
+  }
 
   const isAcTenant =
     envTenant === "SAM_CARBONS" || envTenant === "SAM_CARBONS_DEMO";

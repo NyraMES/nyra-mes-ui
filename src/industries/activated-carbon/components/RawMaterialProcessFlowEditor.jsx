@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { fetchAcRawMaterialType } from "../../../services/activatedCarbonApi";
+import { fetchAcRawMaterialType, formatAcApiError } from "../../../services/activatedCarbonApi";
 import AcProcessEntryScreen from "./AcProcessEntryScreen";
 import AcSaveBar from "./AcSaveBar";
 import AcPermissionNotice from "./AcPermissionNotice";
@@ -28,7 +28,10 @@ function emptyDraft() {
     finished_product_code: "",
     routing_code: "",
     operations: [],
-    process_parameters: []
+    process_parameters: [],
+    status: "ACTIVE",
+    is_obsolete: false,
+    usage: null
   };
 }
 
@@ -47,7 +50,10 @@ function draftFromType(type) {
     finished_product_code: type.finished_product_code || "",
     routing_code: type.routing_code || "",
     operations,
-    process_parameters: (type.process_parameters || []).map((p) => ({ ...p }))
+    process_parameters: (type.process_parameters || []).map((p) => ({ ...p })),
+    status: type.status || (type.is_obsolete ? "OBSOLETE" : "ACTIVE"),
+    is_obsolete: Boolean(type.is_obsolete || String(type.status || "").toUpperCase() === "OBSOLETE"),
+    usage: type.usage || null
   };
 }
 
@@ -55,6 +61,7 @@ function RawMaterialProcessFlowEditor({
   materialTypes = [],
   onCreate,
   onUpdate,
+  onMarkObsolete,
   saving = false,
   canEdit = true
 }) {
@@ -70,6 +77,13 @@ function RawMaterialProcessFlowEditor({
   const [dragIndex, setDragIndex] = useState(null);
   const [dropIndex, setDropIndex] = useState(null);
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
+  const [markingObsolete, setMarkingObsolete] = useState(false);
+
+  const canEditDraft = canEdit && !draft.is_obsolete;
+  const usageLocked = Boolean(
+    draft.usage?.kiln_process_started || draft.usage?.dispatch_completed
+  );
+  const routingLocked = usageLocked;
 
   const sortedTypes = useMemo(
     () =>
@@ -147,13 +161,13 @@ function RawMaterialProcessFlowEditor({
   };
 
   const openAddProcess = () => {
-    if (!canEdit) return;
+    if (!canEditDraft || routingLocked) return;
     setProcessEntry({ mode: "add", index: null });
     setScreen("process");
   };
 
   const openEditProcess = (index) => {
-    if (!canEdit) return;
+    if (!canEditDraft || routingLocked) return;
     setProcessEntry({ mode: "edit", index });
     setScreen("process");
   };
@@ -175,9 +189,20 @@ function RawMaterialProcessFlowEditor({
   };
 
   const removeProcess = (index) => {
+    if (routingLocked) return;
     patchDraft((prev) => ({
       ...prev,
       operations: resequenceOperations((prev.operations || []).filter((_, i) => i !== index))
+    }));
+  };
+
+  const moveProcess = (index, delta) => {
+    if (!canEditDraft || routingLocked) return;
+    const target = index + delta;
+    if (target < 0 || target >= operations.length) return;
+    patchDraft((prev) => ({
+      ...prev,
+      operations: reorderOperations(prev.operations || [], index, target)
     }));
   };
 
@@ -251,20 +276,44 @@ function RawMaterialProcessFlowEditor({
       setDirty(false);
       if (row) setDraft(draftFromType(row));
     } catch (e) {
-      setValidation(e?.message || "Save failed");
+      setValidation(formatAcApiError(e, "Save failed"));
       throw e;
     }
   };
 
+  const handleMarkObsolete = async () => {
+    if (!draft.product_id || draft.isNew || !onMarkObsolete) return;
+    const label = draft.product_name || draft.product_code || "this material";
+    const confirmed = window.confirm(
+      `Mark "${label}" as obsolete?\n\nHistorical inward, production, and dispatch records stay unchanged. New inward receipts for this material will be blocked. You can add a new raw material type for future production.`
+    );
+    if (!confirmed) return;
+    setValidation("");
+    setMarkingObsolete(true);
+    try {
+      const row = await onMarkObsolete(draft.product_id);
+      setDirty(false);
+      if (row) {
+        setDraft(draftFromType(row));
+        setSelectedKey(String(row.product_id || row.product_code));
+      }
+    } catch (e) {
+      setValidation(formatAcApiError(e, "Could not mark obsolete"));
+      throw e;
+    } finally {
+      setMarkingObsolete(false);
+    }
+  };
+
   const applyStandardTemplate = () => {
-    if (!canEdit) return;
+    if (!canEditDraft || routingLocked) return;
     patchDraft((prev) => ({
       ...prev,
       operations: resequenceOperations(buildStandardShopFloorOperations())
     }));
   };
 
-  if (screen === "process" && canEdit) {
+  if (screen === "process" && canEditDraft && !routingLocked) {
     return (
       <AcProcessEntryScreen
         mode={processEntry.mode}
@@ -284,6 +333,7 @@ function RawMaterialProcessFlowEditor({
 
   const showNewMaterialFields = selectedKey === NEW_KEY || draft.isNew;
   const hasSelection = selectedKey && selectedKey !== PLACEHOLDER_KEY;
+  const flowEditable = canEditDraft && !routingLocked;
 
   return (
     <div className="ac-rm-flow-page wf-light-panel">
@@ -304,16 +354,21 @@ function RawMaterialProcessFlowEditor({
             disabled={loadingType}
           >
             <option value={PLACEHOLDER_KEY}>— Pick from list —</option>
-            {sortedTypes.map((t) => (
+            {sortedTypes.map((t) => {
+              const obsolete =
+                t.is_obsolete || String(t.status || "").toUpperCase() === "OBSOLETE";
+              return (
               <option
                 key={t.product_id || t.product_code}
                 value={String(t.product_id || t.product_code)}
                 title={t.product_code}
               >
                 {t.product_name || t.product_code}
+                {obsolete ? " (obsolete)" : ""}
                 {!t.routing_code ? " (setup incomplete)" : ""}
               </option>
-            ))}
+            );
+            })}
             {canEdit ? <option value={NEW_KEY}>+ Add new raw material…</option> : null}
           </select>
         </label>
@@ -324,7 +379,7 @@ function RawMaterialProcessFlowEditor({
 
         <div className="ac-rm-flow-selector ac-rm-flow-selector--finished">
           <span className="ac-rm-flow-selector-label">Finished product</span>
-          {showNewMaterialFields && canEdit ? (
+          {showNewMaterialFields && canEditDraft ? (
             <input
               className="ac-rm-flow-select ac-rm-flow-finished-input"
               value={draft.finished_product_name}
@@ -353,6 +408,26 @@ function RawMaterialProcessFlowEditor({
 
       {loadingType ? (
         <p className="text-sm text-slate-500">Loading routing for selected raw material…</p>
+      ) : null}
+
+      {draft.is_obsolete ? (
+        <div className="ac-rm-flow-obsolete-banner" role="status">
+          <strong>Obsolete</strong> — kept for reports and traceability. New inward is blocked.
+          Use <strong>+ Add new raw material…</strong> for future production.
+        </div>
+      ) : null}
+
+      {!draft.is_obsolete && usageLocked ? (
+        <div className="ac-rm-flow-lock-banner" role="status">
+          {draft.usage?.kiln_process_started
+            ? "Kiln production has started for this material — process steps cannot be removed or reordered."
+            : "Finished product has been dispatched — routing is locked for integrity."}{" "}
+          To retire this material, use <strong>Mark obsolete</strong> below.
+        </div>
+      ) : null}
+
+      {validation ? (
+        <p className="ac-rm-flow-validation text-sm text-red-700 mb-3">{validation}</p>
       ) : null}
 
       {hasSelection || selectedKey === NEW_KEY ? (
@@ -419,7 +494,7 @@ function RawMaterialProcessFlowEditor({
         </button>
       ) : null}
 
-      {showNewMaterialFields && canEdit ? (
+      {showNewMaterialFields && canEditDraft ? (
         <label className="text-sm block max-w-md mb-4">
           <span className="block mb-1 font-medium text-slate-700">Name of new raw material</span>
           <input
@@ -429,12 +504,6 @@ function RawMaterialProcessFlowEditor({
             placeholder="e.g. Coconut Shell"
           />
         </label>
-      ) : null}
-
-      {validation ? (
-        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 mb-3">
-          {validation}
-        </p>
       ) : null}
 
       <div className="ac-rm-flow-diagram-wrap">
@@ -461,50 +530,80 @@ function RawMaterialProcessFlowEditor({
           {operations.map((op, index) => (
             <div key={op.operation_code || `p${index}`} className="ac-rm-flow-diagram-segment">
               <div className="ac-rm-flow-link" aria-hidden="true" />
-              <div
-                role={canEdit ? "button" : undefined}
-                tabIndex={canEdit ? 0 : undefined}
-                draggable={canEdit}
-                className={`ac-rm-flow-node ac-rm-flow-node--process${
-                  canEdit ? " ac-rm-flow-node--draggable" : ""
-                }${
-                  dragIndex === index ? " ac-rm-flow-node--dragging" : ""
-                }${dropIndex === index && dragIndex !== index ? " ac-rm-flow-node--drop-target" : ""}`}
-                onDragStart={canEdit ? () => handleDragStart(index) : undefined}
-                onDragOver={canEdit ? (e) => handleDragOver(e, index) : undefined}
-                onDrop={canEdit ? () => handleDrop(index) : undefined}
-                onDragEnd={canEdit ? handleDragEnd : undefined}
-                onClick={canEdit ? () => openEditProcess(index) : undefined}
-                onKeyDown={
-                  canEdit
-                    ? (e) => {
-                        if (e.key === "Enter") openEditProcess(index);
-                      }
-                    : undefined
-                }
-                title={canEdit ? "Drag to reorder, click to edit" : op.operation_name}
-              >
-                <div className="ac-rm-flow-node-kicker">
-                  P{index + 1}
-                  {canEdit ? <span className="ac-rm-flow-drag-hint"> ⋮⋮</span> : null}
-                </div>
-                <div className="ac-rm-flow-node-title">{op.operation_name}</div>
-                <div className="ac-rm-flow-node-step">{op.process_step || "Step"}</div>
-                <div className="ac-rm-flow-node-meta">
-                  {op.is_mandatory === false ? (
-                    <span className="text-amber-700">Optional</span>
-                  ) : (
-                    <span className="text-emerald-700">Mandatory</span>
-                  )}
-                  {(op.parameters || []).length > 0 ? (
-                    <span>
-                      {" · "}
-                      {(op.parameters || []).length} field
-                      {(op.parameters || []).length === 1 ? "" : "s"}
-                    </span>
-                  ) : (
-                    <span className="ac-rm-flow-node-meta--warn"> · No fields set yet</span>
-                  )}
+              <div className="ac-rm-flow-process-step">
+                {flowEditable ? (
+                  <div className="ac-rm-flow-move-controls">
+                    <button
+                      type="button"
+                      className="ac-rm-flow-move-btn"
+                      disabled={index === 0}
+                      title="Move this step earlier in the chain (toward raw material)"
+                      aria-label={`Move ${op.operation_name} earlier`}
+                      onClick={() => moveProcess(index, -1)}
+                    >
+                      ← Earlier
+                    </button>
+                    <button
+                      type="button"
+                      className="ac-rm-flow-move-btn"
+                      disabled={index === operations.length - 1}
+                      title="Move this step later in the chain (toward finished product)"
+                      aria-label={`Move ${op.operation_name} later`}
+                      onClick={() => moveProcess(index, 1)}
+                    >
+                      Later →
+                    </button>
+                  </div>
+                ) : null}
+                <div
+                  role={flowEditable ? "button" : undefined}
+                  tabIndex={flowEditable ? 0 : undefined}
+                  draggable={flowEditable}
+                  className={`ac-rm-flow-node ac-rm-flow-node--process${
+                    flowEditable ? " ac-rm-flow-node--draggable" : ""
+                  }${
+                    dragIndex === index ? " ac-rm-flow-node--dragging" : ""
+                  }${dropIndex === index && dragIndex !== index ? " ac-rm-flow-node--drop-target" : ""}`}
+                  onDragStart={flowEditable ? () => handleDragStart(index) : undefined}
+                  onDragOver={flowEditable ? (e) => handleDragOver(e, index) : undefined}
+                  onDrop={flowEditable ? () => handleDrop(index) : undefined}
+                  onDragEnd={flowEditable ? handleDragEnd : undefined}
+                  onClick={flowEditable ? () => openEditProcess(index) : undefined}
+                  onKeyDown={
+                    flowEditable
+                      ? (e) => {
+                          if (e.key === "Enter") openEditProcess(index);
+                        }
+                      : undefined
+                  }
+                  title={
+                    flowEditable
+                      ? "Click to edit · drag or use Earlier/Later to reorder"
+                      : op.operation_name
+                  }
+                >
+                  <div className="ac-rm-flow-node-kicker">
+                    P{index + 1}
+                    {flowEditable ? <span className="ac-rm-flow-drag-hint"> ⋮⋮</span> : null}
+                  </div>
+                  <div className="ac-rm-flow-node-title">{op.operation_name}</div>
+                  <div className="ac-rm-flow-node-step">{op.process_step || "Step"}</div>
+                  <div className="ac-rm-flow-node-meta">
+                    {op.is_mandatory === false ? (
+                      <span className="text-amber-700">Optional</span>
+                    ) : (
+                      <span className="text-emerald-700">Mandatory</span>
+                    )}
+                    {(op.parameters || []).length > 0 ? (
+                      <span>
+                        {" · "}
+                        {(op.parameters || []).length} field
+                        {(op.parameters || []).length === 1 ? "" : "s"}
+                      </span>
+                    ) : (
+                      <span className="ac-rm-flow-node-meta--warn"> · No fields set yet</span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -543,7 +642,7 @@ function RawMaterialProcessFlowEditor({
         ) : null}
       </div>
 
-      {canEdit ? (
+      {flowEditable ? (
         <div className="ac-rm-flow-actions">
           <button
             type="button"
@@ -563,7 +662,8 @@ function RawMaterialProcessFlowEditor({
           </button>
           <p className="text-xs text-slate-500">
             Standard template: kiln feed → activation → screening → destoning (optional) → QC.
-            Tap a step to edit fields and mandatory/optional. Drag to reorder.
+            Tap a step to edit. Use <strong>Earlier</strong> / <strong>Later</strong> or drag to
+            reorder steps in the chain.
           </p>
         </div>
       ) : null}
@@ -579,7 +679,7 @@ function RawMaterialProcessFlowEditor({
                 <strong>
                   Step {index + 1}: {op.operation_name}
                 </strong>
-                {canEdit ? (
+                {flowEditable ? (
                   <button
                     type="button"
                     className="text-xs text-blue-700 hover:underline ml-auto"
@@ -609,14 +709,14 @@ function RawMaterialProcessFlowEditor({
         </details>
       ) : null}
 
-      {operations.length > 0 && canEdit ? (
+      {operations.length > 0 && flowEditable ? (
         <div className="ac-rm-flow-process-table-wrap">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-slate-500 border-b">
                 <th className="py-2 w-12">#</th>
                 <th className="py-2">Step name</th>
-                <th className="py-2 w-48">Actions</th>
+                <th className="py-2 min-w-[14rem]">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -625,7 +725,25 @@ function RawMaterialProcessFlowEditor({
                   <td className="py-2 font-semibold text-slate-700">{index + 1}</td>
                   <td className="py-2">{op.operation_name}</td>
                   <td className="py-2">
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <button
+                        type="button"
+                        className="ac-rm-flow-move-btn ac-rm-flow-move-btn--compact"
+                        disabled={index === 0}
+                        title="Move earlier in chain"
+                        onClick={() => moveProcess(index, -1)}
+                      >
+                        ← Earlier
+                      </button>
+                      <button
+                        type="button"
+                        className="ac-rm-flow-move-btn ac-rm-flow-move-btn--compact"
+                        disabled={index === operations.length - 1}
+                        title="Move later in chain"
+                        onClick={() => moveProcess(index, 1)}
+                      >
+                        Later →
+                      </button>
                       <button
                         type="button"
                         className="text-xs text-blue-700 hover:underline"
@@ -649,7 +767,23 @@ function RawMaterialProcessFlowEditor({
         </div>
       ) : null}
 
-      {canEdit ? (
+      {canEdit && !draft.isNew && !draft.is_obsolete && onMarkObsolete ? (
+        <div className="ac-rm-flow-obsolete-actions mb-3">
+          <button
+            type="button"
+            className="ac-rm-flow-obsolete-btn"
+            disabled={markingObsolete || saving}
+            onClick={handleMarkObsolete}
+          >
+            {markingObsolete ? "Marking obsolete…" : "Mark obsolete"}
+          </button>
+          <p className="text-xs text-slate-500 mt-1">
+            Retires this material for new inward while preserving all production and dispatch history.
+          </p>
+        </div>
+      ) : null}
+
+      {flowEditable ? (
         <AcSaveBar
           onSave={handleSave}
           saving={saving}

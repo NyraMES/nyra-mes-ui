@@ -3,6 +3,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useAppContext } from "../context/AppContext";
 import {
+  getIndustrySelection,
   industryKeyForTenantCode,
   resolveScopedTenantForIndustry
 } from "../config/industrySelection";
@@ -50,30 +51,32 @@ export default function TenantContextSync() {
       return;
     }
 
-    const tenantCode = String(user.tenant_code).trim();
-    const workspaceCode = resolveScopedTenantForIndustry(
-      industryKeyForTenantCode(tenantCode) || "activated-carbon",
-      user
-    ).workspace_code;
-
     const path = pathname || "";
-    let industryKey = industryKeyForTenantCode(tenantCode);
+    let industryKey = industryKeyForTenantCode(user.tenant_code);
     if (path.includes("/activated-carbon")) industryKey = "activated-carbon";
+    else if (path.includes("/chemical")) industryKey = "chemical";
     else if (path.includes("/automotive-oem") || path.includes("/workflow")) {
       industryKey = "automotive-oem";
     }
 
+    const scope = resolveScopedTenantForIndustry(industryKey, user);
+    const targetTenant = scope.tenant_code;
+    const targetWorkspace = scope.workspace_code;
+
     const needsSync =
-      context.tenant_code !== tenantCode ||
-      (workspaceCode && context.workspace_code !== workspaceCode) ||
-      context.fromFallback;
+      context.tenant_code !== targetTenant ||
+      (targetWorkspace && context.workspace_code !== targetWorkspace) ||
+      context.fromFallback ||
+      (industryKey &&
+        context.module_code &&
+        getIndustrySelection(industryKey)?.module_code !== context.module_code);
 
     if (!needsSync || syncingRef.current) return;
 
     syncingRef.current = true;
     void selectIndustryContext({
-      tenant_code: tenantCode,
-      workspace_code: workspaceCode,
+      tenant_code: targetTenant,
+      workspace_code: targetWorkspace,
       industryKey: industryKey || undefined
     }).finally(() => {
       syncingRef.current = false;

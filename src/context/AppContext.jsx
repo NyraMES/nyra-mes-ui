@@ -15,9 +15,20 @@ import {
   fetchAppContext
 } from "../services/appContextApi";
 import { resolveAcAppContext } from "../industries/activated-carbon/utils/acContextUtils";
+import { resolveChemAppContext } from "../industries/chemical/utils/chemContextUtils";
 import { resolveDefaultWorkspaceCode } from "../services/mesCorePaths";
 
 const AppContext = createContext(null);
+
+/** True on the public marketing landing (e.g. /mes/ or /) before sign-in. */
+function isPublicLandingPath(pathname = "") {
+  const path = String(pathname || "").replace(/\/+$/, "") || "/";
+  const base = String(import.meta.env.VITE_BASE_PATH || "/").replace(/\/+$/, "") || "/";
+  if (base !== "/") {
+    return path === base;
+  }
+  return path === "/";
+}
 
 function resolveInitialContextScope(user, pathname = "") {
   const hostBinding = resolveAppHostBinding();
@@ -31,6 +42,7 @@ function resolveInitialContextScope(user, pathname = "") {
   if (user?.tenant_code) {
     const industryKey =
       (pathname.includes("/activated-carbon") && "activated-carbon") ||
+      (pathname.includes("/chemical") && "chemical") ||
       ((pathname.includes("/automotive-oem") || pathname.includes("/workflow")) &&
         "automotive-oem") ||
       industryKeyForTenantCode(user.tenant_code) ||
@@ -47,6 +59,10 @@ function resolveInitialContextScope(user, pathname = "") {
 
   if (typeof pathname === "string" && pathname.includes("/activated-carbon")) {
     return resolveScopedTenantForIndustry("activated-carbon", user);
+  }
+
+  if (typeof pathname === "string" && pathname.includes("/chemical")) {
+    return resolveScopedTenantForIndustry("chemical", user);
   }
 
   return {};
@@ -75,6 +91,21 @@ export function AppProvider({ children }) {
       };
     }
 
+    if (authEnabled && !isAuthenticated && isPublicLandingPath(pathname)) {
+      const publicContext = {
+        ...DEFAULT_APP_CONTEXT,
+        fromFallback: false,
+        loadError: null,
+        loaded: false
+      };
+      setContext(publicContext);
+      applyTenantHeaders(api, publicContext);
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
     (async () => {
       setLoading(true);
       try {
@@ -85,6 +116,9 @@ export function AppProvider({ children }) {
         let next = await fetchAppContext(api, envScope);
         if (pathname.includes("/activated-carbon")) {
           next = resolveAcAppContext(next);
+        }
+        if (pathname.includes("/chemical")) {
+          next = resolveChemAppContext(next);
         }
         if (!active) return;
         setContext(next);
@@ -105,6 +139,9 @@ export function AppProvider({ children }) {
         };
         if (pathname.includes("/activated-carbon")) {
           fallback = resolveAcAppContext(fallback);
+        }
+        if (pathname.includes("/chemical")) {
+          fallback = resolveChemAppContext(fallback);
         }
         setContext(fallback);
         applyTenantHeaders(api, fallback);
@@ -177,29 +214,22 @@ export function AppProvider({ children }) {
         });
         const selection = industryKey ? getIndustrySelection(industryKey) : null;
 
-        if (next.fromFallback && selection) {
-          const merged = mergeIndustrySelectionFallback(
-            {
-              ...next,
-              tenant_code: resolvedTenant || next.tenant_code,
-              workspace_code: resolvedWorkspace ?? next.workspace_code
-            },
-            industryKey
-          );
-          setContext(merged);
-          applyTenantHeaders(api, merged);
-          return merged;
-        }
-
-        if (selection && !next.module_code) {
-          const merged = {
-            ...next,
-            module_code: selection.module_code,
-            landing_page: next.landing_page || selection.landing_path
-          };
-          setContext(merged);
-          applyTenantHeaders(api, merged);
-          return merged;
+        if (selection && industryKey) {
+          const moduleMismatch =
+            next.module_code && next.module_code !== selection.module_code;
+          if (next.fromFallback || !next.module_code || moduleMismatch) {
+            const merged = mergeIndustrySelectionFallback(
+              {
+                ...next,
+                tenant_code: resolvedTenant || next.tenant_code,
+                workspace_code: resolvedWorkspace ?? next.workspace_code
+              },
+              industryKey
+            );
+            setContext(merged);
+            applyTenantHeaders(api, merged);
+            return merged;
+          }
         }
 
         return next;

@@ -364,9 +364,10 @@ async function resolveAcProductUuid({ product_id, product_code, product_name }) 
   return String(created.product_id);
 }
 
-export async function fetchAcRawMaterialTypes() {
+export async function fetchAcRawMaterialTypes({ activeOnly = false } = {}) {
   try {
-    const res = await api.get("/api/activated-carbon/masters/raw-material-types");
+    const params = activeOnly ? { active_only: true } : undefined;
+    const res = await api.get("/api/activated-carbon/masters/raw-material-types", { params });
     return mergeRawMaterialTypes(normalizeList(res.data));
   } catch (error) {
     if (error?.response?.status === 404) {
@@ -400,6 +401,13 @@ export async function updateAcRawMaterialType(productId, payload) {
   const res = await api.put(
     `/api/activated-carbon/masters/raw-material-types/${encodeURIComponent(productId)}`,
     payload
+  );
+  return res.data;
+}
+
+export async function markAcRawMaterialTypeObsolete(productId) {
+  const res = await api.post(
+    `/api/activated-carbon/masters/raw-material-types/${encodeURIComponent(productId)}/obsolete`
   );
   return res.data;
 }

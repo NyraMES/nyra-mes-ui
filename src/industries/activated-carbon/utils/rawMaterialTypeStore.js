@@ -82,6 +82,9 @@ export function mergeRawProductsFromMaterialTypes(
   for (const type of materialTypes) {
     const code = type?.product_code;
     if (!code) continue;
+    if (type.is_obsolete || String(type.status || "").toUpperCase() === "OBSOLETE") {
+      continue;
+    }
     const normalized = normalizeProductCode(code);
     if (byCode.has(normalized)) continue;
 

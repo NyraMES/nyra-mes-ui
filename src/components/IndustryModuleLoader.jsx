@@ -9,6 +9,7 @@ import {
 import { useAppContext } from "../context/AppContext";
 import GenericCoreDashboard from "./GenericCoreDashboard";
 import ActivatedCarbonRoutes from "../industries/activated-carbon/routes/ActivatedCarbonRoutes";
+import ChemicalRoutes from "../industries/chemical/routes/ChemicalRoutes";
 
 function ModuleLoading() {
   return (
@@ -24,17 +25,23 @@ const MODULE_LOADERS = {
   "automotive-oem": lazy(
     () => import("../industries/automotive-oem/routes/AutomotiveOemRoutes")
   ),
-  "activated-carbon": ActivatedCarbonRoutes
+  "activated-carbon": ActivatedCarbonRoutes,
+  chemical: ChemicalRoutes
 };
 
 /**
  * Reads module_code from AppContext and lazy-loads the matching industry module.
  * Falls back to GenericCoreDashboard when module_code is unknown.
  */
+/**
+ * URL path wins on industry routes so AUTO_OEM users on /activated-carbon/*
+ * still load the AC module (tenant headers are scoped separately).
+ */
 function inferModuleCode(pathname, context) {
-  if (context.module_code) return context.module_code;
   if (pathname.startsWith("/activated-carbon")) return "activated-carbon";
   if (pathname.startsWith("/automotive-oem")) return "automotive-oem";
+  if (pathname.startsWith("/chemical")) return "chemical";
+  if (context.module_code) return context.module_code;
   return null;
 }
 
@@ -55,7 +62,9 @@ function IndustryModuleLoader() {
       ? "activated-carbon"
       : pathname.startsWith("/automotive-oem")
         ? "automotive-oem"
-        : null;
+        : pathname.startsWith("/chemical")
+          ? "chemical"
+          : null;
     if (!industryKey) return;
 
     const selection = getIndustrySelection(industryKey);
@@ -88,7 +97,8 @@ function IndustryModuleLoader() {
 
   const onIndustryRoute =
     pathname.startsWith("/activated-carbon") ||
-    pathname.startsWith("/automotive-oem");
+    pathname.startsWith("/automotive-oem") ||
+    pathname.startsWith("/chemical");
 
   // Avoid blanking the whole module while tenant headers refresh.
   if (loading && !hasLoadedOnce.current && !onIndustryRoute) {
@@ -104,6 +114,10 @@ function IndustryModuleLoader() {
 
   if (moduleCode === "activated-carbon") {
     return <ActivatedCarbonRoutes />;
+  }
+
+  if (moduleCode === "chemical") {
+    return <ChemicalRoutes />;
   }
 
   return (

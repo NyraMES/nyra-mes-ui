@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../../auth/AuthContext";
 import {
@@ -18,6 +18,7 @@ import {
   fetchAcRawMaterialTypes,
   fetchAcSuppliers,
   formatAcApiError,
+  markAcRawMaterialTypeObsolete,
   updateAcRawMaterialType
 } from "../../../services/activatedCarbonApi";
 import { AC_KILN_PARAMETER_DEFINITIONS } from "../constants/kilnParameters";
@@ -108,6 +109,7 @@ function MastersPage() {
   const canConfigureProcess = userCanConfigureProcessRouting(roles);
 
   const location = useLocation();
+  const navigate = useNavigate();
   const defaultTab = canManageMasters ? "customers" : "raw-material-types";
   const initialTab =
     new URLSearchParams(location.search).get("tab") || defaultTab;
@@ -331,6 +333,25 @@ function MastersPage() {
     }
   };
 
+  const handleMarkRawMaterialTypeObsolete = async (productId) => {
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      const row = await markAcRawMaterialTypeObsolete(productId);
+      setSuccess(
+        `${row.product_name} marked obsolete — historical reports unchanged; new inward blocked.`
+      );
+      await reloadKilnParams();
+      return row;
+    } catch (e) {
+      setError(formatAcApiError(e, "Could not mark material obsolete"));
+      throw e;
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSaveKiln = async () => {
     if (!kilnName.trim()) {
       setError("Enter a kiln name (e.g. Activation Kiln 02).");
@@ -423,6 +444,11 @@ function MastersPage() {
     []
   );
 
+  const selectTab = (id) => {
+    setTab(id);
+    navigate({ pathname: location.pathname, search: `?tab=${id}` }, { replace: true });
+  };
+
   return (
     <div className="max-w-6xl">
       <AcCreatedIdsDialog
@@ -466,7 +492,7 @@ function MastersPage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px text-left ${
               tab === t.id ? "ac-masters-tab--active" : ""
             }`}
-            onClick={() => setTab(t.id)}
+            onClick={() => selectTab(t.id)}
             title={t.hint}
           >
             <span className="block">{t.label}</span>
@@ -578,6 +604,7 @@ function MastersPage() {
                   materialTypes={rawMaterialTypes}
                   onCreate={handleSaveRawMaterialType}
                   onUpdate={handleUpdateRawMaterialType}
+                  onMarkObsolete={handleMarkRawMaterialTypeObsolete}
                   saving={saving}
                   canEdit={canConfigureProcess}
                 />
@@ -738,7 +765,7 @@ function MastersPage() {
               <button
                 type="button"
                 className="font-semibold underline text-blue-800"
-                onClick={() => setTab("raw-material-types")}
+                onClick={() => selectTab("raw-material-types")}
               >
                 Material &amp; routing
               </button>{" "}
