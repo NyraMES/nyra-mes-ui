@@ -66,6 +66,170 @@ export const DEFAULT_EXECUTION_TRIPLETS_BY_STEP = {
       object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
     }
   ],
+  CRUSHING: [
+    {
+      key: "input_lump_size_mm",
+      label: "Input lump size",
+      unit: "mm",
+      default_value: "40",
+      used_at: "inbound",
+      mandatory: true,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "target_output_size_mm",
+      label: "Target output size",
+      unit: "mm",
+      default_value: "12",
+      used_at: "inbound",
+      mandatory: true,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "crush_output_kg",
+      label: "Crushed output mass",
+      unit: "KG",
+      default_value: "",
+      used_at: "inbound",
+      mandatory: true,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "crush_yield_pct",
+      label: "Crushing yield",
+      unit: "%",
+      default_value: "",
+      used_at: "inbound",
+      mandatory: true,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "moisture_after_crush_pct",
+      label: "Moisture after crush",
+      unit: "%",
+      default_value: "",
+      used_at: "inbound",
+      mandatory: false,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "dust_generation_pct",
+      label: "Dust / fines generated",
+      unit: "%",
+      default_value: "",
+      used_at: "inbound",
+      mandatory: false,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "mesh_plus_2_pct",
+      label: "+2",
+      unit: "%",
+      default_value: "",
+      used_at: "inbound",
+      mandatory: false,
+      operation_code: "IN-CRUSHER",
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "mesh_2_3_pct",
+      label: "2/3",
+      unit: "%",
+      default_value: "",
+      used_at: "inbound",
+      mandatory: false,
+      operation_code: "IN-CRUSHER",
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "mesh_3_4_pct",
+      label: "3/4",
+      unit: "%",
+      default_value: "",
+      used_at: "inbound",
+      mandatory: false,
+      operation_code: "IN-CRUSHER",
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "mesh_4_6_pct",
+      label: "4/6",
+      unit: "%",
+      default_value: "",
+      used_at: "inbound",
+      mandatory: false,
+      operation_code: "IN-CRUSHER",
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "mesh_6_10_pct",
+      label: "6/10",
+      unit: "%",
+      default_value: "",
+      used_at: "inbound",
+      mandatory: false,
+      operation_code: "IN-CRUSHER",
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "mesh_10_12_pct",
+      label: "10/12",
+      unit: "%",
+      default_value: "",
+      used_at: "inbound",
+      mandatory: false,
+      operation_code: "IN-CRUSHER",
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "mesh_12_14_pct",
+      label: "12/14",
+      unit: "%",
+      default_value: "",
+      used_at: "inbound",
+      mandatory: false,
+      operation_code: "IN-CRUSHER",
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "mesh_minus_14_pct",
+      label: "-14",
+      unit: "%",
+      default_value: "",
+      used_at: "inbound",
+      mandatory: false,
+      operation_code: "IN-CRUSHER",
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    }
+  ],
   ACTIVATION: [
     {
       key: "activation_steam_kg_h",
@@ -109,6 +273,63 @@ export const DEFAULT_EXECUTION_TRIPLETS_BY_STEP = {
       default_value: "",
       used_at: "execution",
       mandatory: true,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:lot:{lot_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    }
+  ],
+  GRADE_SEPARATION: [
+    {
+      key: "grade_code",
+      label: "Product grade",
+      unit: "",
+      default_value: "8x30",
+      used_at: "execution",
+      mandatory: true,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:lot:{lot_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#string"
+    },
+    {
+      key: "separated_kg",
+      label: "Grade mass separated",
+      unit: "KG",
+      default_value: "",
+      used_at: "execution",
+      mandatory: true,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:lot:{lot_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "grade_yield_pct",
+      label: "Grade yield",
+      unit: "%",
+      default_value: "",
+      used_at: "execution",
+      mandatory: true,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:lot:{lot_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "overs_grade_kg",
+      label: "Overs (recycle)",
+      unit: "KG",
+      default_value: "",
+      used_at: "execution",
+      mandatory: false,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:lot:{lot_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    },
+    {
+      key: "fines_grade_kg",
+      label: "Fines (sub-grade)",
+      unit: "KG",
+      default_value: "",
+      used_at: "execution",
+      mandatory: false,
       ontology_predicate: "captures",
       subject_uri_template: "urn:nyra:ac:lot:{lot_code}",
       object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
@@ -206,6 +427,7 @@ export function normalizeTripletParameter(raw) {
     used_at: raw.used_at || "execution",
     mandatory: raw.mandatory !== false,
     process_step: raw.process_step,
+    operation_code: raw.operation_code || undefined,
     ontology_predicate,
     predicate_uri: resolvePredicateUri(ontology_predicate, raw.predicate_uri, key),
     subject_uri_template: raw.subject_uri_template || "urn:nyra:ac:lot:{lot_code}",

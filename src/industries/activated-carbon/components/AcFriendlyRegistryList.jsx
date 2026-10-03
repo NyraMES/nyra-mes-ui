@@ -7,10 +7,15 @@ export default function AcFriendlyRegistryList({
   emptyLabel = "Nothing registered yet."
 }) {
   if (!items?.length) {
-    return <p className="text-sm text-slate-600 leading-relaxed">{emptyLabel}</p>;
+    return (
+      <div className="wf-light-panel rounded-xl p-4">
+        <p className="text-sm text-slate-600 leading-relaxed">{emptyLabel}</p>
+      </div>
+    );
   }
 
   return (
+    <div className="wf-light-panel rounded-xl p-3">
     <ul className="ac-friendly-registry">
       {items.map((item) => {
         const id = item[idKey] || item[codeKey];
@@ -38,5 +43,6 @@ export default function AcFriendlyRegistryList({
         );
       })}
     </ul>
+    </div>
   );
 }

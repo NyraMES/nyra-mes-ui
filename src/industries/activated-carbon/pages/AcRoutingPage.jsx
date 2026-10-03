@@ -4,6 +4,7 @@ import {
   fetchAcRoutingPlan,
   generateAcRoute
 } from "../../../services/activatedCarbonApi";
+import AcActivationProductionFlow from "../components/AcActivationProductionFlow";
 import RoutingFlow from "../../../workflow/pages/RoutingFlow";
 
 export default function AcRoutingPage() {
@@ -11,13 +12,14 @@ export default function AcRoutingPage() {
 
   return (
     <div className="space-y-6">
+      <AcActivationProductionFlow activeStepId="routing" />
       <RoutingFlow
         loadPlan={fetchAcRoutingPlan}
         generatePlan={generateAcRoute}
         loadLots={fetchAcOpenLots}
         feasibilityPath={`${base}/feasibility`}
         mastersPath={`${base}/masters`}
-        emptyLotsHint="No open lots — release on Raw Material → Release to Production, run feasibility, charge the kiln, then generate routing here."
+        emptyLotsHint="No open lots — release on Raw Material, run Feasibility Gate, charge the kiln on Kiln Feed, then generate routing here."
         stageEyebrow="Stage 05 · Lot Routing · Activated Carbon"
         showOemRoutingMaster={false}
         feasibilityFirst

@@ -1,5 +1,7 @@
 /** Align execution / routing UI with workspace routing builder (seq 10–110). */
 
+import { displayOperationLabel } from "../constants/processSteps";
+
 function normalizeCode(value) {
   return String(value || "")
     .trim()
@@ -120,6 +122,7 @@ function isShopFloorRouteOperation(routeOp) {
     "ACTIVATION",
     "DESTONING",
     "SCREENING",
+    "GRADE_SEPARATION",
     "QC"
   ].includes(step);
 }
@@ -136,60 +139,54 @@ function sortExecOps(execOps) {
   return recomputeSequentialCanStart(sorted);
 }
 
+function mergeExecWithRoute(ex, routeOp, index) {
+  const processStep = routeOp?.process_step || routeOp?.process_id || ex.process_step;
+  return attachAcExecutionFlags(
+    {
+      ...ex,
+      seq: routeOp?.operation_seq ?? routeOp?.operation_sequence ?? ex.seq ?? index + 1,
+      operation_sequence: routeOp?.operation_sequence ?? ex.operation_sequence,
+      operation_code: routeOp?.operation_code || ex.operation_code,
+      operation_id: routeOp?.operation_code || routeOp?.operation_id || ex.operation_id,
+      operation_name: displayOperationLabel({
+        process_step: processStep,
+        operation_name: routeOp?.operation_name || ex.operation_name
+      }),
+      process_step: processStep,
+      gate_type: routeOp?.gate_type ?? ex.gate_type,
+      parameters: (ex.parameters?.length ? ex.parameters : null) || routeOp?.parameters || [],
+      requires_machine: routeOp?.requires_machine ?? ex.requires_machine,
+      requires_labor: routeOp?.requires_labor ?? ex.requires_labor,
+      requires_tools: routeOp?.requires_tools ?? ex.requires_tools,
+      is_mandatory: routeOp?.is_mandatory !== false && ex.is_mandatory !== false,
+      status: ex.status || (ex.work_order_id || ex.lot_operation_id ? "Ready" : "Pending")
+    },
+    routeOp || ex
+  );
+}
+
 /**
- * Align execution work orders with the same shop-floor routing shown on Lot Routing.
- * Falls back to raw MES work orders when template/menu codes do not match OP-* steps.
+ * Masters process flow is the source of truth for what appears and in what order.
+ * Work orders only supply status / capture state for matching operation codes.
  */
 export function normalizeAcExecutionOperations(execOps = [], productRouting) {
-  const allRouteOps = productRouting?.operations || [];
-  const routeOps = allRouteOps.filter(isShopFloorRouteOperation);
-
-  if (!routeOps.length) {
-    return sortExecOps(execOps);
-  }
-
+  const routeOps = productRouting?.operations || [];
   const execByCode = new Map();
   for (const ex of execOps) {
     const code = normalizeCode(ex.operation_code || ex.operation_id);
-    if (code && !execByCode.has(code)) {
-      execByCode.set(code, ex);
-    }
+    if (code && !execByCode.has(code)) execByCode.set(code, ex);
   }
 
-  const merged = [];
-  for (const routeOp of routeOps) {
-    const code = normalizeCode(routeOp.operation_code);
-    const ex = execByCode.get(code);
-    if (!ex) continue;
-
-    merged.push(
-      attachAcExecutionFlags(
-        {
-          ...ex,
-          seq: routeOp.operation_seq ?? routeOp.operation_sequence ?? ex.seq,
-          operation_code: routeOp.operation_code || ex.operation_code,
-          operation_name: routeOp.operation_name || ex.operation_name,
-          gate_type: routeOp.gate_type,
-          parameters:
-            (ex.parameters?.length ? ex.parameters : null) ||
-            routeOp.parameters ||
-            [],
-          requires_machine: routeOp.requires_machine,
-          requires_labor: routeOp.requires_labor,
-          requires_tools: routeOp.requires_tools,
-          is_mandatory: routeOp.is_mandatory !== false && ex.is_mandatory !== false
-        },
-        routeOp
-      )
-    );
+  if (routeOps.length) {
+    const merged = routeOps.map((routeOp, index) => {
+      const code = normalizeCode(routeOp.operation_code || routeOp.operation_id);
+      return mergeExecWithRoute(execByCode.get(code) || {}, routeOp, index);
+    });
+    return sortExecOps(merged);
   }
 
-  if (!merged.length && execOps.length) {
-    return sortExecOps(execOps);
-  }
-
-  merged.sort((a, b) => (a.seq ?? 999999) - (b.seq ?? 999999));
-  return recomputeSequentialCanStart(merged);
+  if (!execOps.length) return [];
+  return sortExecOps(execOps.map((ex, index) => mergeExecWithRoute(ex, null, index)));
 }
 
 /** Map AC capture form values to nyra_mes_core exec.parameter_reading rows. */
@@ -251,13 +248,19 @@ export function resolveAcProcessStep(operation) {
   if (code.includes("PYROLYSIS") || code.includes("CARBON")) return "PYROLYSIS";
   if (code.includes("ACTIVATION")) return "ACTIVATION";
   if (code.includes("SCREEN")) return "SCREENING";
+  if (code.includes("GRADE")) return "GRADE_SEPARATION";
   if (code.includes("QC") || code.includes("QUALITY")) return "QC";
   return code.replace(/^OP[-_]/, "");
 }
 
 export function isAcKilnChargeStep(operation) {
   const step = resolveAcProcessStep(operation);
-  return step === "ACTIVATION" || step === "KILN_FEED" || step === "KILN_ACTIVATION";
+  return (
+    step === "KILN_FEED" ||
+    step === "PYROLYSIS" ||
+    step === "KILN_ACTIVATION" ||
+    step === "ACTIVATION"
+  );
 }
 
 export function isAcOptionalOperation(operation) {
@@ -267,5 +270,5 @@ export function isAcOptionalOperation(operation) {
 /** Steps with a dedicated Execution panel — hide generic empty parameter block. */
 export function hasAcStepSpecificCapture(processStep) {
   const step = normalizeCode(processStep);
-  return ["SCREENING", "QC", "KILN_FEED", "ACTIVATION", "DESTONING"].includes(step);
+  return ["SCREENING", "QC", "KILN_FEED", "PYROLYSIS", "ACTIVATION", "DESTONING", "GRADE_SEPARATION"].includes(step);
 }

@@ -1,4 +1,5 @@
-﻿import { useCallback } from "react";
+import { useCallback } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../../auth/AuthContext";
 import { useAppContext } from "../../../context/AppContext";
@@ -9,6 +10,8 @@ import {
 } from "../../../services/activatedCarbonApi";
 import { isAcContextReady } from "../utils/acContextUtils";
 import { userIsAcDemoViewer } from "../utils/acMenuAccess";
+import AcActivationProductionFlow from "../components/AcActivationProductionFlow";
+import useIndustryBasePath from "../../../hooks/useIndustryBasePath";
 import { WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
 
 /**
@@ -17,6 +20,9 @@ import { WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
 function AcFeasibilityPage() {
   const { context, loading: contextLoading } = useAppContext();
   const { user } = useAuth();
+  const basePath = useIndustryBasePath();
+  const [searchParams] = useSearchParams();
+  const initialLot = searchParams.get("lot") || "";
   const readOnly = userIsAcDemoViewer(user?.roles || []);
   const contextReady = isAcContextReady(context, contextLoading);
 
@@ -24,16 +30,19 @@ function AcFeasibilityPage() {
 
   return (
     <div className="space-y-6 max-w-6xl">
+      <AcActivationProductionFlow activeStepId="feasibility" lotCode={initialLot || null} />
+
       {contextReady ? (
         <FeasibilityScreen
           readOnly={readOnly}
           runCheck={runAcFeasibilityCheck}
           loadLots={loadLots}
+          initialLotId={initialLot}
           machineLabel="Kiln"
           machineHint="Activation kiln available and assigned on routing steps"
-          afterPassHint="Feasibility passed — the shop-floor route is generated automatically. Continue to Execution to run each process step."
-          afterPassPath="/activated-carbon/execution"
-          afterPassLabel="Proceed to Execution →"
+          afterPassHint="Feasibility passed — charge the activation kiln, then generate routing."
+          afterPassPath={`${basePath}/kiln-feed`}
+          afterPassLabel="Proceed to Kiln Feed →"
         />
       ) : (
         <WfCard>
@@ -67,8 +76,18 @@ function AcFeasibilityPage() {
             </li>
             <li>
               When all cards show <strong>Available</strong>, continue to{" "}
-              <strong>Execution</strong> — kiln feed, screening, and quality testing run as
-              process steps there.
+              <Link to={`${basePath}/kiln-feed`} className="text-blue-700 underline">
+                Kiln Feed
+              </Link>
+              , then{" "}
+              <Link to={`${basePath}/routing`} className="text-blue-700 underline">
+                Lot Routing
+              </Link>
+              , then{" "}
+              <Link to={`${basePath}/execution`} className="text-blue-700 underline">
+                Execution
+              </Link>{" "}
+              for activation, screening, and quality steps.
             </li>
           </ul>
         </WfCardBody>

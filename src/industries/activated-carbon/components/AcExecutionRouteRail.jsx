@@ -21,7 +21,8 @@ export default function AcExecutionRouteRail({
   if (!operations.length) {
     return (
       <p className="text-xs text-slate-500 py-4 text-center">
-        Route steps appear after feasibility passes and the lot is selected.
+        No route steps yet. Run Feasibility Gate for this lot — steps appear automatically when
+        feasibility passes.
       </p>
     );
   }

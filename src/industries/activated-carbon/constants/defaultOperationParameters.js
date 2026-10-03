@@ -19,6 +19,9 @@ function defineParam(code, name, opts = {}) {
 export const OPERATION_PARAMETER_DEFAULTS = {
   RAW_MATERIAL_INWARD: [
     defineParam("RECEIVED_QTY_KG", "Received quantity", { unit: "kg", min: 0 }),
+    defineParam("DC_NUMBER", "DC number", { type: "string", mandatory: false }),
+    defineParam("SUPPLIER_WEIGHT_KG", "Supplier weight", { unit: "kg", min: 0, mandatory: false }),
+    defineParam("SUPPLIER_VALUE_INR", "Supplier value", { unit: "INR", min: 0, mandatory: false }),
     defineParam("MOISTURE_PCT", "Moisture", { unit: "%", min: 0, max: 100 }),
     defineParam("SUPPLIER_BATCH", "Supplier batch ID", { type: "string", mandatory: false })
   ],

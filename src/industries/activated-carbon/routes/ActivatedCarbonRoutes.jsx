@@ -21,6 +21,8 @@ const ActivatedCarbonRoutingBuilderPage = lazy(
 const AcReportsPage = lazy(() => import("../pages/AcReportsPage"));
 const BagTraceabilityPage = lazy(() => import("../pages/BagTraceabilityPage"));
 const KilnTelemetryPage = lazy(() => import("../pages/KilnTelemetryPage"));
+const KilnFeedPage = lazy(() => import("../pages/KilnFeedPage"));
+const AcRoutingPage = lazy(() => import("../pages/AcRoutingPage"));
 
 function PageLoading() {
   return <p className="text-sm text-slate-300 py-8">Loading page…</p>;
@@ -78,11 +80,15 @@ export default function ActivatedCarbonRoutes() {
         />
         <Route
           path="kiln-feed"
-          element={<Navigate to="/activated-carbon/execution" replace />}
+          element={
+            <LazyPage>
+              <KilnFeedPage />
+            </LazyPage>
+          }
         />
         <Route
           path="raw-material-qc"
-          element={<Navigate to="/activated-carbon/raw-material?tab=qc" replace />}
+          element={<Navigate to="/activated-carbon/raw-material?tab=release" replace />}
         />
         <Route
           path="bag-tracing"
@@ -114,7 +120,11 @@ export default function ActivatedCarbonRoutes() {
         />
         <Route
           path="routing"
-          element={<Navigate to="/activated-carbon/execution" replace />}
+          element={
+            <LazyPage>
+              <AcRoutingPage />
+            </LazyPage>
+          }
         />
         <Route
           path="feasibility"

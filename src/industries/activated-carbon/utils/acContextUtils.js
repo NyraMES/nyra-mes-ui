@@ -1,6 +1,6 @@
 import { mergeIndustrySelectionFallback } from "../../../config/industrySelection";
 
-const AC_TENANT_CODES = new Set(["SAM_CARBONS", "SAM_CARBONS_DEMO"]);
+const AC_TENANT_CODES = new Set(["GR_CARBONS", "SAM_CARBONS", "SAM_CARBONS_DEMO"]);
 
 /** True when tenant/workspace headers are set enough to call AC APIs. */
 export function isAcContextReady(context, contextLoading = false) {

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 
 import DemoWatermark from "../../components/DemoWatermark";
@@ -13,6 +13,7 @@ import { AC_ASK_NYRA_SUGGESTIONS } from "./constants/askNyraSuggestions";
 import AcSidebar from "./components/AcSidebar";
 import AcTopbar from "./components/AcTopbar";
 import AcMenuRouteGuard from "./components/AcMenuRouteGuard";
+import "./styles/acMasters.css";
 import { useAuth } from "../../auth/AuthContext";
 import { userIsAcDemoViewer } from "./utils/acMenuAccess";
 

@@ -36,6 +36,32 @@ export function acInwardBagObjectUri(bagCode) {
   return `urn:nyra:ac:inwardBag:${bagCode}`;
 }
 
+export const AC_INWARD_RECEIPT_PARAMETERS = {
+  DC_NUMBER: "urn:nyra:ac:parameter:DC_NUMBER",
+  SUPPLIER_WEIGHT_KG: "urn:nyra:ac:parameter:SUPPLIER_WEIGHT_KG",
+  OUR_WEIGHT_KG: "urn:nyra:ac:parameter:OUR_WEIGHT_KG",
+  SUPPLIER_VALUE_INR: "urn:nyra:ac:parameter:SUPPLIER_VALUE_INR",
+  RECEIVED_QTY_KG: "urn:nyra:ac:parameter:RECEIVED_QTY_KG",
+  WEIGHT_TO_CRUSHER_KG: "urn:nyra:ac:parameter:WEIGHT_TO_CRUSHER_KG",
+  WEIGHT_VARIANCE_COMMENT: "urn:nyra:ac:parameter:WEIGHT_VARIANCE_COMMENT"
+};
+
+/** Inward crusher performance — mesh shares as % on urn:nyra:ac:inward:{order_code}. */
+export const AC_CRUSHER_PERFORMANCE_PARAMETERS = {
+  ROTARY: "urn:nyra:ac:parameter:ROTARY",
+  CRUSHER_GRADE: "urn:nyra:ac:parameter:CRUSHER_GRADE",
+  MESH_PLUS_2_PCT: "urn:nyra:ac:parameter:MESH_PLUS_2_PCT",
+  MESH_2_3_PCT: "urn:nyra:ac:parameter:MESH_2_3_PCT",
+  MESH_3_4_PCT: "urn:nyra:ac:parameter:MESH_3_4_PCT",
+  MESH_4_6_PCT: "urn:nyra:ac:parameter:MESH_4_6_PCT",
+  MESH_6_10_PCT: "urn:nyra:ac:parameter:MESH_6_10_PCT",
+  MESH_10_12_PCT: "urn:nyra:ac:parameter:MESH_10_12_PCT",
+  MESH_12_14_PCT: "urn:nyra:ac:parameter:MESH_12_14_PCT",
+  MESH_MINUS_14_PCT: "urn:nyra:ac:parameter:MESH_MINUS_14_PCT",
+  MOISTURE_PCT: "urn:nyra:ac:parameter:MOISTURE_PCT",
+  DUST_PCT: "urn:nyra:ac:parameter:DUST_PCT"
+};
+
 /**
  * ISA-95 trace chain steps staged as KG triples on save (API adapter).
  * Raw material QC uses AC_TRIPLET_PREDICATES; post-activation uses lot-scoped URIs.
@@ -48,18 +74,67 @@ export const AC_ONTOLOGY_TRACE_STEPS = [
     api: "POST /api/activated-carbon/raw-material-inward"
   },
   {
-    screen: "Bag traceability",
+    screen: "Initial QC",
+    subject: (code) => acInwardSubjectUri(code),
+    object: (code) => `urn:nyra:ac:initialQc:${code}`,
+    predicates: ["testedBy", "captures"],
+    api: "POST /api/activated-carbon/raw-material-initial-qc"
+  },
+  {
+    screen: "Bag split",
     subject: (code) => acInwardBagObjectUri(code),
     object: (code) => acInwardSubjectUri(code),
     predicates: ["containedIn"],
     api: "POST /api/activated-carbon/inward-bags"
   },
   {
-    screen: "Raw Material QC",
+    screen: "Crusher output",
+    subject: (code) => acInwardSubjectUri(code),
+    object: (code) => `urn:nyra:ac:crusherOutput:${code}`,
+    predicates: ["captures"],
+    api: "POST /api/activated-carbon/raw-material-crusher-output"
+  },
+  {
+    screen: "Grade separation",
+    subject: (code) => acInwardSubjectUri(code),
+    object: (code) => `urn:nyra:ac:gradeSeparation:${code}`,
+    predicates: ["captures"],
+    api: "POST /api/activated-carbon/raw-material-grade-separation"
+  },
+  {
+    screen: "Crushing / Sizing",
+    subject: (code) => acInwardSubjectUri(code),
+    object: (code) => `urn:nyra:ac:crushing:${code}`,
+    predicates: ["captures"],
+    api: "POST /api/activated-carbon/raw-material-crushing"
+  },
+  {
+    screen: "Raw Material QC (auto-passed after RM outward — no separate screen)",
     subject: (code) => acInwardSubjectUri(code),
     object: (code) => acRawMaterialQcObjectUri(code),
     predicates: ["testedBy", "captures", "hasStonesKg", "hasUnburntKg", "hasMinus20Kg"],
-    api: "POST /api/activated-carbon/raw-material-qc"
+    api: "POST /api/activated-carbon/raw-material-inbound-execution (IN-RM-OUT)"
+  },
+  {
+    screen: "Feasibility Gate",
+    subject: (code) => acProductionLotSubjectUri(code),
+    object: (code) => `urn:nyra:ac:feasibility:${code}`,
+    predicates: ["feasibilityChecked"],
+    api: "POST /api/activated-carbon/lots/{lot_code}/feasibility/run"
+  },
+  {
+    screen: "Kiln Feed",
+    subject: (code) => acProductionLotSubjectUri(code),
+    object: (code) => `urn:nyra:ac:kilnFeed:${code}`,
+    predicates: ["chargedTo"],
+    api: "POST /api/activated-carbon/kiln-feed"
+  },
+  {
+    screen: "Lot Routing",
+    subject: (code) => acProductionLotSubjectUri(code),
+    object: (code) => `urn:nyra:ac:routing:${code}`,
+    predicates: ["generates"],
+    api: "POST /api/activated-carbon/routing/generate"
   },
   {
     screen: "Screening",
@@ -67,6 +142,13 @@ export const AC_ONTOLOGY_TRACE_STEPS = [
     object: (code) => acScreeningObjectUri(code),
     predicates: ["screenedAt"],
     api: "POST /api/activated-carbon/screening"
+  },
+  {
+    screen: "Grade separation",
+    subject: (code) => acProductionLotSubjectUri(code),
+    object: (code) => `urn:nyra:ac:gradeSeparation:${code}`,
+    predicates: ["captures"],
+    api: "POST /api/activated-carbon/grade-separation"
   },
   {
     screen: "Quality Testing",

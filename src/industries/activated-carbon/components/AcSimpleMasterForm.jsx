@@ -17,7 +17,7 @@ export default function AcSimpleMasterForm({
   disabled = false
 }) {
   return (
-    <div className="ac-simple-master-form rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="ac-simple-master-form wf-light-panel rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-start gap-3 mb-4">
         <span
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-sm font-bold text-white"

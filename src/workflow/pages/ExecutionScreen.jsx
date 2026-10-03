@@ -6,6 +6,7 @@ import AcExecutionParameterCapture from "../../industries/activated-carbon/compo
 import AcExecutionRouteRail from "../../industries/activated-carbon/components/AcExecutionRouteRail";
 import AcExecutionKilnFeedPanel from "../../industries/activated-carbon/components/AcExecutionKilnFeedPanel";
 import AcExecutionScreeningPanel from "../../industries/activated-carbon/components/AcExecutionScreeningPanel";
+import AcExecutionGradeSeparationPanel from "../../industries/activated-carbon/components/AcExecutionGradeSeparationPanel";
 import AcExecutionQualityPanel from "../../industries/activated-carbon/components/AcExecutionQualityPanel";
 import { formatApiError } from "../../services/api";
 import {
@@ -17,7 +18,7 @@ import {
   resumeMesCoreExecution,
   startMesCoreExecution,
 } from "../../services/mesCoreApi";
-import { fetchAcMasters, fetchAcRoutingLots, generateAcRoute, createAcScreening, createAcQualityTest } from "../../services/activatedCarbonApi";
+import { fetchAcMasters, fetchAcRoutingLots, generateAcRoute, createAcScreening, createAcGradeSeparation, createAcQualityTest, formatAcLotOptionLabel } from "../../services/activatedCarbonApi";
 import useAcPageRefresh from "../../industries/activated-carbon/hooks/useAcPageRefresh";
 import {
   normalizeAcExecutionOperations,
@@ -32,6 +33,7 @@ import {
 } from "../../industries/activated-carbon/utils/acExecutionOperations";
 import { loadAcProductRoutingForExecution } from "../../industries/activated-carbon/utils/acRoutingResolver";
 import useWorkflowNavPaths from "../../hooks/useWorkflowNavPaths";
+import { isFeasibilityReady } from "../../utils/workflowValidation";
 import { useWorkflow } from "../WorkflowContext";
 import {
   WfCard,
@@ -216,9 +218,19 @@ function ExecutionScreen({ variant = "default" }) {
       let d = (await fetchMesCoreExecutionSummary(lotId, { sync })) || {};
       let ops = Array.isArray(d.operations) ? d.operations : [];
 
-      if (isAcUnified && ops.length === 0) {
+      if (isAcUnified) {
         const lotRow = lots.find((l) => (l.lot_id || l.lot_code) === lotId);
-        if (lotRow?.feasibility_ready) {
+        let feasibilityReady = lotRow?.feasibility_ready;
+        if (feasibilityReady == null) {
+          try {
+            const { fetchMesCoreLotFeasibility } = await import("../../services/mesCoreApi");
+            const gate = await fetchMesCoreLotFeasibility(lotId);
+            feasibilityReady = isFeasibilityReady(gate?.overall_status);
+          } catch {
+            feasibilityReady = false;
+          }
+        }
+        if (feasibilityReady) {
           try {
             await generateAcRoute(lotId);
             d = (await fetchMesCoreExecutionSummary(lotId, { sync: true })) || d;
@@ -300,6 +312,16 @@ function ExecutionScreen({ variant = "default" }) {
     if (!target) return false;
     return isAcKilnChargeStep(target);
   }, [isAcUnified, selectedLot, selectedOp, nextStartableOp]);
+
+  const showKilnLiveTracking = useMemo(() => {
+    if (!isAcUnified || !selectedLot || needsKilnCharge) return false;
+    const meta = selectedLot.metadata || selectedLot.metadata_ || {};
+    if (!meta.charged_at && meta.kiln_live_status !== "IN_KILN") return false;
+    const target = selectedOp || nextStartableOp;
+    if (!target || !isAcKilnChargeStep(target)) return false;
+    const lotStatus = (selectedLot.status || "").toUpperCase();
+    return lotStatus === "IN_PROGRESS";
+  }, [isAcUnified, selectedLot, selectedOp, nextStartableOp, needsKilnCharge]);
 
   useEffect(() => {
     if (!isAcUnified || !sortedOperations.length) return;
@@ -501,6 +523,8 @@ function ExecutionScreen({ variant = "default" }) {
       const stepHint =
         activeProcessStep === "SCREENING"
           ? "Enter Good fraction (KG) in the screening form."
+          : activeProcessStep === "GRADE_SEPARATION"
+            ? "Enter grade code and separated mass in the grade separation form."
           : activeProcessStep === "QC"
             ? "Complete the quality test fields."
             : "Fill in all required fields for this step.";
@@ -520,8 +544,16 @@ function ExecutionScreen({ variant = "default" }) {
         const production_lot_id = selectedLot?.production_lot_id || selectedLot?.lot_id || lotId;
         if (activeProcessStep === "SCREENING") {
           await createAcScreening({ production_lot_id, ...extra });
+        } else if (activeProcessStep === "GRADE_SEPARATION") {
+          await createAcGradeSeparation({ production_lot_id, ...extra });
         } else if (activeProcessStep === "QC") {
-          await createAcQualityTest(extra);
+          if (!production_lot_id) {
+            alert(
+              "Select a production lot with a valid ID before quality testing. Refresh the page and pick the lot again."
+            );
+            return;
+          }
+          await createAcQualityTest({ production_lot_id, ...extra });
         }
       }
 
@@ -774,7 +806,7 @@ function ExecutionScreen({ variant = "default" }) {
                     const id = l.lot_id || l.lot_code;
                     return (
                       <option key={id} value={id}>
-                        {id} · qty {l.lot_quantity}
+                        {formatAcLotOptionLabel(l)}
                       </option>
                     );
                   })}
@@ -876,8 +908,27 @@ function ExecutionScreen({ variant = "default" }) {
                   fetchAcRoutingLots()
                     .then((rows) => setLots(rows || []))
                     .catch(() => {});
+                  fetchMesCoreProductionLots()
+                    .then((rows) => {
+                      if (!rows?.length) return;
+                      setLots((prev) => {
+                        const byId = new Map(
+                          (prev || []).map((l) => [l.production_lot_id || l.lot_id || l.lot_code, l])
+                        );
+                        for (const row of rows) {
+                          const id = row.production_lot_id || row.lot_id || row.lot_code;
+                          byId.set(id, { ...byId.get(id), ...row });
+                        }
+                        return Array.from(byId.values());
+                      });
+                    })
+                    .catch(() => {});
                 }}
               />
+            )}
+
+            {isAcUnified && showKilnLiveTracking && (
+              <AcExecutionKilnFeedPanel lot={selectedLot} liveOnly />
             )}
 
             {selectedOp && selectedOp.status === "Completed" && (
@@ -1002,6 +1053,18 @@ function ExecutionScreen({ variant = "default" }) {
                     />
                   </div>
                 )}
+
+                {isAcUnified &&
+                  (selectedOp.status === "Ready" || selectedOp.status === "In Progress") &&
+                  activeProcessStep === "GRADE_SEPARATION" && (
+                    <div className="mt-4">
+                      <AcExecutionGradeSeparationPanel
+                        key={`grade-${selectedWoId}`}
+                        ref={stepExtraRef}
+                        readOnly={selectedOp.status === "Completed"}
+                      />
+                    </div>
+                  )}
 
                 {isAcUnified &&
                   (selectedOp.status === "Ready" || selectedOp.status === "In Progress") &&

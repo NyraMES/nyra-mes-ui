@@ -21,9 +21,10 @@ import {
 } from "../utils/acProductUtils";
 import useAcMasters from "../hooks/useAcMasters";
 import { isAcContextReady } from "../utils/acContextUtils";
+import AcInwardRecordsTable from "../components/AcInwardRecordsTable";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
 
-function RawMaterialInwardPage({ embedded = false }) {
+function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
   const { context, loading: contextLoading } = useAppContext();
   const location = useLocation();
   const { focusTick } = useAcPageRefresh();
@@ -38,7 +39,9 @@ function RawMaterialInwardPage({ embedded = false }) {
 
   const [supplierId, setSupplierId] = useState("");
   const [productId, setProductId] = useState("");
-  const [quantity, setQuantity] = useState("1000");
+  const [dcNumber, setDcNumber] = useState("");
+  const [supplierWeight, setSupplierWeight] = useState("");
+  const [ourWeight, setOurWeight] = useState("1000");
 
   const suppliers = masters.suppliers || [];
   const rawProducts = masters.raw_products || [];
@@ -75,7 +78,7 @@ function RawMaterialInwardPage({ embedded = false }) {
   }, [context, contextLoading, context.tenant_code, context.workspace_code, location.key, focusTick, reloadOrders]);
 
   const handleSave = async () => {
-    if (!supplierId || !productId || !quantity) return;
+    if (!supplierId || !productId || !dcNumber.trim() || !supplierWeight || !ourWeight) return;
     if (!selectedSupplier) {
       setError("Select a supplier before recording inward.");
       return;
@@ -90,7 +93,10 @@ function RawMaterialInwardPage({ embedded = false }) {
         product_id: selectedProduct?.product_id || productId,
         product_code: selectedProduct?.product_code,
         product_name: selectedProduct?.product_name,
-        quantity,
+        quantity: ourWeight,
+        dc_number: dcNumber.trim(),
+        supplier_weight_kg: supplierWeight,
+        our_weight_kg: ourWeight,
         uom: "KG"
       });
       const items = [
@@ -103,10 +109,13 @@ function RawMaterialInwardPage({ embedded = false }) {
             result.order.supplier_code
         },
         { label: "Order line", value: result.line.line_code },
-        { label: "Quantity", value: `${quantity} KG` }
+        { label: "DC number", value: dcNumber.trim() },
+        { label: "Supplier weight", value: `${supplierWeight} KG` },
+        { label: "Our weight", value: `${ourWeight} KG` }
       ];
       setSuccess(`Inward order ${result.order.order_code} recorded.`);
       setIdsDialog({ open: true, items });
+      onInwardCreated?.(result.order.customer_order_id);
       await reloadOrders();
       await reloadMasters();
     } catch (e) {
@@ -143,7 +152,7 @@ function RawMaterialInwardPage({ embedded = false }) {
         <SectionHeader
           eyebrow="Inbound"
           title="Raw Material Inward"
-          subtitle="Supplier receipt only — not linked to a customer PO. After QC, release to production on the Release to Production tab."
+          subtitle="Supplier receipt only — not linked to a customer PO. After inbound prep, release to production."
         />
       )}
 
@@ -202,14 +211,36 @@ function RawMaterialInwardPage({ embedded = false }) {
               </p>
             )}
 
-            <label className="text-sm md:col-span-2">
-              <span className="block mb-1 font-medium text-slate-700">Quantity (KG)</span>
+            <label className="text-sm">
+              <span className="block mb-1 font-medium text-slate-700">DC number *</span>
+              <input
+                type="text"
+                className="w-full rounded border border-slate-300 px-3 py-2"
+                value={dcNumber}
+                onChange={(e) => setDcNumber(e.target.value)}
+                placeholder="Supplier delivery challan"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="block mb-1 font-medium text-slate-700">Supplier weight (KG) *</span>
               <input
                 type="number"
-                min="1"
+                min="0.01"
+                step="0.01"
+                className="w-full rounded border border-slate-300 px-3 py-2"
+                value={supplierWeight}
+                onChange={(e) => setSupplierWeight(e.target.value)}
+              />
+            </label>
+            <label className="text-sm md:col-span-2">
+              <span className="block mb-1 font-medium text-slate-700">Our weight (KG) *</span>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
                 className="w-full max-w-xs rounded border border-slate-300 px-3 py-2"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
+                value={ourWeight}
+                onChange={(e) => setOurWeight(e.target.value)}
               />
             </label>
 
@@ -223,92 +254,32 @@ function RawMaterialInwardPage({ embedded = false }) {
             ) : null}
 
             <p className="text-xs text-slate-500 md:col-span-2">
-              Production order and lot are created on the{" "}
-              <strong>Release to Production</strong> tab (after QC).
+              Next: open <strong>2 · Inbound prep</strong> for Lab → RMS bags → crusher → RM outward,
+              then <strong>Release</strong>.
             </p>
           </div>
           <AcSaveBar
             onSave={handleSave}
             saving={saving}
             saveLabel="Record inward"
-            disabled={noSuppliers || noProducts || !supplierId}
+            disabled={
+              noSuppliers ||
+              noProducts ||
+              !supplierId ||
+              !dcNumber.trim() ||
+              !supplierWeight ||
+              !ourWeight
+            }
           />
         </WfCardBody>
       </WfCard>
 
-      <WfCard>
-        <WfCardHeader
-          title="Inward records"
-          right={
-            <button
-              type="button"
-              className="text-xs font-medium text-blue-700 hover:text-blue-900"
-              disabled={ordersLoading || contextLoading || !context.loaded}
-              onClick={() => reloadOrders().catch((e) => setError(formatAcApiError(e, "Failed to refresh")))}
-            >
-              {ordersLoading ? "Refreshing…" : "Refresh"}
-            </button>
-          }
-        />
-        <WfCardBody>
-          {ordersLoading && orders.length === 0 ? (
-            <p className="text-sm text-slate-600">Loading inward orders…</p>
-          ) : orders.length === 0 ? (
-            <p className="text-sm text-slate-600">No inward orders yet.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-slate-500 border-b">
-                  <th className="py-2">Order</th>
-                  <th className="py-2">PO</th>
-                  <th className="py-2">Material</th>
-                  <th className="py-2 text-right">Received (KG)</th>
-                  <th className="py-2 text-right">Released (KG)</th>
-                  <th className="py-2 text-right">Available (KG)</th>
-                  <th className="py-2">Supplier</th>
-                  <th className="py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((o) => {
-                  const received = Number(o.inward_quantity_kg ?? 0);
-                  const released = Number(o.allocated_to_production_kg ?? 0);
-                  const available = Number(
-                    o.available_quantity_kg ?? Math.max(received - released, 0)
-                  );
-                  const material =
-                    o.raw_product_code ||
-                    (o.lines || []).find((l) =>
-                      String(l.product_code || "").toUpperCase().startsWith("RAW-")
-                    )?.product_code ||
-                    "—";
-                  return (
-                    <tr
-                      key={o.customer_order_id || o.order_code}
-                      className="border-b border-slate-100"
-                    >
-                      <td className="py-2 font-mono">{o.order_code}</td>
-                      <td className="py-2 font-mono text-slate-600">
-                        {o.production_order_code || "—"}
-                      </td>
-                      <td className="py-2 font-mono text-slate-700">{material}</td>
-                      <td className="py-2 text-right font-mono">{received || "—"}</td>
-                      <td className="py-2 text-right font-mono">{released || "0"}</td>
-                      <td className="py-2 text-right font-mono font-medium text-emerald-800">
-                        {available}
-                      </td>
-                      <td className="py-2">
-                        <div>{o.supplier_name || o.supplier_code || "—"}</div>
-                      </td>
-                      <td className="py-2">{o.status}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </WfCardBody>
-      </WfCard>
+      <AcInwardRecordsTable
+        orders={orders}
+        loading={ordersLoading}
+        onRefresh={() => reloadOrders().catch((e) => setError(formatAcApiError(e, "Failed to refresh")))}
+        className=""
+      />
     </div>
   );
 }

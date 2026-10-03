@@ -660,6 +660,7 @@ export const AC_QC_PASS_STATUSES = new Set([
 /** True when raw material inward has passed QC (order status or QC metadata). */
 export function isAcInwardQcPassed(order) {
   if (!order || typeof order !== "object") return false;
+  if (order.inbound_prep_complete) return true;
   const orderStatus = String(order.status || "").toUpperCase();
   if (orderStatus === "QC_PASSED") return true;
   const qcStatus = String(
@@ -697,14 +698,68 @@ export function enrichAcInwardOrder(order) {
     production_order_code:
       order.production_order_code ||
       order.metadata?.production_order_code ||
+      null,
+    released_lots: order.released_lots || order.metadata?.released_lots || [],
+    raw_material_type_id:
+      order.raw_material_type_id ||
+      order.metadata?.raw_product_id ||
       null
   };
 }
 
-/** QC-passed inward orders eligible for release-to-production on the feasibility gate. */
+export async function createAcInwardGradeSeparation(payload) {
+  const res = await api.post("/api/activated-carbon/raw-material-grade-separation", {
+    customer_order_id: String(payload.customer_order_id),
+    grade_splits: payload.grade_splits.map((row) => ({
+      grade_label: row.grade_label,
+      quantity_kg: Number(row.quantity_kg)
+    }))
+  });
+  return res.data;
+}
+
+/** QC-passed inward; enriches with saved inbound workflow outputs (read-only, no re-capture). */
 export async function fetchAcReleaseEligibleInward() {
-  const rows = await fetchAcRawMaterialQc();
-  return rows.filter(isAcInwardQcPassed).map(enrichAcInwardOrder);
+  const [qcRows, workflowRows] = await Promise.all([
+    fetchAcRawMaterialQc(),
+    fetchAcInboundWorkflow().catch(() => [])
+  ]);
+  const wfById = new Map(workflowRows.map((row) => [String(row.customer_order_id), row]));
+  return qcRows
+    .filter(isAcInwardQcPassed)
+    .map((order) => {
+      const enriched = enrichAcInwardOrder(order);
+      const wf = wfById.get(String(order.customer_order_id));
+      if (!wf) return enriched;
+      return {
+        ...enriched,
+        initial_qc_status: wf.initial_qc_status,
+        crusher_complete: Boolean(wf.crusher_complete),
+        separation_complete: Boolean(wf.separation_complete),
+        remaining_kg: wf.remaining_kg,
+        scrap_total_kg: wf.scrap_total_kg,
+        crusher_scrap: wf.crusher_scrap || [],
+        crusher_grades: wf.crusher_grades || [],
+        weight_to_crusher_kg: wf.weight_to_crusher_kg,
+        bag_count: wf.bag_count
+      };
+    });
+}
+
+/** Grade lots from saved separation — used when release qty matches stored splits. */
+export function acGradeLotSplitsForRelease(inward, releaseQtyKg) {
+  if (!inward?.separation_complete || !Array.isArray(inward.crusher_grades)) return null;
+  const splits = inward.crusher_grades
+    .map((row) => ({
+      grade_label: row.grade_label,
+      quantity_kg: Number(row.quantity_kg ?? 0)
+    }))
+    .filter((row) => row.grade_label && row.quantity_kg > 0);
+  if (!splits.length) return null;
+  const total = splits.reduce((sum, row) => sum + row.quantity_kg, 0);
+  const release = Number(releaseQtyKg);
+  if (!Number.isFinite(release) || Math.abs(total - release) > 0.001) return null;
+  return splits;
 }
 
 function mapInwardOrderToQcRow(order) {
@@ -716,6 +771,8 @@ function mapInwardOrderToQcRow(order) {
   });
   if (!rawLine && !enriched.inward_quantity_kg) return null;
   const meta = enriched.metadata?.raw_material_qc || enriched.raw_material_qc || {};
+  const crushMeta =
+    enriched.metadata?.raw_material_crush || enriched.raw_material_crush || {};
   return {
     customer_order_id: enriched.customer_order_id,
     order_code: enriched.order_code,
@@ -733,7 +790,14 @@ function mapInwardOrderToQcRow(order) {
     minus20_kg: meta.minus20_kg ?? null,
     operator_remarks: meta.operator_remarks ?? null,
     qc_status: enriched.qc_status || meta.qc_status || "PENDING",
-    qc_at: meta.qc_at ?? null
+    qc_at: meta.qc_at ?? null,
+    crush_status: crushMeta.status || enriched.crush_status || "PENDING",
+    crush_at: crushMeta.completed_at ?? enriched.crush_at ?? null,
+    inbound_steps: enriched.inbound_steps || [],
+    inbound_prep_complete: enriched.inbound_prep_complete,
+    next_inbound_step: enriched.next_inbound_step,
+    raw_material_type_id: enriched.raw_material_type_id,
+    released_lots: enriched.released_lots || enriched.metadata?.released_lots || []
   };
 }
 
@@ -770,7 +834,15 @@ export async function fetchAcInwardBags(orderCode) {
 
 export async function createAcInwardBag(payload) {
   try {
-    const res = await api.post("/api/activated-carbon/inward-bags", payload);
+    const body = {
+      customer_order_id: String(payload.customer_order_id),
+      weight_kg: Number(payload.weight_kg),
+      label: payload.label || undefined
+    };
+    if (payload.grade) {
+      body.grade = payload.grade;
+    }
+    const res = await api.post("/api/activated-carbon/inward-bags", body);
     return res.data;
   } catch (error) {
     if (error?.response?.status === 404) {
@@ -800,7 +872,82 @@ export async function createAcRawMaterialInward(payload) {
     uom: payload.uom || "KG",
     create_production_order: false
   };
+  if (payload.dc_number) {
+    body.dc_number = String(payload.dc_number).trim();
+  }
+  if (payload.supplier_weight_kg != null && payload.supplier_weight_kg !== "") {
+    body.supplier_weight_kg = Number(payload.supplier_weight_kg);
+  }
+  if (payload.our_weight_kg != null && payload.our_weight_kg !== "") {
+    body.our_weight_kg = Number(payload.our_weight_kg);
+  }
+  if (payload.supplier_value_inr != null && payload.supplier_value_inr !== "") {
+    body.supplier_value_inr = Number(payload.supplier_value_inr);
+  }
   const res = await api.post("/api/activated-carbon/raw-material-inward", body);
+  return res.data;
+}
+
+export async function fetchAcInboundWorkflow() {
+  const res = await api.get("/api/activated-carbon/raw-material-inbound-workflow");
+  return normalizeList(res.data);
+}
+
+export async function createAcInitialQc(payload) {
+  const res = await api.post("/api/activated-carbon/raw-material-initial-qc", {
+    customer_order_id: String(payload.customer_order_id),
+    moisture_pct: payload.moisture_pct,
+    dust_pct: payload.dust_pct,
+    ad_value: payload.ad_value,
+    qc_status: payload.qc_status || "PASS"
+  });
+  return res.data;
+}
+
+export async function createAcWeightToCrusher(payload) {
+  const res = await api.post("/api/activated-carbon/raw-material-weight-to-crusher", {
+    customer_order_id: String(payload.customer_order_id),
+    weight_to_crusher_kg: Number(payload.weight_to_crusher_kg),
+    variance_comment: payload.variance_comment || undefined
+  });
+  return res.data;
+}
+
+export async function deleteAcInwardBag(customerOrderId, bagId) {
+  const res = await api.delete(
+    `/api/activated-carbon/inward-bags/${encodeURIComponent(bagId)}?customer_order_id=${encodeURIComponent(String(customerOrderId))}`
+  );
+  return res.data;
+}
+
+export async function feedAcInwardBagToCrusher(payload) {
+  const res = await api.post("/api/activated-carbon/inward-bags/feed-crusher", {
+    customer_order_id: String(payload.customer_order_id),
+    bag_id: String(payload.bag_id)
+  });
+  return res.data;
+}
+
+export async function fetchAcInboundAdmin() {
+  const res = await api.get("/api/activated-carbon/inbound-admin");
+  return res.data;
+}
+
+export async function saveAcInboundAdmin(payload) {
+  const res = await api.put("/api/activated-carbon/inbound-admin", payload);
+  return res.data;
+}
+
+export async function reconcileAcInwardBags(payload) {
+  const res = await api.post("/api/activated-carbon/inward-bags/reconcile", {
+    customer_order_id: String(payload.customer_order_id),
+    variance_comment: payload.variance_comment || undefined
+  });
+  return res.data;
+}
+
+export async function createAcCrusherOutput(payload) {
+  const res = await api.post("/api/activated-carbon/raw-material-crusher-output", payload);
   return res.data;
 }
 
@@ -849,6 +996,40 @@ export async function createAcRawMaterialQc(payload) {
   }
 }
 
+export async function fetchAcInboundExecution() {
+  try {
+    const res = await api.get("/api/activated-carbon/raw-material-inbound-execution");
+    return normalizeList(res.data);
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return fetchAcRawMaterialQc();
+    }
+    throw error;
+  }
+}
+
+export async function completeAcInboundExecutionStep(payload) {
+  const res = await api.post("/api/activated-carbon/raw-material-inbound-execution", payload);
+  return res.data;
+}
+
+export async function fetchAcRawMaterialCrushing() {
+  try {
+    const res = await api.get("/api/activated-carbon/raw-material-crushing");
+    return normalizeList(res.data);
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return fetchAcRawMaterialQc();
+    }
+    throw error;
+  }
+}
+
+export async function createAcRawMaterialCrush(payload) {
+  const res = await api.post("/api/activated-carbon/raw-material-crushing", payload);
+  return res.data;
+}
+
 export async function fetchAcKilnFeedLots() {
   const res = await api.get("/api/activated-carbon/kiln-feed");
   return normalizeList(res.data);
@@ -860,7 +1041,22 @@ export async function createAcKilnFeedLot(payload) {
 }
 
 export async function createAcMakeToStockOrder(payload) {
-  const res = await api.post("/api/activated-carbon/manufacturing-orders", payload);
+  const body = {
+    quantity: Number(payload.quantity),
+    uom: payload.uom || "KG",
+    inward_order_id: payload.inward_order_id ? String(payload.inward_order_id) : undefined,
+    finished_product_id: payload.finished_product_id,
+    production_order_code: payload.production_order_code
+  };
+  if (payload.lot_splits?.length) {
+    body.lot_splits = payload.lot_splits.map((row) => ({
+      grade_label: row.grade_label,
+      quantity_kg: Number(row.quantity_kg)
+    }));
+  } else if (payload.lot_quantities?.length) {
+    body.lot_quantities = payload.lot_quantities.map((q) => Number(q));
+  }
+  const res = await api.post("/api/activated-carbon/manufacturing-orders", body);
   return res.data;
 }
 
@@ -971,13 +1167,31 @@ export async function createAcScreening(payload) {
   return res.data;
 }
 
+export async function createAcGradeSeparation(payload) {
+  const res = await api.post("/api/activated-carbon/grade-separation", payload);
+  return res.data;
+}
+
 export async function fetchAcQualityTesting() {
   const res = await api.get("/api/activated-carbon/quality-testing");
   return normalizeList(res.data);
 }
 
 export async function createAcQualityTest(payload) {
-  const res = await api.post("/api/activated-carbon/quality-testing", payload);
+  const lotId = payload.production_lot_id;
+  if (!lotId) {
+    throw new Error("production_lot_id is required for quality testing.");
+  }
+  const body = {
+    production_lot_id: String(lotId),
+    status: payload.status || payload.qc_status || "OPEN"
+  };
+  for (const key of ["iodine_mg_g", "ash_pct", "moisture_pct", "bulk_density", "remarks"]) {
+    if (payload[key] != null && payload[key] !== "") {
+      body[key] = payload[key];
+    }
+  }
+  const res = await api.post("/api/activated-carbon/quality-testing", body);
   return res.data;
 }
 
@@ -1063,18 +1277,34 @@ export async function fetchAcRoutingLots(options = {}) {
   const byCode = new Map();
   for (const lot of core) {
     const id = lot.lot_id || lot.lot_code;
-    if (id) byCode.set(id, lot);
+    if (id) {
+      byCode.set(id, {
+        ...lot,
+        metadata: lot.metadata || lot.metadata_ || {}
+      });
+    }
   }
   for (const row of kiln) {
     const id = row.lot_code || row.lot_id;
-    if (!id || byCode.has(id)) continue;
-    byCode.set(id, {
-      lot_id: id,
-      production_order_id: row.production_order_code || row.production_order_id,
-      lot_quantity: row.lot_quantity,
-      status: row.status,
-      product_code: row.product_code
-    });
+    if (!id) continue;
+    const existing = byCode.get(id);
+    const rowMeta = row.metadata || row.metadata_ || {};
+    if (existing) {
+      byCode.set(id, {
+        ...existing,
+        ...row,
+        metadata: { ...existing.metadata, ...rowMeta }
+      });
+    } else {
+      byCode.set(id, {
+        lot_id: id,
+        production_order_id: row.production_order_code || row.production_order_id,
+        lot_quantity: row.lot_quantity,
+        status: row.status,
+        product_code: row.product_code,
+        metadata: rowMeta
+      });
+    }
   }
 
   const lots = Array.from(byCode.values());
@@ -1134,13 +1364,21 @@ export async function fetchAcRoutingLots(options = {}) {
   });
 }
 
-/** Lots ready for unified shop-floor execution (feasibility passed, routing not complete). */
+/** Lots for unified shop-floor execution (released, routing not complete). */
 export async function fetchAcExecutionLots() {
-  const lots = await fetchAcRoutingLots({ excludeRoutingComplete: true });
+  const lots = await fetchAcOpenLots().catch(() =>
+    fetchAcRoutingLots({ excludeRoutingComplete: true })
+  );
+  const terminalStatuses = new Set([
+    "COMPLETED",
+    "STOCKED",
+    "DISPATCHED",
+    "CLOSED",
+    "CANCELLED"
+  ]);
   return lots.filter((lot) => {
     const status = (lot.status || "").toUpperCase();
-    if (lot.feasibility_ready) return true;
-    return status === "IN_PROGRESS" || status === "QC_PENDING";
+    return !lot.routing_complete && !terminalStatuses.has(status);
   });
 }
 

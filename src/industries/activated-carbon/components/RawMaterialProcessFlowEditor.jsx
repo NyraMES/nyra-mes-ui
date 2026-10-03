@@ -11,10 +11,13 @@ import {
   resequenceOperations
 } from "../utils/routingParameterUtils";
 import {
-  AC_MANDATORY_PRE_PROCESSES,
+  AC_INBOUND_FIXED_END,
+  AC_INBOUND_FIXED_START,
   AC_TERMINAL_INSTOCK,
-  buildStandardShopFloorOperations
+  buildStandardShopFloorOperations,
+  splitTerminalFinishedGoodsQc
 } from "../constants/acRawMaterialProcessCatalog";
+import { displayOperationLabel } from "../constants/processSteps";
 
 import "../styles/rawMaterialFlow.css";
 
@@ -28,6 +31,7 @@ function emptyDraft() {
     finished_product_code: "",
     routing_code: "",
     operations: [],
+    inbound_operations: [],
     process_parameters: [],
     status: "ACTIVE",
     is_obsolete: false,
@@ -37,6 +41,10 @@ function emptyDraft() {
 
 function draftFromType(type) {
   if (!type) return emptyDraft();
+  const inboundOps = attachParametersToOperations(
+    type.inbound_operations || [],
+    type.process_parameters || []
+  );
   const operations = attachParametersToOperations(
     type.operations || [],
     type.process_parameters || []
@@ -49,6 +57,7 @@ function draftFromType(type) {
     finished_product_name: type.finished_product_name || type.product_name || "",
     finished_product_code: type.finished_product_code || "",
     routing_code: type.routing_code || "",
+    inbound_operations: inboundOps,
     operations,
     process_parameters: (type.process_parameters || []).map((p) => ({ ...p })),
     status: type.status || (type.is_obsolete ? "OBSOLETE" : "ACTIVE"),
@@ -70,7 +79,7 @@ function RawMaterialProcessFlowEditor({
   const [selectedKey, setSelectedKey] = useState(PLACEHOLDER_KEY);
   const [draft, setDraft] = useState(emptyDraft);
   const [screen, setScreen] = useState("flow");
-  const [processEntry, setProcessEntry] = useState({ mode: "add", index: null });
+  const [processEntry, setProcessEntry] = useState({ mode: "add", index: null, zone: "shop" });
   const [validation, setValidation] = useState("");
   const [dirty, setDirty] = useState(false);
   const [loadingType, setLoadingType] = useState(false);
@@ -83,7 +92,7 @@ function RawMaterialProcessFlowEditor({
   const usageLocked = Boolean(
     draft.usage?.kiln_process_started || draft.usage?.dispatch_completed
   );
-  const routingLocked = usageLocked;
+  const routingLocked = Boolean(draft.usage?.dispatch_completed);
 
   const sortedTypes = useMemo(
     () =>
@@ -155,54 +164,77 @@ function RawMaterialProcessFlowEditor({
     [draft.operations]
   );
 
+  const { routeOperations, terminalFgQc } = useMemo(
+    () => splitTerminalFinishedGoodsQc(operations),
+    [operations]
+  );
+
+  const inboundOperations = useMemo(
+    () => resequenceOperations(draft.inbound_operations || []),
+    [draft.inbound_operations]
+  );
+
+  const activeZoneOps = processEntry.zone === "inbound" ? inboundOperations : operations;
+
   const patchDraft = (updater) => {
     setDraft((prev) => (typeof updater === "function" ? updater(prev) : { ...prev, ...updater }));
     setDirty(true);
   };
 
   const openAddProcess = () => {
-    if (!canEditDraft || routingLocked) return;
-    setProcessEntry({ mode: "add", index: null });
+    if (!canEditDraft || usageLocked) return;
+    setProcessEntry({ mode: "add", index: null, zone: "shop" });
     setScreen("process");
   };
 
-  const openEditProcess = (index) => {
-    if (!canEditDraft || routingLocked) return;
-    setProcessEntry({ mode: "edit", index });
+  const openAddInboundProcess = () => {
+    if (!canEditDraft || usageLocked) return;
+    setProcessEntry({ mode: "add", index: null, zone: "inbound" });
+    setScreen("process");
+  };
+
+  const openEditProcess = (index, zone = "shop") => {
+    if (!canEditDraft || usageLocked) return;
+    setProcessEntry({ mode: "edit", index, zone });
     setScreen("process");
   };
 
   const handleProcessEntrySave = (processData) => {
     const { insertAt, parameters, ...op } = processData;
+    const zone = processEntry.zone || "shop";
+    const field = zone === "inbound" ? "inbound_operations" : "operations";
     patchDraft((prev) => {
-      let ops = resequenceOperations(prev.operations || []);
+      const ops = [...(prev[field] || [])];
       const withParams = { ...op, parameters: parameters || [] };
       if (processEntry.mode === "edit" && processEntry.index != null) {
         ops[processEntry.index] = { ...ops[processEntry.index], ...withParams };
-        return { ...prev, operations: resequenceOperations(ops) };
+        return { ...prev, [field]: resequenceOperations(ops) };
       }
       const at = Math.max(1, Math.min(Number(insertAt) || ops.length + 1, ops.length + 1));
       ops.splice(at - 1, 0, withParams);
-      return { ...prev, operations: resequenceOperations(ops) };
+      return { ...prev, [field]: resequenceOperations(ops) };
     });
     setScreen("flow");
   };
 
-  const removeProcess = (index) => {
-    if (routingLocked) return;
+  const removeProcess = (index, zone = "shop") => {
+    if (usageLocked) return;
+    const field = zone === "inbound" ? "inbound_operations" : "operations";
     patchDraft((prev) => ({
       ...prev,
-      operations: resequenceOperations((prev.operations || []).filter((_, i) => i !== index))
+      [field]: resequenceOperations((prev[field] || []).filter((_, i) => i !== index))
     }));
   };
 
-  const moveProcess = (index, delta) => {
+  const moveProcess = (index, delta, zone = "shop") => {
     if (!canEditDraft || routingLocked) return;
+    const field = zone === "inbound" ? "inbound_operations" : "operations";
+    const list = zone === "inbound" ? inboundOperations : operations;
     const target = index + delta;
-    if (target < 0 || target >= operations.length) return;
+    if (target < 0 || target >= list.length) return;
     patchDraft((prev) => ({
       ...prev,
-      operations: reorderOperations(prev.operations || [], index, target)
+      [field]: reorderOperations(prev[field] || [], index, target)
     }));
   };
 
@@ -221,10 +253,16 @@ function RawMaterialProcessFlowEditor({
       setDropIndex(null);
       return;
     }
-    patchDraft((prev) => ({
-      ...prev,
-      operations: reorderOperations(prev.operations || [], dragIndex, index)
-    }));
+    patchDraft((prev) => {
+      const { routeOperations: chain, terminalFgQc } = splitTerminalFinishedGoodsQc(
+        prev.operations || []
+      );
+      const next = reorderOperations(chain, dragIndex, index);
+      return {
+        ...prev,
+        operations: resequenceOperations(terminalFgQc ? [...next, terminalFgQc] : next)
+      };
+    });
     setDragIndex(null);
     setDropIndex(null);
   };
@@ -238,8 +276,11 @@ function RawMaterialProcessFlowEditor({
     const ops = resequenceOperations(
       (draft.operations || []).filter((op) => op.operation_name?.trim())
     );
+    const inboundOps = resequenceOperations(
+      (draft.inbound_operations || []).filter((op) => op.operation_name?.trim())
+    );
     if (!ops.length) {
-      throw new Error("Add at least one process step (P1, P2, …) in the routing chain.");
+      throw new Error("Add at least one shop-floor process step in the routing chain.");
     }
     if (!draft.product_name.trim()) {
       throw new Error("Raw material name is required.");
@@ -255,7 +296,17 @@ function RawMaterialProcessFlowEditor({
         process_step: (op.process_step || "").trim().toUpperCase(),
         is_mandatory: op.is_mandatory !== false
       })),
-      process_parameters: flattenOperationParameters(ops, draft.process_parameters)
+      inbound_operations: inboundOps.map((op, i) => ({
+        operation_sequence: i + 1,
+        operation_name: op.operation_name.trim(),
+        operation_code: (op.operation_code || `IN-STEP-${i + 1}`).trim(),
+        process_step: (op.process_step || "").trim().toUpperCase(),
+        is_mandatory: op.is_mandatory !== false
+      })),
+      process_parameters: flattenOperationParameters(
+        [...inboundOps, ...ops],
+        draft.process_parameters
+      )
     };
   };
 
@@ -274,7 +325,12 @@ function RawMaterialProcessFlowEditor({
       }
       const row = await onUpdate?.(draft.product_id, payload);
       setDirty(false);
-      if (row) setDraft(draftFromType(row));
+      if (row?.product_id) {
+        const fresh = await fetchAcRawMaterialType(row.product_id);
+        setDraft(draftFromType(fresh));
+      } else if (row) {
+        setDraft(draftFromType(row));
+      }
     } catch (e) {
       setValidation(formatAcApiError(e, "Save failed"));
       throw e;
@@ -306,24 +362,25 @@ function RawMaterialProcessFlowEditor({
   };
 
   const applyStandardTemplate = () => {
-    if (!canEditDraft || routingLocked) return;
+    if (!canEditDraft || usageLocked) return;
     patchDraft((prev) => ({
       ...prev,
       operations: resequenceOperations(buildStandardShopFloorOperations())
     }));
   };
 
-  if (screen === "process" && canEditDraft && !routingLocked) {
+  if (screen === "process" && canEditDraft && !usageLocked) {
     return (
       <AcProcessEntryScreen
+        phase={processEntry.zone === "inbound" ? "inbound" : "shop"}
         mode={processEntry.mode}
         initial={
           processEntry.mode === "edit" && processEntry.index != null
-            ? operations[processEntry.index]
+            ? activeZoneOps[processEntry.index]
             : null
         }
         stepNumber={(processEntry.index ?? 0) + 1}
-        chainLength={operations.length}
+        chainLength={activeZoneOps.length}
         rawMaterialName={draft.product_name}
         onSave={handleProcessEntrySave}
         onCancel={() => setScreen("flow")}
@@ -341,6 +398,14 @@ function RawMaterialProcessFlowEditor({
         <AcPermissionNotice
           title="View only — process setup is restricted"
           message="Adding raw materials and changing process steps requires a Super Administrator. You can still look up existing materials and their production steps below."
+        />
+      ) : null}
+
+      {canEdit && draft.isNew ? (
+        <AcPermissionNotice
+          variant="info"
+          title="New raw material checklist"
+          message='Select "+ Add new raw material…", enter raw and finished product names, click "Apply standard template" (or + Add process step), then "Create raw material & routing".'
         />
       ) : null}
 
@@ -364,6 +429,10 @@ function RawMaterialProcessFlowEditor({
                 title={t.product_code}
               >
                 {t.product_name || t.product_code}
+                {t.product_code ? ` · ${t.product_code}` : ""}
+                {(t.inbound_operations?.length || t.operations?.length)
+                  ? ` — ${t.inbound_operations?.length || 0} inbound / ${t.operations?.length || 0} shop`
+                  : ""}
                 {obsolete ? " (obsolete)" : ""}
                 {!t.routing_code ? " (setup incomplete)" : ""}
               </option>
@@ -442,11 +511,25 @@ function RawMaterialProcessFlowEditor({
       {hasSelection || selectedKey === NEW_KEY ? (
         <p className="ac-rm-flow-data-summary--compact">
           <strong>{draft.product_name || "New material"}</strong>
-          {" → "}
-          {operations.length} shop-floor step{operations.length === 1 ? "" : "s"}
+          {" · "}
+          {inboundOperations.length} inbound prep
+          {" · "}
+          {operations.length} shop step{operations.length === 1 ? "" : "s"}
+          {" · "}
+          {(draft.process_parameters || []).length} tracking field
+          {(draft.process_parameters || []).length === 1 ? "" : "s"}
           {" → "}
           <strong>{draft.finished_product_name || draft.product_name || "Finished product"}</strong>
           {" → in stock"}
+        </p>
+      ) : null}
+
+      {hasSelection && !draft.isNew ? (
+        <p className="text-xs text-slate-500 mb-3 max-w-3xl">
+          Plant story: <strong>Gate receipt</strong> (Raw Material Inward tab) →{" "}
+          <strong>inbound prep</strong> (Lab / RMS bags / crusher / RM outward) →{" "}
+          <strong>Release to Production</strong> → <strong>Activation</strong> (pre-kiln + kiln shop
+          steps) → <strong>Post-activation</strong> → <strong>Finished goods QC</strong> → in stock.
         </p>
       ) : null}
 
@@ -508,16 +591,87 @@ function RawMaterialProcessFlowEditor({
 
       <div className="ac-rm-flow-diagram-wrap">
         <div className="ac-rm-flow-diagram" aria-label="Linear manufacturing routing">
-          {AC_MANDATORY_PRE_PROCESSES.map((pre) => (
-            <div key={pre.id} className="ac-rm-flow-diagram-segment">
-              <div className="ac-rm-flow-node ac-rm-flow-node--fixed">
-                <div className="ac-rm-flow-node-kicker">Required</div>
-                <div className="ac-rm-flow-node-title">{pre.operation_name}</div>
-                <div className="ac-rm-flow-node-step">{pre.description}</div>
+          <div className="ac-rm-flow-diagram-segment">
+            <div className="ac-rm-flow-node ac-rm-flow-node--fixed">
+              <div className="ac-rm-flow-node-kicker">Required</div>
+              <div className="ac-rm-flow-node-title">{AC_INBOUND_FIXED_START.operation_name}</div>
+              <div className="ac-rm-flow-node-step">{AC_INBOUND_FIXED_START.description}</div>
+            </div>
+            <div className="ac-rm-flow-link" aria-hidden="true" />
+          </div>
+
+          {inboundOperations.map((op, index) => (
+            <div key={op.operation_code || `in${index}`} className="ac-rm-flow-diagram-segment">
+              <div className="ac-rm-flow-link" aria-hidden="true" />
+              <div className="ac-rm-flow-process-step">
+                {flowEditable ? (
+                  <div className="ac-rm-flow-move-controls">
+                    <button
+                      type="button"
+                      className="ac-rm-flow-move-btn"
+                      disabled={index === 0}
+                      onClick={() => moveProcess(index, -1, "inbound")}
+                    >
+                      ← Earlier
+                    </button>
+                    <button
+                      type="button"
+                      className="ac-rm-flow-move-btn"
+                      disabled={index === inboundOperations.length - 1}
+                      onClick={() => moveProcess(index, 1, "inbound")}
+                    >
+                      Later →
+                    </button>
+                  </div>
+                ) : null}
+              <div
+                role={flowEditable ? "button" : undefined}
+                tabIndex={flowEditable ? 0 : undefined}
+                className="ac-rm-flow-node ac-rm-flow-node--process ac-rm-flow-node--inbound"
+                onClick={flowEditable ? () => openEditProcess(index, "inbound") : undefined}
+              >
+                <div className="ac-rm-flow-node-kicker">Inbound prep · {index + 1}</div>
+                <div className="ac-rm-flow-node-title">{op.operation_name}</div>
+                <div className="ac-rm-flow-node-step">{op.process_step || "Step"}</div>
+                {flowEditable ? (
+                  <button
+                    type="button"
+                    className="text-[10px] text-red-600 mt-1 underline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeProcess(index, "inbound");
+                    }}
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </div>
               </div>
               <div className="ac-rm-flow-link" aria-hidden="true" />
             </div>
           ))}
+
+          {flowEditable ? (
+            <div className="ac-rm-flow-diagram-segment">
+              <button
+                type="button"
+                className="ac-rm-flow-add-btn text-xs"
+                onClick={openAddInboundProcess}
+              >
+                + Add inbound prep step
+              </button>
+              <div className="ac-rm-flow-link" aria-hidden="true" />
+            </div>
+          ) : null}
+
+          <div className="ac-rm-flow-diagram-segment">
+            <div className="ac-rm-flow-node ac-rm-flow-node--fixed">
+              <div className="ac-rm-flow-node-kicker">Required</div>
+              <div className="ac-rm-flow-node-title">{AC_INBOUND_FIXED_END.operation_name}</div>
+              <div className="ac-rm-flow-node-step">{AC_INBOUND_FIXED_END.description}</div>
+            </div>
+            <div className="ac-rm-flow-link" aria-hidden="true" />
+          </div>
 
           <div className="ac-rm-flow-node ac-rm-flow-node--material">
             <div className="ac-rm-flow-node-kicker">Raw material</div>
@@ -527,7 +681,7 @@ function RawMaterialProcessFlowEditor({
             <div className="ac-rm-flow-node-step">{draft.product_code || "RAW-AC-*"}</div>
           </div>
 
-          {operations.map((op, index) => (
+          {routeOperations.map((op, index) => (
             <div key={op.operation_code || `p${index}`} className="ac-rm-flow-diagram-segment">
               <div className="ac-rm-flow-link" aria-hidden="true" />
               <div className="ac-rm-flow-process-step">
@@ -546,7 +700,7 @@ function RawMaterialProcessFlowEditor({
                     <button
                       type="button"
                       className="ac-rm-flow-move-btn"
-                      disabled={index === operations.length - 1}
+                      disabled={index === routeOperations.length - 1 && !terminalFgQc}
                       title="Move this step later in the chain (toward finished product)"
                       aria-label={`Move ${op.operation_name} later`}
                       onClick={() => moveProcess(index, 1)}
@@ -586,7 +740,7 @@ function RawMaterialProcessFlowEditor({
                     P{index + 1}
                     {flowEditable ? <span className="ac-rm-flow-drag-hint"> ⋮⋮</span> : null}
                   </div>
-                  <div className="ac-rm-flow-node-title">{op.operation_name}</div>
+                  <div className="ac-rm-flow-node-title">{displayOperationLabel(op)}</div>
                   <div className="ac-rm-flow-node-step">{op.process_step || "Step"}</div>
                   <div className="ac-rm-flow-node-meta">
                     {op.is_mandatory === false ? (
@@ -620,6 +774,39 @@ function RawMaterialProcessFlowEditor({
                 {draft.finished_product_code || "FG-AC-*"}
               </div>
             </div>
+          </div>
+
+          {terminalFgQc ? (
+            <div className="ac-rm-flow-diagram-segment">
+              <div className="ac-rm-flow-link" aria-hidden="true" />
+              <div
+                role={flowEditable ? "button" : undefined}
+                tabIndex={flowEditable ? 0 : undefined}
+                className={`ac-rm-flow-node ac-rm-flow-node--process ac-rm-flow-node--terminal-qc${
+                  flowEditable ? " ac-rm-flow-node--draggable" : ""
+                }`}
+                onClick={
+                  flowEditable
+                    ? () => openEditProcess(operations.length - 1)
+                    : undefined
+                }
+                onKeyDown={
+                  flowEditable
+                    ? (e) => {
+                        if (e.key === "Enter") openEditProcess(operations.length - 1);
+                      }
+                    : undefined
+                }
+                title={flowEditable ? "Click to edit final QC step" : terminalFgQc.operation_name}
+              >
+                <div className="ac-rm-flow-node-kicker">Final QC</div>
+                <div className="ac-rm-flow-node-title">{displayOperationLabel(terminalFgQc)}</div>
+                <div className="ac-rm-flow-node-step">{terminalFgQc.process_step || "QC"}</div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="ac-rm-flow-diagram-segment">
             <div className="ac-rm-flow-link" aria-hidden="true" />
             <div className="ac-rm-flow-node ac-rm-flow-node--instock">
               <div className="ac-rm-flow-node-kicker">Terminal</div>
@@ -723,7 +910,7 @@ function RawMaterialProcessFlowEditor({
               {operations.map((op, index) => (
                 <tr key={op.operation_code || index} className="border-b border-slate-100">
                   <td className="py-2 font-semibold text-slate-700">{index + 1}</td>
-                  <td className="py-2">{op.operation_name}</td>
+                  <td className="py-2">{displayOperationLabel(op)}</td>
                   <td className="py-2">
                     <div className="flex flex-wrap gap-2 items-center">
                       <button

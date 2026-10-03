@@ -1,5 +1,53 @@
 /** Larger tap targets and card lists for Plant setup (Masters). */
 
+/* Navy wf-card forces white text — light master surfaces need explicit dark text */
+.wf-shell .wf-card .ac-friendly-registry-row {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+.wf-shell .wf-card .ac-friendly-registry-name,
+.wf-shell .wf-card .ac-friendly-registry-row p.ac-friendly-registry-name {
+  color: #0f172a !important;
+}
+
+.wf-shell .wf-card .ac-friendly-registry-code,
+.wf-shell .wf-card .ac-friendly-registry-row p.ac-friendly-registry-code {
+  color: #64748b !important;
+}
+
+.wf-shell .wf-card .ac-friendly-registry-badge {
+  color: #475569 !important;
+  background: #f1f5f9 !important;
+}
+
+.wf-shell .wf-card .ac-friendly-registry-badge--active {
+  color: #166534 !important;
+  background: #dcfce7 !important;
+}
+
+.wf-shell .wf-card .ac-simple-master-form h3,
+.wf-shell .wf-card .ac-simple-master-form .text-slate-900 {
+  color: #0f172a !important;
+}
+
+.wf-shell .wf-card .ac-simple-master-form .text-slate-800 {
+  color: #1e293b !important;
+}
+
+.wf-shell .wf-card .ac-simple-master-form .text-slate-600 {
+  color: #475569 !important;
+}
+
+.wf-shell .wf-card .ac-simple-master-form input {
+  color: #0f172a !important;
+  background: #ffffff !important;
+}
+
+.wf-shell .wf-card .ac-masters-tab--active {
+  color: #0f172a !important;
+}
+
 .ac-friendly-registry {
   list-style: none;
   margin: 0;
@@ -103,4 +151,44 @@
 
 .ac-triplet-technical-details summary:hover {
   color: #334155;
+}
+
+.ac-inbound-process-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-width: 36rem;
+}
+
+.ac-inbound-process-step {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(226 232 240);
+  background: rgb(248 250 252);
+}
+
+.ac-inbound-process-step--active {
+  border-color: rgb(147 197 253);
+  background: rgb(239 246 255);
+}
+
+.ac-inbound-process-step--done {
+  opacity: 0.92;
+}
+
+.ac-inbound-process-step--ready {
+  border-color: rgb(167 243 208);
+  background: rgb(236 253 245);
+}
+
+.wf-shell .wf-card .wf-light-panel.ac-inbound-process-panel .ac-inbound-process-step .font-medium,
+.wf-shell .wf-card .wf-light-panel.ac-inbound-process-panel .ac-inbound-process-step .text-slate-900 {
+  color: #0f172a !important;
+}
+
+.wf-shell .wf-card .wf-light-panel.ac-inbound-process-panel .ac-inbound-process-step .text-slate-600 {
+  color: #475569 !important;
 }

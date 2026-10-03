@@ -1,5 +1,51 @@
 import { AC_TRIPLET_PREDICATES } from "./acTripletOntology";
 
+/** Default inward receipt fields — staged as triplets on POST raw-material-inward. */
+export const DEFAULT_AC_INWARD_RECEIPT_PARAMETERS = [
+  {
+    key: "dc_number",
+    label: "DC number",
+    unit: "",
+    fieldType: "text",
+    ontologyPredicate: "captures",
+    enabled: true,
+    sortOrder: 1
+  },
+  {
+    key: "supplier_weight_kg",
+    label: "Supplier weight",
+    unit: "kg",
+    fieldType: "number",
+    step: 0.01,
+    min: 0,
+    ontologyPredicate: "captures",
+    enabled: true,
+    sortOrder: 2
+  },
+  {
+    key: "our_weight_kg",
+    label: "Our weight",
+    unit: "kg",
+    fieldType: "number",
+    step: 0.01,
+    min: 0,
+    ontologyPredicate: "captures",
+    enabled: true,
+    sortOrder: 3
+  },
+  {
+    key: "supplier_value_inr",
+    label: "Supplier value",
+    unit: "INR",
+    fieldType: "number",
+    step: 0.01,
+    min: 0,
+    ontologyPredicate: "captures",
+    enabled: true,
+    sortOrder: 3
+  }
+];
+
 /** Default raw material QC field catalog — maps to triplet predicates on save (API stages triples). */
 export const DEFAULT_AC_QC_PARAMETERS = [
   {

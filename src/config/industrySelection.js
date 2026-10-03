@@ -91,6 +91,7 @@ export function inferIndustryFromPath(pathname = "") {
 
 /** Tenants allowed to open the Activated Carbon module. */
 export const ACTIVATED_CARBON_TENANT_CODES = new Set([
+  "GR_CARBONS",
   "SAM_CARBONS",
   "SAM_CARBONS_DEMO"
 ]);

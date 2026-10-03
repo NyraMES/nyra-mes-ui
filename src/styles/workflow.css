@@ -1679,6 +1679,16 @@ span.wf-btn.wf-btn--disabled {
   color: #334155 !important;
 }
 
+/* Any explicit white/light surface inside navy cards (lists, forms) */
+.wf-shell .wf-card .wf-light-panel .ac-friendly-registry-name,
+.wf-shell .wf-card .wf-light-panel .ac-friendly-registry-code {
+  color: #0f172a !important;
+}
+
+.wf-shell .wf-card .wf-light-panel .ac-friendly-registry-code {
+  color: #64748b !important;
+}
+
 .wf-shell .wf-btn-primary:hover:not(:disabled) {
   background: var(--nyra-navy-hover) !important;
 }
@@ -1822,6 +1832,38 @@ span.wf-btn.wf-btn--disabled {
   background: rgba(255, 255, 255, 0.96) !important;
   color: #0f172a !important;
   border-color: #cbd5e1 !important;
+}
+
+/* Light inset panels on navy AC pages — restore readable dark text */
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel {
+  color: #0f172a !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel p,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel li,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel h3,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel label,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel p,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel li {
+  color: #0f172a !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel .text-slate-600,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-600 {
+  color: #475569 !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel .text-slate-500,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-500 {
+  color: #64748b !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel .text-slate-800,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel .text-slate-900,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-800,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-900 {
+  color: #0f172a !important;
 }
 
 /* AC dashboard — tighter KPI tiles to avoid value/icon overlap */

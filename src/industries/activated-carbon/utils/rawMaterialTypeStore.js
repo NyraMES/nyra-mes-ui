@@ -23,18 +23,24 @@ function writeLocalTypes(types) {
  */
 export function mergeRawMaterialTypes(apiTypes = []) {
   const byCode = new Map();
+  const apiRows = Array.isArray(apiTypes) ? apiTypes.filter((r) => r?.product_code) : [];
 
-  for (const row of DEFAULT_RAW_MATERIAL_TYPES) {
-    byCode.set(row.product_code, { ...row, source: "default" });
-  }
-  for (const row of readLocalTypes()) {
-    const base = byCode.get(row.product_code);
-    byCode.set(row.product_code, { ...(base || {}), ...row, source: "local" });
-  }
-  for (const row of apiTypes) {
-    const code = row.product_code;
-    const base = byCode.get(code);
-    byCode.set(code, { ...(base || {}), ...row, source: "api" });
+  if (apiRows.length === 0) {
+    for (const row of DEFAULT_RAW_MATERIAL_TYPES) {
+      byCode.set(row.product_code, { ...row, source: "default" });
+    }
+    for (const row of readLocalTypes()) {
+      const base = byCode.get(row.product_code);
+      byCode.set(row.product_code, { ...(base || {}), ...row, source: "local" });
+    }
+  } else {
+    for (const row of apiRows) {
+      byCode.set(row.product_code, { ...row, source: "api" });
+    }
+    for (const row of readLocalTypes()) {
+      if (byCode.has(row.product_code)) continue;
+      byCode.set(row.product_code, { ...row, source: "local" });
+    }
   }
 
   return Array.from(byCode.values()).sort((a, b) =>

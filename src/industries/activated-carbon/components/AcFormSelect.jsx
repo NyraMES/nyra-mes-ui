@@ -7,7 +7,8 @@ function AcFormSelect({
   loading = false,
   emptyMessage = "No options — run seed or check API connection",
   children,
-  className = ""
+  className = "",
+  disabled = false
 }) {
   const optionCount = Children.count(children);
   const empty = !loading && optionCount === 0;
@@ -20,7 +21,7 @@ function AcFormSelect({
       <select
         className="w-full rounded border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
         value={empty ? "" : value}
-        disabled={loading || empty}
+        disabled={disabled || loading || empty}
         onChange={onChange}
       >
         {loading ? (

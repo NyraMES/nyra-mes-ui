@@ -1,15 +1,19 @@
 import { buildTripletPreview, normalizeTripletParameter, resolvePredicateUri } from "../constants/processTripletTemplates";
 
 export function attachParametersToOperations(operations = [], processParameters = []) {
-  const sorted = [...operations].sort(
-    (a, b) => (Number(a.operation_sequence) || 0) - (Number(b.operation_sequence) || 0)
-  );
+  const sorted = sortOperationsBySequence(operations);
 
   return sorted.map((op) => {
     const step = (op.process_step || "").toUpperCase();
+    const opCode = String(op.operation_code || "").toUpperCase();
     const stepParams = (processParameters || [])
-      .filter((p) => p.process_step && String(p.process_step).toUpperCase() === step)
-      .map((p) => normalizeTripletParameter({ ...p, process_step: step }));
+      .filter((p) => {
+        const bound = String(p.operation_code || "").toUpperCase();
+        if (opCode && bound) return bound === opCode;
+        if (opCode && !bound) return false;
+        return p.process_step && String(p.process_step).toUpperCase() === step;
+      })
+      .map((p) => normalizeTripletParameter({ ...p, process_step: step, operation_code: op.operation_code }));
     const inline = (op.parameters || []).map((p) =>
       normalizeTripletParameter({ ...p, process_step: step })
     );
@@ -29,10 +33,17 @@ export function flattenOperationParameters(operations = [], globalParameters = [
     const step = (op.process_step || "").trim().toUpperCase();
     for (const raw of op.parameters || []) {
       if (!raw.key?.trim()) continue;
-      const key = `${step}:${raw.key}`;
+      const opCode = (op.operation_code || raw.operation_code || "").trim();
+      const key = `${opCode}:${step}:${raw.key}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push(normalizeTripletParameter({ ...raw, process_step: step }));
+      out.push(
+        normalizeTripletParameter({
+          ...raw,
+          process_step: step,
+          operation_code: opCode || undefined
+        })
+      );
     }
   }
 
@@ -49,16 +60,24 @@ export function flattenOperationParameters(operations = [], globalParameters = [
 
 export { buildTripletPreview, resolvePredicateUri };
 
+/** Preserve array order; only refresh operation_sequence (1-based). */
 export function resequenceOperations(ops) {
-  return [...ops]
-    .sort((a, b) => (Number(a.operation_sequence) || 0) - (Number(b.operation_sequence) || 0))
-    .map((op, index) => ({ ...op, operation_sequence: index + 1 }));
+  return [...ops].map((op, index) => ({ ...op, operation_sequence: index + 1 }));
+}
+
+/** Load from API — sort by stored sequence, then renumber. */
+export function sortOperationsBySequence(ops) {
+  return resequenceOperations(
+    [...ops].sort(
+      (a, b) => (Number(a.operation_sequence) || 0) - (Number(b.operation_sequence) || 0)
+    )
+  );
 }
 
 export function reorderOperations(operations, fromIndex, toIndex) {
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return operations;
-  const ops = resequenceOperations(operations);
-  if (fromIndex >= ops.length || toIndex >= ops.length) return ops;
+  const ops = [...operations];
+  if (fromIndex >= ops.length || toIndex >= ops.length) return resequenceOperations(ops);
   const [moved] = ops.splice(fromIndex, 1);
   ops.splice(toIndex, 0, moved);
   return resequenceOperations(ops);

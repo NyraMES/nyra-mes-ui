@@ -31,6 +31,22 @@ function isPublicLandingPath(pathname = "") {
 }
 
 function resolveInitialContextScope(user, pathname = "") {
+  const industryKey =
+    (pathname.includes("/activated-carbon") && "activated-carbon") ||
+    (pathname.includes("/chemical") && "chemical") ||
+    ((pathname.includes("/automotive-oem") || pathname.includes("/workflow")) &&
+      "automotive-oem") ||
+    industryKeyForTenantCode(user?.tenant_code) ||
+    null;
+
+  // Signed-in users use their assigned plant when it matches this industry module.
+  if (user?.tenant_code && industryKey) {
+    const scoped = resolveScopedTenantForIndustry(industryKey, user);
+    if (scoped.tenant_code) {
+      return scoped;
+    }
+  }
+
   const hostBinding = resolveAppHostBinding();
   if (hostBinding?.tenant_code) {
     return {
@@ -40,13 +56,6 @@ function resolveInitialContextScope(user, pathname = "") {
   }
 
   if (user?.tenant_code) {
-    const industryKey =
-      (pathname.includes("/activated-carbon") && "activated-carbon") ||
-      (pathname.includes("/chemical") && "chemical") ||
-      ((pathname.includes("/automotive-oem") || pathname.includes("/workflow")) &&
-        "automotive-oem") ||
-      industryKeyForTenantCode(user.tenant_code) ||
-      null;
     return resolveScopedTenantForIndustry(industryKey, user);
   }
 

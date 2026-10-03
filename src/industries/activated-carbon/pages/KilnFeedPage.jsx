@@ -15,12 +15,15 @@ import AcFormSelect from "../components/AcFormSelect";
 import AcSaveBar from "../components/AcSaveBar";
 import useAcMasters from "../hooks/useAcMasters";
 import { isValidUuid } from "../utils/acProductUtils";
+import AcActivationProductionFlow from "../components/AcActivationProductionFlow";
+import useIndustryBasePath from "../../../hooks/useIndustryBasePath";
 import { isAcContextReady } from "../utils/acContextUtils";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
 
 function KilnFeedPage() {
   const { context, loading: contextLoading } = useAppContext();
   const location = useLocation();
+  const basePath = useIndustryBasePath();
   const { focusTick } = useAcPageRefresh();
   const { masters, loading: mastersLoading, error: mastersError, reload: reloadMasters, ready } =
     useAcMasters();
@@ -93,7 +96,7 @@ function KilnFeedPage() {
       }
       const lot = await createAcKilnFeedLot(lotPayload);
       setSuccess(
-        `Lot ${lot.lot_code} charged to ${kilnCode}. Continue to Lot Routing to generate work orders.`
+        `Lot ${lot.lot_code} charged to ${kilnCode}. Open Lot Routing to generate work orders.`
       );
       setIdsDialog({
         open: true,
@@ -118,6 +121,8 @@ function KilnFeedPage() {
 
   return (
     <div className="max-w-5xl">
+      <AcActivationProductionFlow activeStepId="kiln_feed" lotCode={selectedLot?.lot_code || null} />
+
       <AcCreatedIdsDialog
         open={idsDialog.open}
         title="Kiln charged"
@@ -141,7 +146,7 @@ function KilnFeedPage() {
       {noChargeable && (
         <AcAlert variant="warn">
           No lots ready for kiln feed yet. After release, run{" "}
-          <Link to="/activated-carbon/feasibility" className="underline font-medium">
+          <Link to={`${basePath}/feasibility`} className="underline font-medium">
             Feasibility Gate
           </Link>{" "}
           for the new lot (LOT-AC-* · your inward order), then return here to charge the kiln.
@@ -170,17 +175,42 @@ function KilnFeedPage() {
                 return (
                   <option key={id} value={String(id)}>
                     {code}
-                    {inward} · {lot.lot_quantity} KG · feasibility OK
+                    {inward}
+                    {lot.crusher_bag_code ? ` · ${lot.crusher_bag_code}` : ""}
+                    {lot.crusher_grade ? ` · ${lot.crusher_grade}` : ""} · {lot.lot_quantity} KG ·
+                    feasibility OK
                   </option>
                 );
               })}
             </AcFormSelect>
 
             {selectedLot && (
-              <p className="text-xs text-slate-600 md:col-span-2">
-                Lot {selectedLot.lot_code || selectedLot.lot_id} · {selectedLot.lot_quantity} KG ·
-                status {selectedLot.status || "CREATED"}
-              </p>
+              <div className="text-xs text-slate-600 md:col-span-2 space-y-1">
+                <p>
+                  Lot {selectedLot.lot_code || selectedLot.lot_id} · {selectedLot.lot_quantity} KG ·
+                  status {selectedLot.status || "CREATED"}
+                </p>
+                {(selectedLot.crusher_outward_bags || []).length ? (
+                  <div>
+                    <p className="font-medium text-slate-800">Kiln input — crusher outward bags</p>
+                    <ul className="font-mono">
+                      {selectedLot.crusher_outward_bags.map((bag, idx) => (
+                        <li key={`${bag.bag_code || "bag"}-${idx}`}>
+                          {bag.bag_code || "—"} · {bag.grade_label || selectedLot.crusher_grade || "—"} ·{" "}
+                          {bag.quantity_kg} KG
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : selectedLot.crusher_bag_code ? (
+                  <p className="font-mono">
+                    Bag {selectedLot.crusher_bag_code}
+                    {selectedLot.crusher_grade ? ` · ${selectedLot.crusher_grade}` : ""}
+                  </p>
+                ) : (
+                  <p>No crusher outward bags on this lot yet — complete crusher outward before release.</p>
+                )}
+              </div>
             )}
 
             <AcFormSelect
@@ -199,7 +229,7 @@ function KilnFeedPage() {
               <p className="text-xs text-amber-700 md:col-span-2">
                 No kiln resources found.{" "}
                 <Link
-                  to="/activated-carbon/masters?tab=plant-resources"
+                  to={`${basePath}/masters?tab=plant-resources`}
                   className="text-blue-700 underline"
                 >
                   Add one in Masters → Plant resources
@@ -214,6 +244,18 @@ function KilnFeedPage() {
             saveLabel="Charge kiln"
             disabled={!productionLotId || !kilnCode || noChargeable}
           />
+          {selectedLot?.lot_code ? (
+            <p className="text-xs text-slate-600 mt-4">
+              Next:{" "}
+              <Link to={`${basePath}/routing`} className="text-blue-700 underline">
+                Lot Routing
+              </Link>{" "}
+              →{" "}
+              <Link to={`${basePath}/execution`} className="text-blue-700 underline">
+                Execution
+              </Link>
+            </p>
+          ) : null}
         </WfCardBody>
       </WfCard>
 

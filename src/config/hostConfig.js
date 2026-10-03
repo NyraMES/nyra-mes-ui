@@ -7,7 +7,8 @@
 import {
   ACTIVATED_CARBON_DEV_TENANT,
   getIndustrySelection,
-  resolveIndustryTenantScope
+  resolveIndustryTenantScope,
+  userCanAccessIndustry
 } from "./industrySelection";
 import { apiBaseUrl } from "../auth/cognitoConfig";
 import { resolveDefaultWorkspaceCode } from "../services/mesCorePaths";
@@ -122,14 +123,26 @@ export function resolveAppHostBinding() {
   return resolveHostBinding(window.location.hostname);
 }
 
+/** AC client + demo playground tenants share the same testbed host. */
+const AC_VALIDATION_TENANTS = new Set(["GR_CARBONS", "SAM_CARBONS", "SAM_CARBONS_DEMO"]);
+
 /**
  * @param {{ tenant_code?: string | null } | null | undefined} user
- * @param {{ tenant_code?: string | null } | null | undefined} binding
+ * @param {{ tenant_code?: string | null, industry_key?: string | null, lock_industry?: boolean } | null | undefined} binding
  */
 export function userMatchesHostTenant(user, binding) {
   if (!binding?.tenant_code) return true;
   if (!user?.tenant_code) return false;
-  return String(user.tenant_code).trim() === String(binding.tenant_code).trim();
+  const userTenant = String(user.tenant_code).trim();
+  const hostTenant = String(binding.tenant_code).trim();
+  if (userTenant === hostTenant) return true;
+  if (AC_VALIDATION_TENANTS.has(userTenant) && AC_VALIDATION_TENANTS.has(hostTenant)) {
+    return true;
+  }
+  if (binding.lock_industry && binding.industry_key) {
+    return userCanAccessIndustry(binding.industry_key, user);
+  }
+  return false;
 }
 
 export function tenantMismatchMessage(binding) {

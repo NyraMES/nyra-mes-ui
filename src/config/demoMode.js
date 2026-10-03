@@ -12,6 +12,7 @@ const envReadOnly =
 /** Local / client AC tenants — never show video-demo watermark / read-only UX. */
 const DEMO_EXEMPT_TENANT_CODES = new Set([
   "SAM_CARBONS_DEMO",
+  "GR_CARBONS",
   "SAM_CARBONS",
   "AUTO_OEM_DEMO"
 ]);

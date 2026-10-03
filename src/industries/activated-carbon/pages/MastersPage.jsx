@@ -27,6 +27,7 @@ import RawMaterialProcessFlowEditor from "../components/RawMaterialProcessFlowEd
 import AcAlert from "../components/AcAlert";
 import AcCreatedIdsDialog from "../components/AcCreatedIdsDialog";
 import AcManufacturingFlowGuide from "../components/AcManufacturingFlowGuide";
+import AcInboundAdminPanel from "../components/AcInboundAdminPanel";
 import AcOntologyAdminPanel from "../components/AcOntologyAdminPanel";
 import AcPermissionNotice from "../components/AcPermissionNotice";
 import AcSaveBar from "../components/AcSaveBar";
@@ -176,11 +177,7 @@ function MastersPage() {
       labor_pools: masters.labor_pools || [],
       equipment: masters.equipment || []
     });
-    setRawMaterialTypes(
-      masters.raw_material_types?.length
-        ? masters.raw_material_types
-        : await fetchAcRawMaterialTypes()
-    );
+    setRawMaterialTypes(await fetchAcRawMaterialTypes());
   };
 
   useEffect(() => {
@@ -439,6 +436,7 @@ function MastersPage() {
       { id: "plant-resources", label: "Machines & kilns", hint: "Plant equipment" },
       { id: "routing", label: "Routing reference", hint: "Read-only summary" },
       { id: "kiln-parameters", label: "Kiln readings", hint: "Shift data fields" },
+      { id: "inbound-settings", label: "Inbound settings", hint: "Rotaries & RM outward" },
       { id: "ontology-ui", label: "Advanced settings", hint: "Super Admin" }
     ],
     []
@@ -947,6 +945,16 @@ function MastersPage() {
           </WfCard>
         </>
       )}
+
+      {tab === "inbound-settings" &&
+        (canManageMasters || canConfigureProcess ? (
+          <AcInboundAdminPanel />
+        ) : (
+          <AcPermissionNotice
+            title="Inbound settings"
+            message="Rotary inventory and RM outward splits can be changed by a Plant Administrator or Super Administrator."
+          />
+        ))}
 
       {tab === "ontology-ui" &&
         (canConfigureProcess ? (

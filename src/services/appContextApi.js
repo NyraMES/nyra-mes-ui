@@ -235,7 +235,9 @@ export async function fetchAppContext(apiClient, scope = {}) {
   }
 
   const isAcTenant =
-    envTenant === "SAM_CARBONS" || envTenant === "SAM_CARBONS_DEMO";
+    envTenant === "GR_CARBONS" ||
+    envTenant === "SAM_CARBONS" ||
+    envTenant === "SAM_CARBONS_DEMO";
 
   let fallback = applyAcDisplayBranding({
     ...DEFAULT_APP_CONTEXT,

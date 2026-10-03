@@ -63,7 +63,7 @@ export function formatApiError(error, fallback = "Request failed") {
         typeof window !== "undefined" &&
         window.location.pathname.includes("/activated-carbon");
       const script = isAc
-        ? ".\\scripts\\run_local_api.ps1"
+        ? ".\\scripts\\run_sam_carbons_api_8003.ps1"
         : ".\\scripts\\run_video_demo.ps1";
       return (
         `Cannot reach the API at ${base}. ` +

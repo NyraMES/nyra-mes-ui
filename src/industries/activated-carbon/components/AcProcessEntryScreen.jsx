@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import {
+  AC_INBOUND_PROCESS_STEP_OPTIONS,
   AC_PROCESS_STEP_OPTIONS,
   suggestOperationCode
 } from "../constants/processSteps";
@@ -22,6 +23,7 @@ const EMPTY_PROCESS = {
 
 function AcProcessEntryScreen({
   mode = "add",
+  phase = "shop",
   initial = null,
   stepNumber = 1,
   chainLength = 0,
@@ -29,6 +31,11 @@ function AcProcessEntryScreen({
   onSave,
   onCancel
 }) {
+  const isInbound = phase === "inbound";
+  const stepOptions = isInbound ? AC_INBOUND_PROCESS_STEP_OPTIONS : AC_PROCESS_STEP_OPTIONS;
+  const defaultStep = isInbound ? "CRUSHING" : "KILN_FEED";
+  const usedAt = isInbound ? "inbound" : "execution";
+  const codePrefix = isInbound ? "IN-" : "OP-";
   const [form, setForm] = useState({ ...EMPTY_PROCESS, parameters: [] });
   const [insertAt, setInsertAt] = useState(chainLength + 1);
   const [error, setError] = useState("");
@@ -37,46 +44,65 @@ function AcProcessEntryScreen({
   useEffect(() => {
     if (mode === "edit" && initial) {
       const execParams = (initial.parameters || []).filter(
-        (p) => (p.used_at || "execution") !== "feasibility"
+        (p) => (p.used_at || usedAt) !== "feasibility"
       );
       setForm({
         operation_name: initial.operation_name || "",
         operation_code: initial.operation_code || "",
-        process_step: initial.process_step || "KILN_FEED",
+        process_step: initial.process_step || defaultStep,
         is_mandatory: initial.is_mandatory !== false,
         parameters: execParams.length
-          ? execParams.map((p) => normalizeTripletParameter({ ...p, process_step: initial.process_step }))
-          : defaultExecutionParametersForStep(initial.process_step)
+          ? execParams.map((p) =>
+              normalizeTripletParameter({
+                ...p,
+                process_step: initial.process_step,
+                used_at: usedAt
+              })
+            )
+          : defaultExecutionParametersForStep(initial.process_step).map((p) => ({
+              ...p,
+              used_at: usedAt
+            }))
       });
       setInsertAt(stepNumber);
       setSeededDefaults(false);
     } else {
-      const step = "KILN_FEED";
+      const step = defaultStep;
       setForm({
         ...EMPTY_PROCESS,
         process_step: step,
-        parameters: defaultExecutionParametersForStep(step)
+        parameters: defaultExecutionParametersForStep(step).map((p) => ({
+          ...p,
+          used_at: usedAt
+        }))
       });
       setInsertAt(chainLength + 1);
       setSeededDefaults(true);
     }
     setError("");
-  }, [mode, initial, stepNumber, chainLength]);
+  }, [mode, initial, stepNumber, chainLength, defaultStep, usedAt]);
 
   const updateField = (field, value) => {
     setForm((prev) => {
       const next = { ...prev, [field]: value };
       if (field === "process_step") {
         const step = String(value || "").toUpperCase();
-        const opt = AC_PROCESS_STEP_OPTIONS.find((o) => o.value === step);
+        const opt = stepOptions.find((o) => o.value === step);
         if (opt && !prev.operation_name.trim()) {
           next.operation_name = opt.label;
         }
-        if (!prev.operation_code.trim() || prev.operation_code.startsWith("OP-")) {
-          next.operation_code = suggestOperationCode(step, insertAt);
+        if (
+          !prev.operation_code.trim() ||
+          prev.operation_code.startsWith("OP-") ||
+          prev.operation_code.startsWith("IN-")
+        ) {
+          next.operation_code = `${codePrefix}${step.replace(/[^A-Z0-9]+/g, "-")}`;
         }
         if (mode === "add" && (seededDefaults || !prev.parameters?.length)) {
-          next.parameters = defaultExecutionParametersForStep(step);
+          next.parameters = defaultExecutionParametersForStep(step).map((p) => ({
+            ...p,
+            used_at: usedAt
+          }));
           setSeededDefaults(true);
         }
       }
@@ -108,7 +134,7 @@ function AcProcessEntryScreen({
     }
 
     const parameters = executionParams.map((p) =>
-      normalizeTripletParameter({ ...p, process_step: processStep, used_at: "execution" })
+      normalizeTripletParameter({ ...p, process_step: processStep, used_at: usedAt })
     );
 
     onSave?.({
@@ -139,7 +165,12 @@ function AcProcessEntryScreen({
           {mode === "edit" ? `Edit step ${stepNumber}` : `Add step ${chainLength + 1}`}
         </h3>
         <p className="text-sm text-slate-600 mt-1 leading-relaxed">
-          {rawMaterialName ? (
+          {isInbound ? (
+            <>
+              For raw material <strong>{rawMaterialName}</strong>. This step runs on{" "}
+              <strong>Inbound Execution</strong> after receipt and before raw material QC.
+            </>
+          ) : rawMaterialName ? (
             <>
               For raw material <strong>{rawMaterialName}</strong>. Choose what happens at this
               stage and which values operators must enter.
@@ -176,7 +207,7 @@ function AcProcessEntryScreen({
               value={form.process_step}
               onChange={(e) => updateField("process_step", e.target.value)}
             >
-              {AC_PROCESS_STEP_OPTIONS.map((opt) => (
+              {stepOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
@@ -226,8 +257,8 @@ function AcProcessEntryScreen({
             <span>
               <span className="block font-medium text-slate-700">Mandatory process</span>
               <span className="block text-xs text-slate-500 mt-0.5">
-                When unchecked, operators may skip this step on Execution if it does not apply to
-                this batch.
+                When unchecked, operators may skip this step on{" "}
+                {isInbound ? "Inbound Execution" : "Execution"} if it does not apply to this batch.
               </span>
             </span>
           </span>

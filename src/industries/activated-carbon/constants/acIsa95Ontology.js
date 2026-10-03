@@ -1,5 +1,5 @@
 /**
- * ISA-95 manufacturing ontology — Activated Carbon (SAM Carbons).
+ * ISA-95 manufacturing ontology — Activated Carbon (GR Carbons).
  * Hierarchy: Enterprise → Site/Area → Process Cell → Production Unit → Control Module.
  * Triples align with mes_core traceability (Subject → Predicate → Object).
  */
@@ -15,8 +15,8 @@ export const ISA95_LEVELS = [
 /** @type {Array<{ id: string, label: string, level: number, kind: string, parent: string | null, flowPath?: string, processStep?: string, desc: string }>} */
 export const AC_ISA95_ENTITIES = [
   {
-    id: "Enterprise:SAM_CARBONS",
-    label: "SAM Carbons",
+    id: "Enterprise:GR_CARBONS",
+    label: "GR Carbons",
     level: 4,
     kind: "enterprise",
     parent: null,
@@ -27,7 +27,7 @@ export const AC_ISA95_ENTITIES = [
     label: "Activated Carbon Plant",
     level: 3,
     kind: "site",
-    parent: "Enterprise:SAM_CARBONS",
+    parent: "Enterprise:GR_CARBONS",
     desc: "Manufacturing site — single product family: granular activated carbon."
   },
   {
@@ -226,7 +226,7 @@ export const AC_ISA95_ENTITIES = [
     label: "Supplier",
     level: 4,
     kind: "party",
-    parent: "Enterprise:SAM_CARBONS",
+    parent: "Enterprise:GR_CARBONS",
     desc: "External feedstock vendor — supplies raw material batches."
   },
   {
@@ -234,7 +234,7 @@ export const AC_ISA95_ENTITIES = [
     label: "Customer",
     level: 4,
     kind: "party",
-    parent: "Enterprise:SAM_CARBONS",
+    parent: "Enterprise:GR_CARBONS",
     desc: "Buyer of finished activated carbon — dispatch destination."
   }
 ];

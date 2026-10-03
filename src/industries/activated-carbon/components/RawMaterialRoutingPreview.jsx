@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 
+import { AC_INBOUND_FIXED_END, AC_INBOUND_FIXED_START } from "../constants/acRawMaterialProcessCatalog";
+
 function RawMaterialRoutingPreview({ materialType, compact = false }) {
   if (!materialType) {
     return (
@@ -9,8 +11,12 @@ function RawMaterialRoutingPreview({ materialType, compact = false }) {
     );
   }
 
+  const inboundOps = materialType.inbound_operations || [];
   const operations = materialType.operations || [];
   const parameters = materialType.process_parameters || [];
+  const inboundParams = parameters.filter(
+    (p) => String(p.used_at || "").toLowerCase() === "inbound" || p.used_at === "inward"
+  );
   const feasibilityParams = parameters.filter(
     (p) => p.used_at === "feasibility" || p.used_at === "both"
   );
@@ -42,7 +48,39 @@ function RawMaterialRoutingPreview({ materialType, compact = false }) {
         )}
       </div>
 
-      <div className="wf-ac-routing-flow mt-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mt-3 mb-1">
+        After inward receipt (this page)
+      </div>
+      <div className="wf-ac-routing-flow">
+        <div className="wf-ac-routing-flow-step">
+          <span className="wf-ac-routing-flow-seq">✓</span>
+          <span className="wf-ac-routing-flow-label">{AC_INBOUND_FIXED_START.operation_name}</span>
+          <span className="wf-ac-routing-flow-arrow" aria-hidden="true">
+            →
+          </span>
+        </div>
+        {inboundOps.map((op, index) => (
+          <div key={op.operation_code || `in${index}`} className="wf-ac-routing-flow-step">
+            <span className="wf-ac-routing-flow-seq">{op.operation_sequence}</span>
+            <span className="wf-ac-routing-flow-label">{op.operation_name}</span>
+            <span className="wf-ac-routing-flow-arrow" aria-hidden="true">
+              →
+            </span>
+          </div>
+        ))}
+        <div className="wf-ac-routing-flow-step">
+          <span className="wf-ac-routing-flow-seq">QC</span>
+          <span className="wf-ac-routing-flow-label">{AC_INBOUND_FIXED_END.operation_name}</span>
+          <span className="wf-ac-routing-flow-arrow" aria-hidden="true">
+            →
+          </span>
+        </div>
+      </div>
+
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mt-4 mb-1">
+        After release to production
+      </div>
+      <div className="wf-ac-routing-flow">
         {operations.map((op, index) => (
           <div key={op.operation_code || index} className="wf-ac-routing-flow-step">
             <span className="wf-ac-routing-flow-seq">{op.operation_sequence}</span>
@@ -100,8 +138,8 @@ function RawMaterialRoutingPreview({ materialType, compact = false }) {
 
       {compact && (
         <p className="text-xs text-slate-500 mt-2">
-          {operations.length} routing step(s) · feasibility checks kiln +{" "}
-          {feasibilityParams.length || "standard"} parameter(s)
+          {inboundOps.length} inbound prep · {operations.length} shop step(s) after release ·{" "}
+          {inboundParams.length + executionParams.length} tracking field(s)
         </p>
       )}
     </div>

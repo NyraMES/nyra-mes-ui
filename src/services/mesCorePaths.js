@@ -2,6 +2,7 @@ import { apiBaseUrl } from "../auth/cognitoConfig";
 
 /** Default workspace when API context omits workspace_code. */
 export const DEFAULT_WORKSPACE_BY_TENANT = {
+  GR_CARBONS: "GR_CARBONS_ACTIVATED_CARBON",
   SAM_CARBONS: "SAM_CARBONS_ACTIVATED_CARBON",
   SAM_CARBONS_DEMO: "SAM_CARBONS_DEMO_WS"
 };
