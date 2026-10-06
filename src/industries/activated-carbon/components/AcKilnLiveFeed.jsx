@@ -66,7 +66,9 @@ function KilnFeedRow({ kiln }) {
             {hasStock ? formatKg(stockKg) : "Empty"}
           </div>
           {kiln.active_lot_code ? (
-            <div className="text-xs text-slate-400 font-mono mt-1">Lot {kiln.active_lot_code}</div>
+            <div className="text-xs text-slate-400 font-mono mt-1">
+              {kiln.active_inward_order_code || kiln.active_order_code || kiln.active_lot_code}
+            </div>
           ) : (
             <div className="text-xs text-slate-500 mt-1">No active lot</div>
           )}

@@ -11,12 +11,14 @@ import {
   YAxis
 } from "recharts";
 
+import useIndustryBasePath from "../../../hooks/useIndustryBasePath";
 import { fetchAcKilnFeedLots } from "../../../services/activatedCarbonApi";
 import { EmptyState, StatusPill } from "../../../workflow/ui";
 import {
   buildAcKilnLoaderRows,
   buildKilnLoadChartSeries,
-  formatLoaderTime
+  formatLoaderTime,
+  pendingKilnChargeLots
 } from "../utils/acKilnLoaderUtils";
 
 const LIVE_CHART_TICK_MS = 30_000;
@@ -105,9 +107,11 @@ function KilnLoadChart({ row, nowMs }) {
   );
 }
 
-function KilnLiveLoadCard({ row, nowMs, readOnly = false }) {
+function KilnLiveLoadCard({ row, nowMs, readOnly = false, pendingLots = [], loadPath }) {
   const kilnLabel = row.resourceName || row.resourceCode;
   const isLive = row.status === "RUNNING";
+  const readyLots = pendingLots.filter((lot) => lot.feasibilityOk);
+  const waitingFeasibility = pendingLots.filter((lot) => !lot.feasibilityOk);
 
   return (
     <article className="flex-shrink-0 w-full sm:w-[min(100%,280px)] rounded-lg border border-slate-600/50 bg-slate-900/40 overflow-hidden flex flex-col">
@@ -134,7 +138,7 @@ function KilnLiveLoadCard({ row, nowMs, readOnly = false }) {
             </span>
           ) : (
             <Link
-              to="/activated-carbon/execution"
+              to={loadPath}
               className="rounded bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-1"
             >
               Load
@@ -161,7 +165,22 @@ function KilnLiveLoadCard({ row, nowMs, readOnly = false }) {
             </div>
           </div>
         ) : (
-          <p className="text-[11px] text-slate-500 py-1">No active load — kiln idle</p>
+          <div className="text-[11px] text-slate-500 py-1 space-y-1">
+            <p>No active load — kiln idle</p>
+            {readyLots.length ? (
+              <p className="text-slate-300">
+                Ready to charge{" "}
+                <span className="font-mono">
+                  {readyLots
+                    .map((lot) => `${lot.lotCode}${lot.kg ? ` · ${formatKg(lot.kg)}` : ""}`)
+                    .join(", ")}
+                </span>
+              </p>
+            ) : null}
+            {!readyLots.length && waitingFeasibility.length ? (
+              <p>Lots released — open Execution to load the kiln.</p>
+            ) : null}
+          </div>
         )}
 
         <KilnLoadChart row={row} nowMs={nowMs} />
@@ -171,6 +190,8 @@ function KilnLiveLoadCard({ row, nowMs, readOnly = false }) {
 }
 
 export default function AcKilnLiveLoadStrip({ dashboard, refreshedAt, readOnly = false }) {
+  const basePath = useIndustryBasePath();
+  const loadPath = `${basePath}/execution`;
   const [kilnLots, setKilnLots] = useState([]);
   const [loading, setLoading] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -200,15 +221,17 @@ export default function AcKilnLiveLoadStrip({ dashboard, refreshedAt, readOnly =
     };
   }, [dashboard]);
 
+  const lotLines = dashboard?.lot_lines || [];
   const rows = useMemo(
     () =>
       buildAcKilnLoaderRows({
         kilns: dashboard?.kilns || [],
         kilnLots,
-        lotLines: dashboard?.lot_lines || []
+        lotLines
       }),
-    [dashboard, kilnLots]
+    [dashboard, kilnLots, lotLines]
   );
+  const pendingLots = useMemo(() => pendingKilnChargeLots(lotLines), [lotLines]);
 
   if (!dashboard) {
     return <p className="text-sm text-slate-400 py-4 text-center">Loading kiln data…</p>;
@@ -237,7 +260,14 @@ export default function AcKilnLiveLoadStrip({ dashboard, refreshedAt, readOnly =
 
       <div className="flex flex-wrap lg:flex-nowrap gap-3 overflow-x-auto pb-1">
         {rows.map((row) => (
-          <KilnLiveLoadCard key={row.resourceCode} row={row} nowMs={nowMs} readOnly={readOnly} />
+          <KilnLiveLoadCard
+            key={row.resourceCode}
+            row={row}
+            nowMs={nowMs}
+            readOnly={readOnly}
+            pendingLots={row.isActive ? [] : pendingLots}
+            loadPath={loadPath}
+          />
         ))}
       </div>
 
@@ -251,7 +281,7 @@ export default function AcKilnLiveLoadStrip({ dashboard, refreshedAt, readOnly =
           <span className="text-xs text-slate-500 wf-btn--disabled">Telemetry</span>
         ) : (
           <Link
-            to="/activated-carbon/kiln-telemetry"
+            to={`${basePath}/kiln-telemetry`}
             className="text-xs text-cyan-300 hover:text-cyan-100 inline-flex items-center gap-0.5"
           >
             Telemetry

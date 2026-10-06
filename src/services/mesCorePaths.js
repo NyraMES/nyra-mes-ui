@@ -3,12 +3,32 @@ import { apiBaseUrl } from "../auth/cognitoConfig";
 /** Default workspace when API context omits workspace_code. */
 export const DEFAULT_WORKSPACE_BY_TENANT = {
   GR_CARBONS: "GR_CARBONS_ACTIVATED_CARBON",
-  SAM_CARBONS: "SAM_CARBONS_ACTIVATED_CARBON",
+  SAM_CARBONS: "GR_CARBONS_ACTIVATED_CARBON",
   SAM_CARBONS_DEMO: "SAM_CARBONS_DEMO_WS"
 };
 
-export function resolveDefaultWorkspaceCode(tenantCode) {
+export const TENANT_CODE_ALIASES = {
+  SAM_CARBONS: "GR_CARBONS"
+};
+
+export const WORKSPACE_CODE_ALIASES = {
+  SAM_CARBONS_ACTIVATED_CARBON: "GR_CARBONS_ACTIVATED_CARBON"
+};
+
+export function canonicalTenantCode(tenantCode) {
   const code = String(tenantCode || "").trim();
+  if (!code) return "";
+  return TENANT_CODE_ALIASES[code] || code;
+}
+
+export function canonicalWorkspaceCode(workspaceCode) {
+  const code = String(workspaceCode || "").trim();
+  if (!code) return null;
+  return WORKSPACE_CODE_ALIASES[code] || code;
+}
+
+export function resolveDefaultWorkspaceCode(tenantCode) {
+  const code = canonicalTenantCode(tenantCode);
   if (!code) return null;
   return DEFAULT_WORKSPACE_BY_TENANT[code] || null;
 }

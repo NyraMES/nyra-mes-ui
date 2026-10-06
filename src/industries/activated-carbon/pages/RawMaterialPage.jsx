@@ -7,15 +7,16 @@ import { resolveAcAppContext } from "../utils/acContextUtils";
 import { SectionHeader } from "../../../workflow/ui";
 import RawMaterialInwardPage from "./RawMaterialInwardPage";
 import RawMaterialInboundPrepPage from "./RawMaterialInboundPrepPage";
-import AcInwardRecordsTable from "../components/AcInwardRecordsTable";
 import AcReleaseToProductionPanel from "../components/AcReleaseToProductionPanel";
+import AcSectionReportsPanel from "../components/AcSectionReportsPanel";
 
 import "../styles/acMasters.css";
 
 const TABS = [
   { id: "inward", label: "1 · Gate receipt", hint: "Supplier inward" },
-  { id: "prep", label: "2 · Inbound prep", hint: "Lab · RMS bags · crusher · RM out" },
-  { id: "release", label: "3 · Release to production", hint: "Create production lot" }
+  { id: "prep", label: "2 · Inbound prep", hint: "Lab · RMS inward · crusher · RMS outward" },
+  { id: "release", label: "3 · Release to production", hint: "Release inward order" },
+  { id: "reports", label: "4 · Reports", hint: "Summary · details · Excel" }
 ];
 
 function RawMaterialPage() {
@@ -34,7 +35,6 @@ function RawMaterialPage() {
   const [tab, setTab] = useState(initialTab);
   const [prepFocusOrderId, setPrepFocusOrderId] = useState(null);
   const [prepRefresh, setPrepRefresh] = useState(0);
-  const [releaseListTick, setReleaseListTick] = useState(0);
 
   useEffect(() => {
     const next = new URLSearchParams(location.search).get("tab");
@@ -61,7 +61,7 @@ function RawMaterialPage() {
       <SectionHeader
         eyebrow="Inbound"
         title="Raw Material"
-        subtitle="Gate receipt → Lab → RMS bags → crusher → RM outward → release. Activation runs later on Feasibility / Execution."
+        subtitle="Gate receipt → Lab → RMS inward → crusher → RMS outward (crusher output bags) → Release to Production. Then Execution (kiln feed first)."
       />
 
       <div className="ac-masters-tabs flex flex-wrap gap-2 mb-6 border-b border-white/15">
@@ -92,19 +92,16 @@ function RawMaterialPage() {
         />
       )}
       {tab === "prep" && (
-        <RawMaterialInboundPrepPage focusOrderId={prepFocusOrderId} refreshToken={prepRefresh} />
+        <RawMaterialInboundPrepPage
+          focusOrderId={prepFocusOrderId}
+          refreshToken={prepRefresh}
+          onReadyForRelease={() => {
+            selectTab("release");
+          }}
+        />
       )}
-      {tab === "release" && (
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600 leading-relaxed">
-            After inbound prep (Lab, RMS bags, crusher, RM outward), release quantity from an
-            inward receipt to create a production lot. Then open{" "}
-            <strong>Feasibility Gate</strong> before kiln feed.
-          </p>
-          <AcReleaseToProductionPanel onReleased={() => setReleaseListTick((n) => n + 1)} />
-          <AcInwardRecordsTable refreshToken={releaseListTick} className="" />
-        </div>
-      )}
+      {tab === "release" && <AcReleaseToProductionPanel />}
+      {tab === "reports" && <AcSectionReportsPanel section="raw_material" />}
     </div>
   );
 }

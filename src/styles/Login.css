@@ -1,9 +1,9 @@
 /* Nyra brand navy — matches logo background */
 :root {
-  --nyra-navy: #08264a;
-  --nyra-navy-mid: #0c2851;
-  --nyra-navy-deep: #061a35;
-  --nyra-navy-hover: #103a6b;
+  --nyra-navy: #0d3a6e;
+  --nyra-navy-mid: #124578;
+  --nyra-navy-deep: #0a2f5c;
+  --nyra-navy-hover: #165086;
 }
 
 .login-grid {

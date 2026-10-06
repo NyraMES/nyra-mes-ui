@@ -6,6 +6,7 @@ import {
   createAcCustomerSalesOrder,
   fetchAcDeliveryCommitment,
   fetchAcFinishedGoodsStock,
+  fetchAcGradeStock,
   fetchAcMasters,
   formatAcApiError
 } from "../../../services/activatedCarbonApi";
@@ -38,9 +39,14 @@ function CustomerSalesPage() {
         setMasters(m);
         let s = [];
         try {
-          s = await fetchAcFinishedGoodsStock();
+          s = await fetchAcGradeStock();
         } catch (stockErr) {
           console.warn(stockErr);
+          try {
+            s = await fetchAcFinishedGoodsStock();
+          } catch (fgErr) {
+            console.warn(fgErr);
+          }
         }
         setStock(s || []);
         if (m?.customers?.[0]) {
@@ -83,7 +89,11 @@ function CustomerSalesPage() {
       });
       setLastOrder(result);
       setSuccess(`Customer order ${result.order.order_code} created.`);
-      setStock(await fetchAcFinishedGoodsStock());
+      try {
+        setStock(await fetchAcGradeStock());
+      } catch {
+        setStock(await fetchAcFinishedGoodsStock());
+      }
       if (result.commitment?.can_dispatch_from_stock) {
         setSuccess(
           `Customer order ${result.order.order_code} created — stock available. Proceed to Dispatch.`
@@ -104,24 +114,25 @@ function CustomerSalesPage() {
       <SectionHeader
         eyebrow="Sales"
         title="Customer purchase order"
-        subtitle="Checks finished-goods stock first; if short, estimates a tentative delivery date from raw material and routing lead time."
+        subtitle="Stock available is bags marked In Stock on destoning and post-activation quality. If short, a tentative delivery date is estimated from raw material and routing lead time."
       />
 
       {(error || loading) && error && <AcAlert variant="error">{error}</AcAlert>}
       {success && <AcAlert variant="success">{success}</AcAlert>}
 
       <WfCard className="mb-6">
-        <WfCardHeader title="Finished goods on hand" subtitle="Increments when all lot operations complete on the shop floor." />
+        <WfCardHeader title="Available in stock" subtitle="Destoning and post-activation bags whose destination is In Stock." />
         <WfCardBody>
           <div className="wf-light-panel rounded-xl p-4">
             {stock.length === 0 ? (
-              <p className="text-sm text-slate-600">No stock recorded yet — complete execution on a lot first.</p>
+              <p className="text-sm text-slate-600">No bags in stock yet — set destination to In Stock on destoning or post-activation quality.</p>
             ) : (
               <ul className="text-sm space-y-2">
                 {stock.map((row) => (
-                  <li key={row.product_id} className="flex justify-between gap-4 text-slate-900">
+                  <li key={row.grade_code || row.product_id} className="flex justify-between gap-4 text-slate-900">
                     <span>
-                      {row.product_code} — {row.product_name}
+                      {row.grade_label || row.product_name || row.product_code}
+                      {row.product_code ? ` — ${row.product_code}` : ""}
                     </span>
                     <span className="font-mono">{row.quantity_kg} {row.uom || "KG"}</span>
                   </li>

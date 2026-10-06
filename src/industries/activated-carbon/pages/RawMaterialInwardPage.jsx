@@ -135,7 +135,7 @@ function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
   );
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-6xl">
       <AcCreatedIdsDialog
         open={idsDialog.open}
         title="Inward order created"
@@ -165,7 +165,8 @@ function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
           subtitle="Order ID auto-generated from sequence (e.g. ORD-AC-1002)."
         />
         <WfCardBody>
-          <div className="wf-light-panel rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+          <div className="wf-ac-gate-receipt-grid">
+            <div className="wf-light-panel rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <AcFormSelect
               label="Supplier"
               value={supplierId}
@@ -244,33 +245,44 @@ function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
               />
             </label>
 
-            {selectedMaterialType ? (
-              <div className="md:col-span-2 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-                  Fixed routing for selected feedstock
-                </p>
-                <RawMaterialRoutingPreview materialType={selectedMaterialType} compact />
-              </div>
-            ) : null}
-
             <p className="text-xs text-slate-500 md:col-span-2">
               Next: open <strong>2 · Inbound prep</strong> for Lab → RMS bags → crusher → RM outward,
               then <strong>Release</strong>.
             </p>
+            <div className="md:col-span-2">
+              <AcSaveBar
+                onSave={handleSave}
+                saving={saving}
+                saveLabel="Record inward"
+                disabled={
+                  noSuppliers ||
+                  noProducts ||
+                  !supplierId ||
+                  !dcNumber.trim() ||
+                  !supplierWeight ||
+                  !ourWeight
+                }
+              />
+            </div>
+            </div>
+            <aside className="wf-ac-gate-receipt-flow rounded-lg border border-blue-200 bg-blue-50/40 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                Process flow
+              </p>
+              {selectedMaterialType ? (
+                <RawMaterialRoutingPreview
+                  materialType={selectedMaterialType}
+                  compact
+                  sidebar
+                  inboundOnly
+                />
+              ) : (
+                <p className="text-xs text-slate-600">
+                  Select a raw material to see its inward process.
+                </p>
+              )}
+            </aside>
           </div>
-          <AcSaveBar
-            onSave={handleSave}
-            saving={saving}
-            saveLabel="Record inward"
-            disabled={
-              noSuppliers ||
-              noProducts ||
-              !supplierId ||
-              !dcNumber.trim() ||
-              !supplierWeight ||
-              !ourWeight
-            }
-          />
         </WfCardBody>
       </WfCard>
 

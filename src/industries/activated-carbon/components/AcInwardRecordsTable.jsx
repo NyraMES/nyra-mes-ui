@@ -1,10 +1,30 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAppContext } from "../../../context/AppContext";
 import useAcPageRefresh from "../hooks/useAcPageRefresh";
 import { fetchAcRawMaterialInward, formatAcApiError } from "../../../services/activatedCarbonApi";
 import { isAcContextReady } from "../utils/acContextUtils";
 import { WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
+
+function localDayKey(value) {
+  if (!value) return "";
+  const raw = String(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function todayKey() {
+  return localDayKey(new Date());
+}
+
+function orderDayKey(order) {
+  return localDayKey(order.created_at) || localDayKey(order.order_date);
+}
 
 function formatTs(value) {
   if (!value) return "—";
@@ -19,13 +39,19 @@ function isDone(status) {
 }
 
 function MarkWithDate({ status, at }) {
+  const raw = String(status || "").toUpperCase();
+  const denied = raw === "DENIED" || raw === "FAIL" || raw === "QC_FAILED";
   const done = isDone(status);
   return (
     <div>
-      <div className={`text-base leading-none ${done ? "text-emerald-700" : "text-rose-600"}`}>
-        {done ? "✓" : "✗"}
+      <div
+        className={`text-base leading-none ${
+          denied ? "text-amber-800" : done ? "text-emerald-700" : "text-rose-600"
+        }`}
+      >
+        {denied ? "Denied" : done ? "✓" : "✗"}
       </div>
-      <div className="text-[11px] text-slate-500 mt-1">{done ? formatTs(at) : "—"}</div>
+      <div className="text-[11px] text-slate-500 mt-1">{done || denied ? formatTs(at) : "—"}</div>
     </div>
   );
 }
@@ -51,6 +77,7 @@ export default function AcInwardRecordsTable({
   const [ownedOrders, setOwnedOrders] = useState([]);
   const [ownedLoading, setOwnedLoading] = useState(ordersProp == null);
   const [error, setError] = useState("");
+  const [day, setDay] = useState(todayKey);
 
   const managed = ordersProp == null;
   const orders = managed ? ownedOrders : ordersProp;
@@ -87,32 +114,50 @@ export default function AcInwardRecordsTable({
   };
 
   const contextReady = isAcContextReady(context, contextLoading);
+  const dayOrders = useMemo(
+    () => (orders || []).filter((order) => orderDayKey(order) === day),
+    [orders, day]
+  );
 
   return (
     <WfCard className={className}>
       <WfCardHeader
-        title="Inward records"
+        title="Today's inward records"
+        subtitle={`${dayOrders.length} receipt${dayOrders.length === 1 ? "" : "s"} for ${day === todayKey() ? "today" : day}`}
         right={
-          <button
-            type="button"
-            className="text-xs font-medium text-blue-700 hover:text-blue-900"
-            disabled={ordersLoading || contextLoading || !context.loaded}
-            onClick={() =>
-              Promise.resolve(refresh()).catch((e) =>
-                setError(formatAcApiError(e, "Failed to refresh"))
-              )
-            }
-          >
-            {ordersLoading ? "Refreshing…" : "Refresh"}
-          </button>
+          <div className="flex items-center gap-3">
+            <label className="text-xs text-slate-600 flex items-center gap-2">
+              <span>Day</span>
+              <input
+                type="date"
+                className="rounded border border-slate-300 px-2 py-1 text-sm"
+                value={day}
+                onChange={(e) => setDay(e.target.value || todayKey())}
+              />
+            </label>
+            <button
+              type="button"
+              className="wf-btn wf-btn-ghost"
+              disabled={ordersLoading || contextLoading || !context.loaded}
+              onClick={() =>
+                Promise.resolve(refresh()).catch((e) =>
+                  setError(formatAcApiError(e, "Failed to refresh"))
+                )
+              }
+            >
+              {ordersLoading ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
         }
       />
       <WfCardBody>
         {error ? <p className="text-sm text-red-700 mb-2">{error}</p> : null}
         {ordersLoading && orders.length === 0 ? (
           <p className="text-sm text-slate-600">Loading inward orders…</p>
-        ) : orders.length === 0 ? (
-          <p className="text-sm text-slate-600">No inward orders yet.</p>
+        ) : dayOrders.length === 0 ? (
+          <p className="text-sm text-slate-600">
+            No inward orders for this day. Pick another date to see older receipts.
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[72rem]">
@@ -128,12 +173,12 @@ export default function AcInwardRecordsTable({
                   <th className="py-2">Supplier</th>
                   <th className="py-2">Lab status</th>
                   <th className="py-2">RMS inward status</th>
-                  <th className="py-2">RM outward status</th>
+                  <th className="py-2">RMS outward status</th>
                   <th className="py-2">Released to production</th>
                 </tr>
               </thead>
               <tbody>
-                {orders.map((o) => {
+                {dayOrders.map((o) => {
                   const received = Number(o.inward_quantity_kg ?? 0);
                   const released = Number(o.allocated_to_production_kg ?? 0);
                   const available = Number(

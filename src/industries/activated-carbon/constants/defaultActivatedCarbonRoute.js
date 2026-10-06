@@ -25,14 +25,6 @@ const BASE_OPERATIONS = [
     requires_labor: false
   },
   {
-    operation_code: "FEASIBILITY_GATE",
-    operation_name: "Feasibility Gate",
-    operation_seq: 30,
-    gate_type: "feasibility_gate",
-    requires_machine: false,
-    requires_labor: false
-  },
-  {
     operation_code: "KILN_FEED",
     operation_name: "Kiln Feed",
     operation_seq: 40,

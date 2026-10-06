@@ -24,7 +24,7 @@ function AcMenuRouteGuard({ children }) {
   const segment = pathname.replace(/^\/activated-carbon\/?/, "").split("/")[0] || "dashboard";
   const menuId = PATH_TO_MENU_ID[segment] || segment;
 
-  if (!canAccessAcMenuItem(menuId, roles)) {
+  if (!canAccessAcMenuItem(menuId, roles, user)) {
     return <Navigate to="/activated-carbon/dashboard" replace />;
   }
 

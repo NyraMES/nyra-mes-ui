@@ -121,7 +121,10 @@ export function findRawMaterialType(types, productCode) {
   if (!productCode) return null;
   const key = normalizeProductCode(productCode);
   return (
-    (types || []).find((t) => normalizeProductCode(t.product_code) === key) || null
+    (types || []).find((t) => normalizeProductCode(t.product_code) === key) ||
+    (types || []).find((t) => normalizeProductCode(t.finished_product_code) === key) ||
+    (types || []).find((t) => normalizeProductCode(t.routing_code) === key) ||
+    null
   );
 }
 

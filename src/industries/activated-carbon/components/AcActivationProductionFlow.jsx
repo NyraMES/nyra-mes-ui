@@ -4,11 +4,11 @@ import useIndustryBasePath from "../../../hooks/useIndustryBasePath";
 import { AC_ACTIVATION_FLOW_STEPS } from "../constants/acActivationFlowConstants";
 
 /**
- * Shop-floor path after Raw Material release — feasibility through execution.
+ * Shop-floor path after Raw Material release — Execution (kiln feed first).
  * Triplet ontology stages lot-scoped URIs from kiln feed onward.
  */
 export default function AcActivationProductionFlow({
-  activeStepId = "feasibility",
+  activeStepId = "execution",
   lotCode = null,
   className = ""
 }) {
@@ -25,7 +25,7 @@ export default function AcActivationProductionFlow({
       </p>
       <ol className="flex flex-wrap items-stretch gap-1">
         {AC_ACTIVATION_FLOW_STEPS.map((step, index) => {
-          const href = `${basePath}${step.pathSuffix}${step.id === "feasibility" ? lotQuery : ""}`;
+          const href = `${basePath}${step.pathSuffix}${lotQuery}`;
           const isActive = step.id === activeStepId;
           return (
             <li key={step.id} className="flex items-center min-w-0">
@@ -51,8 +51,8 @@ export default function AcActivationProductionFlow({
         })}
       </ol>
       <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">
-        Use <span className="font-mono">LOT-AC-*</span> on feasibility and downstream steps — not the
-        inward order code. Each step stages triplet ontology on the lot where applicable.
+        Use <span className="font-mono">LOT-AC-*</span> on Execution — not the inward order code.
+        Kiln feed is first; routing is created automatically after Load.
       </p>
     </nav>
   );

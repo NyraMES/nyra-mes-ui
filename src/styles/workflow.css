@@ -5,10 +5,10 @@
    ------------------------------------------------------------------ */
 
 :root {
-  --nyra-navy: #08264a;
-  --nyra-navy-mid: #0c2851;
-  --nyra-navy-deep: #061a35;
-  --nyra-navy-hover: #103a6b;
+  --nyra-navy: #0d3a6e;
+  --nyra-navy-mid: #124578;
+  --nyra-navy-deep: #0a2f5c;
+  --nyra-navy-hover: #165086;
 }
 
 @theme {
@@ -195,6 +195,29 @@ body:has(.wf-shell) #root {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.wf-nav-section-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.wf-nav-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  width: 100%;
+  margin: 0.15rem 0 0.35rem;
+  padding-left: 0.85rem;
+}
+
+.wf-nav-link--indent {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 0.75rem;
+  padding: 0.38rem 0.7rem;
 }
 
 .wf-sidebar-footer {
@@ -1784,6 +1807,12 @@ span.wf-btn.wf-btn--disabled {
   border-bottom-color: #22d3ee !important;
 }
 
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-tabs.ac-masters-tabs button {
+  min-height: 2rem;
+  min-width: 0;
+  padding: 0.3rem 0.7rem !important;
+}
+
 /* Undo light-theme Tailwind remaps inside the navy AC center pane */
 .wf-shell.wf-ac-shell .wf-ac-page-frame .text-slate-100,
 .wf-shell.wf-ac-shell .wf-ac-page-frame .text-slate-200 {
@@ -1855,12 +1884,14 @@ span.wf-btn.wf-btn--disabled {
 }
 
 .wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel .text-slate-500,
-.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-500 {
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-500,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel .text-[11px] {
   color: #64748b !important;
 }
 
 .wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel .text-slate-800,
 .wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel .text-slate-900,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel .text-2xl,
 .wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-800,
 .wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-900 {
   color: #0f172a !important;

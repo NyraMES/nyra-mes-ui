@@ -3,12 +3,10 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext";
 import { useAppContext } from "../context/AppContext";
-import {
-  getIndustrySelection,
-  resolveScopedTenantForIndustry
-} from "../config/industrySelection";
+import { getIndustrySelection } from "../config/industrySelection";
 import {
   resolveAppHostBinding,
+  resolvePlantScopeForIndustry,
   tenantMismatchMessage,
   userMatchesHostTenant
 } from "../config/hostConfig";
@@ -91,8 +89,8 @@ function LoginPage() {
     industrySelection?.landing_path ||
     "/workflow";
   const loginTenantScope = industry
-    ? resolveScopedTenantForIndustry(industry, isAuthenticated ? user : null)
-    : resolveScopedTenantForIndustry(null, isAuthenticated ? user : null);
+    ? resolvePlantScopeForIndustry(industry, isAuthenticated ? user : null)
+    : resolvePlantScopeForIndustry(null, isAuthenticated ? user : null);
   const scopedTenantCode =
     loginTenantScope.tenant_code ||
     hostBinding?.tenant_code ||

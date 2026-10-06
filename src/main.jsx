@@ -6,6 +6,7 @@ import TenantContextSync from "./components/TenantContextSync.jsx";
 import { AppProvider } from "./context/AppContext.jsx";
 import "./index.css";
 import "./styles/workflow.css";
+import "./styles/contrast.css";
 import App from "./App.jsx";
 
 createRoot(document.getElementById("root")).render(

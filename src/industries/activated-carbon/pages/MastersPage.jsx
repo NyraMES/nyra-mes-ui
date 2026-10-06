@@ -2,10 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../../auth/AuthContext";
-import {
-  userCanConfigureProcessRouting,
-  userCanManageTenantMasters
-} from "../../../auth/roles";
+import { userCanAccessAcMasters } from "../utils/acPrivileges";
 import {
   createAcCustomer,
   createAcKiln,
@@ -34,10 +31,21 @@ import AcSaveBar from "../components/AcSaveBar";
 import AcSimpleMasterForm from "../components/AcSimpleMasterForm";
 import AcFriendlyRegistryList from "../components/AcFriendlyRegistryList";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
+import { keepGrCoconutShellTypes } from "../utils/acGrCoconutShell";
 
 import "../styles/acMasters.css";
 
-function ResourceTable({ rows, emptyLabel, showHeadcount = false }) {
+const STATION_LABELS = {
+  destoning: "Destoning",
+  screening: "Screening",
+  dedusting: "De-dusting",
+  crushing: "Crushing",
+  demagnetisation: "De-magnetisation",
+  blending: "Blending",
+  fg_qc: "Finished Goods"
+};
+
+function ResourceTable({ rows, emptyLabel, showHeadcount = false, showStation = false }) {
   if (!rows?.length) {
     return <p className="text-sm text-slate-600">{emptyLabel}</p>;
   }
@@ -47,6 +55,8 @@ function ResourceTable({ rows, emptyLabel, showHeadcount = false }) {
         <tr className="text-left text-slate-500 border-b">
           <th className="py-2">Code</th>
           <th className="py-2">Name</th>
+          {showStation ? <th className="py-2">Process</th> : null}
+          {showStation ? <th className="py-2">Machines</th> : null}
           {showHeadcount ? <th className="py-2">Available operators</th> : null}
           <th className="py-2">Status</th>
         </tr>
@@ -56,6 +66,12 @@ function ResourceTable({ rows, emptyLabel, showHeadcount = false }) {
           <tr key={r.resource_id || r.resource_code} className="border-b border-slate-100">
             <td className="py-2 font-mono">{r.resource_code}</td>
             <td className="py-2">{r.resource_name}</td>
+            {showStation ? (
+              <td className="py-2 text-slate-700">{STATION_LABELS[r.station] || r.station || "—"}</td>
+            ) : null}
+            {showStation ? (
+              <td className="py-2 text-slate-700 tabular-nums">{r.unit_count ?? 1}</td>
+            ) : null}
             {showHeadcount ? (
               <td className="py-2 text-slate-700">{r.headcount ?? "—"}</td>
             ) : null}
@@ -105,9 +121,8 @@ function KilnTable({ kilns, equipment, emptyLabel }) {
 
 function MastersPage() {
   const { user } = useAuth();
-  const roles = user?.roles || [];
-  const canManageMasters = userCanManageTenantMasters(roles);
-  const canConfigureProcess = userCanConfigureProcessRouting(roles);
+  const canManageMasters = userCanAccessAcMasters(user?.roles || [], user);
+  const canConfigureProcess = canManageMasters;
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -133,6 +148,8 @@ function MastersPage() {
   const [resourceName, setResourceName] = useState("");
   const [resourceType, setResourceType] = useState("TOOL");
   const [laborHeadcount, setLaborHeadcount] = useState("4");
+  const [resourceStation, setResourceStation] = useState("screening");
+  const [resourceUnitCount, setResourceUnitCount] = useState("1");
   const [paramKey, setParamKey] = useState("");
   const [paramLabel, setParamLabel] = useState("");
   const [paramUnit, setParamUnit] = useState("");
@@ -177,7 +194,7 @@ function MastersPage() {
       labor_pools: masters.labor_pools || [],
       equipment: masters.equipment || []
     });
-    setRawMaterialTypes(await fetchAcRawMaterialTypes());
+    setRawMaterialTypes(keepGrCoconutShellTypes(await fetchAcRawMaterialTypes()));
   };
 
   useEffect(() => {
@@ -401,6 +418,21 @@ function MastersPage() {
         }
         payload.headcount = n;
       }
+      if (resourceType === "MACHINE") {
+        if (!resourceStation) {
+          setError("Select which process this machine is used on.");
+          setSaving(false);
+          return;
+        }
+        const n = parseInt(resourceUnitCount, 10);
+        if (!Number.isFinite(n) || n < 1) {
+          setError("Enter how many machines (1 or more).");
+          setSaving(false);
+          return;
+        }
+        payload.station = resourceStation;
+        payload.unit_count = n;
+      }
       const row = await createAcResource(payload);
       const items = [
         { label: "Resource code", value: row.resource_code },
@@ -413,6 +445,12 @@ function MastersPage() {
       }
       if (row.headcount != null) {
         items.push({ label: "Available operators", value: String(row.headcount) });
+      }
+      if (row.station) {
+        items.push({ label: "Process", value: STATION_LABELS[row.station] || row.station });
+      }
+      if (row.unit_count != null) {
+        items.push({ label: "Machines", value: String(row.unit_count) });
       }
       showCreatedIds(
         "Plant resource registered",
@@ -436,7 +474,7 @@ function MastersPage() {
       { id: "plant-resources", label: "Machines & kilns", hint: "Plant equipment" },
       { id: "routing", label: "Routing reference", hint: "Read-only summary" },
       { id: "kiln-parameters", label: "Kiln readings", hint: "Shift data fields" },
-      { id: "inbound-settings", label: "Inbound settings", hint: "Rotaries & RM outward" },
+      { id: "inbound-settings", label: "Inbound settings", hint: "Rotaries & RMS outward" },
       { id: "ontology-ui", label: "Advanced settings", hint: "Super Admin" }
     ],
     []
@@ -592,7 +630,7 @@ function MastersPage() {
           <WfCard className="mb-6">
             <WfCardHeader
               title="Raw materials and production steps"
-              subtitle="Pick a material from the list to see its steps from intake to finished product. Super Administrators can add new materials and change steps."
+              subtitle="Coconut Shell (GR) — Raw material to finished goods. Other raw material types are not used for this plant."
             />
             <WfCardBody>
               {loading ? (
@@ -668,6 +706,34 @@ function MastersPage() {
                         <option value="LABOR">Labor pool</option>
                       </select>
                     </label>
+                    {resourceType === "MACHINE" && (
+                      <>
+                        <label className="text-sm block">
+                          <span className="block mb-1 font-medium text-slate-700">Used on</span>
+                          <select
+                            className="w-full rounded border border-slate-300 px-3 py-2"
+                            value={resourceStation}
+                            onChange={(e) => setResourceStation(e.target.value)}
+                          >
+                            {Object.entries(STATION_LABELS).map(([id, label]) => (
+                              <option key={id} value={id}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="text-sm block">
+                          <span className="block mb-1 font-medium text-slate-700">How many machines?</span>
+                          <input
+                            type="number"
+                            min="1"
+                            className="w-full max-w-[8rem] rounded border border-slate-300 px-3 py-2"
+                            value={resourceUnitCount}
+                            onChange={(e) => setResourceUnitCount(e.target.value)}
+                          />
+                        </label>
+                      </>
+                    )}
                     {resourceType === "LABOR" && (
                       <label className="text-sm block sm:col-span-2">
                         <span className="block mb-1 font-medium text-slate-700">
@@ -720,7 +786,11 @@ function MastersPage() {
                 subtitle="Screens, conveyors, etc. (not activation kilns). Process time drives equipment occupancy."
               />
               <WfCardBody>
-                <ResourceTable rows={plantResources.machines} emptyLabel="No other machines registered." />
+                <ResourceTable
+                  rows={plantResources.machines}
+                  emptyLabel="No other machines registered."
+                  showStation
+                />
               </WfCardBody>
             </WfCard>
 
@@ -920,7 +990,7 @@ function MastersPage() {
           <WfCard>
             <WfCardHeader
               title="Kiln parameter catalog"
-              subtitle="Parameters captured on the Kiln Parameters page each shift."
+              subtitle="Parameters captured on Execution → Kiln Parameters each shift."
             />
             <WfCardBody>
               <table className="w-full text-sm">

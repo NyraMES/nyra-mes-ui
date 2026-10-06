@@ -25,14 +25,17 @@ export function buildAcKilnLoaderRows({
     const activeCode = kiln.active_lot_code;
     const lot =
       kilnLots.find((row) => row.lot_code === activeCode) ||
-      kilnLots.find(
-        (row) =>
-          (row.kiln_resource_code === kiln.resource_code ||
-            row.resource_code === kiln.resource_code) &&
+      kilnLots.find((row) => {
+        const meta = row.metadata || row.metadata_ || {};
+        const assigned = meta.kiln_resource_code || row.kiln_resource_code || row.resource_code;
+        return (
+          assigned === kiln.resource_code &&
           String(row.status || "").toUpperCase() === "IN_PROGRESS"
-      );
+        );
+      });
 
-    const lotLine = lotLines.find((row) => row.lot_code === activeCode);
+    const lotMeta = lot?.metadata || lot?.metadata_ || {};
+    const lotLine = lotLines.find((row) => row.lot_code === (activeCode || lot?.lot_code));
     const inwardCode =
       lotLine?.order_code ||
       lot?.inward_order_code ||
@@ -41,6 +44,7 @@ export function buildAcKilnLoaderRows({
       null;
 
     const loadedAt =
+      parseTime(lotMeta.charged_at) ||
       parseTime(lot?.charged_at) ||
       parseTime(lot?.started_at) ||
       parseTime(lot?.created_at) ||
@@ -52,9 +56,22 @@ export function buildAcKilnLoaderRows({
     const lastReadingAt = parseTime(kiln.last_reading_at);
     const progress = totalHours > 0 ? Math.min(1, Math.max(0, elapsedHours / totalHours)) : 0;
     const pendingHours = Math.max(0, totalHours - elapsedHours);
-    const kg = Number(kiln.active_lot_kg ?? lot?.lot_quantity ?? 0);
-    const kilnStatus = (kiln.status || "IDLE").toUpperCase();
-    const hasLoad = Boolean(activeCode || lot?.lot_code) || (kg > 0 && kilnStatus === "RUNNING");
+    const feedEvents = parseKilnFeedEvents([
+      ...(kiln.feed_events || []),
+      ...((lotMeta.kiln_feed_events || lot?.kiln_feed_events || []))
+    ]).filter((ev) => !ev.kilnCode || ev.kilnCode === kiln.resource_code);
+    const kg = Number(
+      kiln.loaded_kg ??
+        kiln.active_lot_kg ??
+        (feedEvents.length ? feedEvents.reduce((sum, ev) => sum + ev.kg, 0) : lot?.lot_quantity) ??
+        0
+    );
+    const lotInProgress = String(lot?.status || "").toUpperCase() === "IN_PROGRESS";
+    const kilnStatus =
+      lotInProgress && (kiln.status || "IDLE").toUpperCase() === "IDLE"
+        ? "RUNNING"
+        : (kiln.status || "IDLE").toUpperCase();
+    const hasLoad = Boolean(activeCode || lot?.lot_code) || (kg > 0 && kilnStatus === "RUNNING") || lotInProgress;
 
     return {
       resourceCode: kiln.resource_code,
@@ -64,6 +81,7 @@ export function buildAcKilnLoaderRows({
       inwardFull: inwardCode,
       lotCode: activeCode || lot?.lot_code || null,
       kg: Number.isFinite(kg) ? kg : 0,
+      feedEvents,
       loadedAt,
       lastReadingAt,
       elapsedHours,
@@ -103,6 +121,131 @@ function resolveCycleStatus({ kilnStatus, pendingHours, progress, hasLoad }) {
   return { text: "Loaded — awaiting start", tone: "neutral" };
 }
 
+export function parseKilnFeedEvents(raw = []) {
+  const seen = new Set();
+  const events = [];
+  for (const row of raw || []) {
+    if (!row || typeof row !== "object") continue;
+    const loadedAt = parseTime(row.loaded_at || row.loadedAt);
+    const kg = Number(row.kg ?? row.quantity_kg ?? 0);
+    const lotCode = row.lot_code || row.lotCode || null;
+    const key = `${lotCode || ""}|${row.bag_code || row.bagCode || ""}|${loadedAt?.toISOString() || ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    events.push({
+      lotCode,
+      inwardCode:
+        row.order_code ||
+        row.inward_order_code ||
+        row.inwardCode ||
+        row.source_inward_order_code ||
+        null,
+      bagCode: row.bag_code || row.bagCode || null,
+      kg: Number.isFinite(kg) ? kg : 0,
+      loadedAt,
+      kilnCode: row.kiln_resource_code || row.kilnCode || null
+    });
+  }
+  return events
+    .filter((ev) => ev.loadedAt && ev.kg >= 0)
+    .sort((a, b) => a.loadedAt.getTime() - b.loadedAt.getTime());
+}
+
+function inferredLotFeedEvent(lot) {
+  const meta = lot?.metadata || lot?.metadata_ || {};
+  const loadedAt = meta.charged_at || lot?.charged_at;
+  const assigned = meta.kiln_resource_code || lot?.kiln_resource_code;
+  const live = String(meta.kiln_live_status || "").toUpperCase();
+  const inKiln = live === "IN_KILN" || String(lot?.status || "").toUpperCase() === "IN_PROGRESS";
+  if (!loadedAt && !inKiln) return null;
+  const kg = Number(lot?.kiln_loaded_kg ?? meta.kiln_loaded_kg ?? lot?.lot_quantity ?? 0);
+  return {
+    lot_code: lot.lot_code || lot.lot_id,
+    order_code: lot.order_code || meta.source_inward_order_code || null,
+    bag_code: lot.crusher_bag_code || meta.crusher_bag_code || null,
+    kg: Number.isFinite(kg) && kg > 0 ? kg : 0,
+    loaded_at: loadedAt || lot?.updated_at || lot?.created_at || new Date().toISOString(),
+    kiln_resource_code: assigned || null
+  };
+}
+
+export function collectKilnFeedEvents({ kilnCode, kilnStatus = [], lots = [], extra = [] } = {}) {
+  const statusRow = (kilnStatus || []).find((row) => row.resource_code === kilnCode);
+  const fromLots = (lots || []).flatMap((lot) => {
+    const meta = lot.metadata || lot.metadata_ || {};
+    const assigned = meta.kiln_resource_code || lot.kiln_resource_code;
+    let events = meta.kiln_feed_events || lot.kiln_feed_events || [];
+    if (!Array.isArray(events) || events.length === 0) {
+      const inferred = inferredLotFeedEvent(lot);
+      events = inferred ? [inferred] : [];
+    }
+    if (assigned && kilnCode && assigned !== kilnCode && !events.length) return [];
+    return events.filter((ev) => {
+      const code = ev.kiln_resource_code || ev.kilnCode || assigned;
+      return !kilnCode || !code || code === kilnCode;
+    });
+  });
+  return parseKilnFeedEvents([...(statusRow?.feed_events || []), ...fromLots, ...extra]);
+}
+
+export const KILN_LIVE_WINDOW_HOURS = 6;
+
+/** Step series + stems for the last `windowHours` (default 6h). Earlier loads stay in the baseline kg. */
+export function buildCumulativeKilnSeries(
+  events,
+  nowMs = Date.now(),
+  windowHours = KILN_LIVE_WINDOW_HOURS
+) {
+  const evs = parseKilnFeedEvents(events);
+  const spanH = Math.max(windowHours || KILN_LIVE_WINDOW_HOURS, 1);
+  const tEnd = nowMs;
+  const tStart = nowMs - spanH * 3_600_000;
+  const totalKg = evs.reduce((sum, ev) => sum + (Number(ev.kg) || 0), 0);
+
+  if (!evs.length) {
+    return {
+      series: [
+        { hour: 0, kg: 0 },
+        { hour: spanH, kg: 0 }
+      ],
+      stems: [],
+      cumulativeKg: 0,
+      spanH,
+      windowStartMs: tStart
+    };
+  }
+
+  let cum = 0;
+  const series = [{ hour: 0, kg: 0 }];
+  const stems = [];
+  for (const ev of evs) {
+    const hour = Number(Math.max(0, Math.min(spanH, (ev.loadedAt.getTime() - tStart) / 3_600_000)).toFixed(4));
+    series.push({ hour, kg: cum });
+    cum += ev.kg;
+    const clock = formatLoaderTime(ev.loadedAt);
+    series.push({
+      hour,
+      kg: cum,
+      lotCode: ev.lotCode,
+      inwardCode: ev.inwardCode,
+      bagCode: ev.bagCode,
+      clock
+    });
+    stems.push({
+      hour,
+      kg: cum,
+      incrementKg: ev.kg,
+      lotCode: ev.lotCode,
+      inwardCode: ev.inwardCode,
+      bagCode: ev.bagCode,
+      clock,
+      loadedAt: ev.loadedAt
+    });
+  }
+  series.push({ hour: spanH, kg: cum });
+  return { series, stems, cumulativeKg: totalKg, spanH, windowStartMs: tStart };
+}
+
 export function formatLoaderTime(date) {
   if (!date) return "—";
   return date.toLocaleString(undefined, {
@@ -115,6 +258,9 @@ export function formatLoaderTime(date) {
 
 /** Line chart points — kg in kiln vs hours since load (updates with live tick). */
 export function buildKilnLoadChartSeries(row, nowMs = Date.now()) {
+  if (row.feedEvents?.length) {
+    return buildCumulativeKilnSeries(row.feedEvents, nowMs, KILN_LIVE_WINDOW_HOURS).series;
+  }
   const totalH = Math.max(row.totalHours || 1, 0.5);
   const kg = Number(row.kg) || 0;
 
@@ -151,6 +297,21 @@ export function buildKilnLoadChartSeries(row, nowMs = Date.now()) {
     return [first, last];
   }
   return [first, mid, last];
+}
+
+/** Lots released but not yet charged — shown on an idle kiln card. */
+export function pendingKilnChargeLots(lotLines = []) {
+  return (lotLines || [])
+    .filter((row) => {
+      const status = String(row.status || "").toUpperCase();
+      return status && !["IN_PROGRESS", "COMPLETED", "STOCKED", "DISPATCHED", "CLOSED", "CANCELLED"].includes(status);
+    })
+    .map((row) => ({
+      lotCode: row.lot_code,
+      inwardCode: row.order_code || null,
+      kg: Number(row.lot_quantity) || 0,
+      feasibilityOk: true
+    }));
 }
 
 export function formatPendingHours(hours, kilnStatus = "RUNNING") {

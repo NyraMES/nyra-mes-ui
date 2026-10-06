@@ -5,10 +5,9 @@ import { useAuth } from "../auth/AuthContext";
 import { useAppContext } from "../context/AppContext";
 import {
   getIndustrySelection,
-  resolveScopedTenantForIndustry,
   userCanAccessIndustry
 } from "../config/industrySelection";
-import { resolveAppHostBinding } from "../config/hostConfig";
+import { resolveAppHostBinding, resolvePlantScopeForIndustry } from "../config/hostConfig";
 import ContextLoadWarning from "../components/ContextLoadWarning";
 import { formatContactApiError, submitContactEnquiry } from "../services/contactApi";
 import { INDUSTRY_TILES } from "../config/industryTiles";
@@ -187,7 +186,7 @@ function LandingPage() {
 
     if (authLoading) return;
 
-    const tenantScope = resolveScopedTenantForIndustry(industryKey, user);
+    const tenantScope = resolvePlantScopeForIndustry(industryKey, user);
 
     if (authEnabled) {
       navigate("/login", {

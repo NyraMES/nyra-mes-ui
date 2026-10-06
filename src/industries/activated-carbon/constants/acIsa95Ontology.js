@@ -56,7 +56,7 @@ export const AC_ISA95_ENTITIES = [
     level: 3,
     kind: "area",
     parent: "Site:AC_Plant",
-    flowPath: "kiln-feed",
+    flowPath: "execution",
     processStep: "KILN_FEED",
     desc: "Feed charging, activation, and cooling on rotary kiln lines."
   },

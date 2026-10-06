@@ -1,11 +1,11 @@
 :root {
-  --text: #475569;
-  --text-h: #0f172a;
+  --text: #111111;
+  --text-h: #111111;
   --bg: #f8fafc;
   --surface: #ffffff;
   --border: #e2e8f0;
   --code-bg: #f1f5f9;
-  --accent: #2563eb;
+  --accent: #0d3a6e;
   --accent-bg: rgba(37, 99, 235, 0.08);
   --accent-border: rgba(37, 99, 235, 0.35);
 
@@ -15,18 +15,14 @@
 
   font: 16px/150% var(--sans);
   color-scheme: light;
-  color: var(--text);
+  color: #111111;
   background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   margin: 0;
   background: var(--bg);
-  color: var(--text);
+  color: #111111;
 }
 
 #root {

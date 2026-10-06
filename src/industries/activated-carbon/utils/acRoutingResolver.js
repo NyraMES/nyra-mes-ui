@@ -7,6 +7,7 @@ import {
   fetchMesCoreSchedulePlan
 } from "../../../services/mesCoreApi";
 import { mergeRawMaterialTypes, findRawMaterialType } from "./rawMaterialTypeStore";
+import { isGrCoconutShellType, keepGrCoconutShellTypes } from "./acGrCoconutShell";
 import { fetchActiveWorkspaceRouting } from "../services/acRoutingBuilderApi";
 import { createTemplateRoutingReference } from "../constants/defaultActivatedCarbonRoute";
 import { normalizeCode } from "./acExecutionOperations";
@@ -431,43 +432,62 @@ export async function pendingOperationsForLot(lotCode) {
     }));
 }
 
-/** Product shop-floor routing for a lot — same 4 steps as Lot Routing (OP-PYROLYSIS …). */
+function shopProcessMapFromMaterialType(materialType) {
+  if (!materialType?.operations?.length) return null;
+  return {
+    routing_code: materialType.routing_code,
+    process_parameters: materialType.process_parameters || [],
+    resolved_from: "raw_material_type",
+    operations: materialType.operations.map((op) => ({
+      operation_code: op.operation_code || op.operation_id,
+      operation_seq: op.operation_sequence,
+      operation_sequence: op.operation_sequence,
+      operation_name: op.operation_name,
+      process_step: op.process_step || op.process_id,
+      parameters: op.parameters || [],
+      is_mandatory: op.is_mandatory
+    }))
+  };
+}
+
+/** Raw Material → finished goods shop steps from Masters → Materials & steps. */
+export async function loadAcShopProcessMapForExecution(lotCode) {
+  const types = keepGrCoconutShellTypes(await fetchRawMaterialTypes());
+  const activeTypes = (types || []).filter(
+    (t) => !t.is_obsolete && String(t.status || "").toUpperCase() !== "OBSOLETE"
+  );
+  const cocoType = activeTypes.find(isGrCoconutShellType);
+  const fromCoco = shopProcessMapFromMaterialType(cocoType);
+  if (fromCoco) return fromCoco;
+
+  const fallback = activeTypes.find((t) => t.operations?.length);
+  const fromFallback = shopProcessMapFromMaterialType(fallback);
+  if (fromFallback) return fromFallback;
+
+  if (!lotCode) return null;
+  return loadAcProductRoutingForExecution(lotCode);
+}
+
+/** Product shop-floor routing for a lot — names come from that customer’s process map. */
 export async function loadAcProductRoutingForExecution(lotCode) {
   if (!lotCode) return null;
   try {
-    const res = await api.get(
-      `/api/activated-carbon/lots/${encodeURIComponent(lotCode)}/routing-plan`
-    );
-    const ops = res.data?.operations || [];
-    if (!ops.length) return null;
+    const plan = await resolveAcRoutingPlanForLot(lotCode);
+    if (!(plan?.operations || []).length) return null;
     return {
-      routing_code: res.data?.routing_id,
-      operations: ops.map((op) => ({
+      routing_code: plan.routing_id,
+      process_parameters: plan.process_parameters || [],
+      operations: plan.operations.map((op) => ({
         operation_code: op.operation_code || op.operation_id,
         operation_seq: op.operation_sequence,
         operation_sequence: op.operation_sequence,
         operation_name: op.operation_name,
-        process_step: op.process_id || op.process_name,
+        process_step: op.process_id || op.process_name || op.process_step,
         parameters: op.parameters || []
       }))
     };
   } catch {
-    try {
-      const plan = await fetchMesCoreSchedulePlan(lotCode);
-      if (!(plan?.operations || []).length) return null;
-      return {
-        routing_code: plan.routing_id,
-        operations: plan.operations.map((op) => ({
-          operation_code: op.operation_id || op.operation_code,
-          operation_seq: op.operation_sequence,
-          operation_sequence: op.operation_sequence,
-          operation_name: op.operation_name,
-          process_step: null
-        }))
-      };
-    } catch {
-      return null;
-    }
+    return null;
   }
 }
 

@@ -19,15 +19,16 @@ function writeAll(rows, tenantCode, workspaceCode) {
   localStorage.setItem(storageKey(tenantCode, workspaceCode), JSON.stringify(rows));
 }
 
-function nextBagCode(rows) {
+function nextBagCode(rows, prefix = "RI") {
+  const token = String(prefix || "RI").toUpperCase();
   const nums = rows
     .map((row) => {
-      const match = String(row.bag_code || "").match(/BAG-AC-(\d+)/i);
+      const match = String(row.bag_code || "").match(new RegExp(`^${token}_BAG_(\\d+)$`, "i"));
       return match ? Number(match[1]) : 0;
     })
     .filter((n) => Number.isFinite(n));
-  const next = (nums.length ? Math.max(...nums) : 1000) + 1;
-  return `BAG-AC-${next}`;
+  const next = (nums.length ? Math.max(...nums) : 0) + 1;
+  return `${token}_BAG_${String(next).padStart(3, "0")}`;
 }
 
 export function listLocalInwardBags(tenantCode, workspaceCode, orderCode) {
@@ -38,13 +39,15 @@ export function listLocalInwardBags(tenantCode, workspaceCode, orderCode) {
 
 export function createLocalInwardBag(payload, tenantCode, workspaceCode) {
   const rows = readAll(tenantCode, workspaceCode);
-  const bag_code = nextBagCode(rows);
+  const bag_code = nextBagCode(rows, payload.grade ? "RO" : "RI");
   const row = {
     bag_id: `local-${Date.now()}`,
     bag_code,
     order_code: payload.order_code,
     customer_order_id: payload.customer_order_id || null,
     weight_kg: Number(payload.weight_kg) || 0,
+    grade: payload.grade || null,
+    rotary: payload.rotary || null,
     label: payload.label || null,
     status: "REGISTERED",
     created_at: new Date().toISOString(),

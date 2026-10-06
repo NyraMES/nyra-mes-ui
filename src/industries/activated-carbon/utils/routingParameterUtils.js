@@ -1,14 +1,35 @@
 import { buildTripletPreview, normalizeTripletParameter, resolvePredicateUri } from "../constants/processTripletTemplates";
 
+function isDestonQualityParam(param) {
+  const key = String(param?.key || param?.parameter_code || "").toLowerCase();
+  const bound = String(param?.operation_code || "").toUpperCase();
+  return (
+    bound === "OP-DESTON-QC" ||
+    key.startsWith("deston_qc") ||
+    key === "deston_copy_from_kiln_bag"
+  );
+}
+
+function isDestonQualityOp(op) {
+  const code = String(op?.operation_code || "").toUpperCase();
+  const name = String(op?.operation_name || "").toLowerCase();
+  return (
+    (code.includes("DESTON") && (code.includes("QC") || code.includes("QUALITY"))) ||
+    (name.includes("deston") && (name.includes("quality") || name.includes("qc")))
+  );
+}
+
 export function attachParametersToOperations(operations = [], processParameters = []) {
   const sorted = sortOperationsBySequence(operations);
 
   return sorted.map((op) => {
     const step = (op.process_step || "").toUpperCase();
     const opCode = String(op.operation_code || "").toUpperCase();
+    const destonQuality = isDestonQualityOp(op);
     const stepParams = (processParameters || [])
       .filter((p) => {
         const bound = String(p.operation_code || "").toUpperCase();
+        if (destonQuality && isDestonQualityParam(p)) return true;
         if (opCode && bound) return bound === opCode;
         if (opCode && !bound) return false;
         return p.process_step && String(p.process_step).toUpperCase() === step;

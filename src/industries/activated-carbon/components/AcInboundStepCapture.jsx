@@ -13,6 +13,7 @@ import {
 import {
   AC_CRUSHER_MESH_PCT_FIELDS,
   AC_LAB_INBOUND_PARAMETERS,
+  AC_RM_OUTWARD_GRADES,
   inboundProcessParameters
 } from "../constants/processSteps";
 import AcAlert from "./AcAlert";
@@ -77,6 +78,18 @@ function GenericLabStep({ selected, nextStepMeta, materialType, onCompleted }) {
   }, [nextStepMeta?.operation_code, fields.length]);
 
   const handleSave = async () => {
+    if (saving) return;
+    const decision = String(values.qc_decision || "").toLowerCase();
+    const remarks = String(values.qc_remarks || "").trim();
+    if (code === "IN-LAB" && !decision) {
+      setError("Select approve or deny.");
+      return;
+    }
+    if (code === "IN-LAB" && decision === "deny" && !remarks) {
+      setError("Enter remarks for deny. This inward will stop and will not continue to RMS or other steps.");
+      return;
+    }
+    if (saving) return;
     setSaving(true);
     setError("");
     try {
@@ -120,6 +133,18 @@ function GenericLabStep({ selected, nextStepMeta, materialType, onCompleted }) {
                 <option value="approve">Approve</option>
                 <option value="deny">Deny</option>
               </select>
+            ) : p.key === "qc_remarks" ? (
+              <textarea
+                className="w-full rounded border border-slate-300 px-3 py-2"
+                rows={3}
+                value={values[p.key] ?? ""}
+                onChange={(e) => setValues((prev) => ({ ...prev, [p.key]: e.target.value }))}
+                placeholder={
+                  String(values.qc_decision || "").toLowerCase() === "deny"
+                    ? "Required — why this inward is denied"
+                    : "Optional remarks"
+                }
+              />
             ) : (
               <input
                 className="w-full rounded border border-slate-300 px-3 py-2"
@@ -132,7 +157,15 @@ function GenericLabStep({ selected, nextStepMeta, materialType, onCompleted }) {
           </label>
         ))}
       </div>
-      <AcSaveBar onSave={handleSave} saving={saving} saveLabel="Save & complete Lab" />
+      <AcSaveBar
+        onSave={handleSave}
+        saving={saving}
+        saveLabel={
+          String(values.qc_decision || "").toLowerCase() === "deny"
+            ? "Deny and stop this inward"
+            : "Save & complete Lab"
+        }
+      />
     </div>
   );
 }
@@ -161,6 +194,7 @@ function RmsBagStep({ selected, nextStepMeta, onCompleted }) {
   const addBag = async () => {
     const kg = Number(weight);
     if (!kg || kg <= 0) return;
+    if (saving) return;
     setSaving(true);
     setError("");
     try {
@@ -178,6 +212,7 @@ function RmsBagStep({ selected, nextStepMeta, onCompleted }) {
   };
 
   const removeBag = async (bagId) => {
+    if (saving) return;
     setSaving(true);
     setError("");
     try {
@@ -199,6 +234,7 @@ function RmsBagStep({ selected, nextStepMeta, onCompleted }) {
       setError("Bag total is less than inward weight — enter remarks.");
       return;
     }
+    if (saving) return;
     setSaving(true);
     setError("");
     try {
@@ -234,7 +270,7 @@ function RmsBagStep({ selected, nextStepMeta, onCompleted }) {
         <strong className={!shortfall && !overrun ? "text-emerald-700" : "text-amber-700"}>
           {remaining} KG
         </strong>
-        {shortfall ? " — enter remarks, then Complete RMS inward." : "."}
+        {shortfall ? " — enter remarks, then Load to Crusher." : "."}
       </p>
       <div className="flex gap-2 items-end">
         <label className="text-sm flex-1">
@@ -280,12 +316,14 @@ function RmsBagStep({ selected, nextStepMeta, onCompleted }) {
           }
         />
       </label>
-      <AcSaveBar
-        onSave={complete}
-        saving={saving}
-        saveLabel="Complete RMS inward"
-        disabled={bags.length === 0 || overrun}
-      />
+      {bags.length > 0 ? (
+        <AcSaveBar
+          onSave={complete}
+          saving={saving}
+          saveLabel="Load to Crusher"
+          disabled={overrun}
+        />
+      ) : null}
     </div>
   );
 }
@@ -330,6 +368,7 @@ function CrusherStep({ selected, nextStepMeta, onCompleted }) {
       setError("Enter moisture (%) and dust (%).");
       return;
     }
+    if (saving) return;
     setSaving(true);
     setError("");
     try {
@@ -434,37 +473,56 @@ function CrusherStep({ selected, nextStepMeta, onCompleted }) {
   );
 }
 
+function bagRotaryName(bag) {
+  return String(bag?.rotary || "").trim();
+}
+
+function bagGradeName(bag) {
+  return String(bag?.grade || "").trim();
+}
+
 function OutwardStep({ selected, nextStepMeta, onCompleted }) {
-  const [grades, setGrades] = useState([]);
+  const [rotaries, setRotaries] = useState([]);
+  const [rotary, setRotary] = useState("");
   const [weights, setWeights] = useState({});
   const [bags, setBags] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const ourKg = numberOrEmpty(
+    selected.our_weight_kg ?? selected.inward_quantity_kg ?? selected.quantity
+  );
+  const bagTotal = bags.reduce((sum, bag) => sum + numberOrEmpty(bag.weight_kg), 0);
+  const remaining = Math.round((ourKg - bagTotal) * 1000) / 1000;
+  const overrun = remaining < -0.001;
 
   const reload = async () => {
     const [admin, rows] = await Promise.all([
       fetchAcInboundAdmin(),
       fetchAcInwardBags(selected.order_code)
     ]);
-    const splits = admin.outward_splits || [];
-    setGrades(splits);
-    setWeights((prev) => {
-      const next = { ...prev };
-      for (const row of splits) {
-        if (next[row.label] == null) next[row.label] = "";
-      }
-      return next;
-    });
+    setRotaries(admin.rotaries || []);
     setBags(rows.filter((b) => Boolean(b.grade)));
   };
 
   useEffect(() => {
-    reload().catch((e) => setError(formatAcApiError(e, "Could not load RM outward")));
+    reload().catch((e) => setError(formatAcApiError(e, "Could not load RMS outward")));
   }, [selected.customer_order_id]);
 
+  useEffect(() => {
+    if (!rotary && rotaries[0]?.name) setRotary(rotaries[0].name);
+  }, [rotaries, rotary]);
+
   const addBag = async (gradeLabel) => {
-    const kg = Number(weights[gradeLabel]);
-    if (!gradeLabel || !kg || kg <= 0) return;
+    const key = `${rotary}||${gradeLabel}`;
+    const kg = Number(weights[key]);
+    if (!rotary || !gradeLabel || !kg || kg <= 0) return;
+    if (ourKg > 0 && bagTotal + kg > ourKg + 0.001) {
+      setError(
+        `RMS outward total cannot exceed inward weight ${ourKg} KG. ${remaining} KG remaining.`
+      );
+      return;
+    }
+    if (saving) return;
     setSaving(true);
     setError("");
     try {
@@ -472,9 +530,10 @@ function OutwardStep({ selected, nextStepMeta, onCompleted }) {
         customer_order_id: selected.customer_order_id,
         weight_kg: kg,
         grade: gradeLabel,
-        label: gradeLabel
+        rotary,
+        label: `${gradeLabel} · ${rotary}`
       });
-      setWeights((prev) => ({ ...prev, [gradeLabel]: "" }));
+      setWeights((prev) => ({ ...prev, [key]: "" }));
       await reload();
     } catch (e) {
       setError(formatAcApiError(e, "Could not create outward bag"));
@@ -484,6 +543,7 @@ function OutwardStep({ selected, nextStepMeta, onCompleted }) {
   };
 
   const removeBag = async (bagId) => {
+    if (saving) return;
     setSaving(true);
     setError("");
     try {
@@ -496,20 +556,40 @@ function OutwardStep({ selected, nextStepMeta, onCompleted }) {
     }
   };
 
-  const bagsByGrade = (label) => bags.filter((b) => b.grade === label);
-  const allGradesHaveBags =
-    grades.length > 0 && grades.every((row) => bagsByGrade(row.label).length > 0);
+  const bagsFor = (rotaryName, gradeLabel) =>
+    bags.filter(
+      (b) => bagRotaryName(b) === rotaryName && bagGradeName(b) === gradeLabel
+    );
+
+  const rotaryReady = (rotaryName) => {
+    if (!rotaryName) return false;
+    const hasValue = AC_RM_OUTWARD_GRADES.filter(
+      (grade) => grade.key !== "unburnt" && grade.key !== "stones"
+    ).some((grade) => bagsFor(rotaryName, grade.label).length > 0);
+    const hasUnburnt = bagsFor(rotaryName, "Unburnt").length > 0;
+    const hasStones = bagsFor(rotaryName, "Stones").length > 0;
+    return hasValue && hasUnburnt && hasStones;
+  };
+  const oneRotaryReady = rotaries.some((row) => rotaryReady(row.name));
 
   const complete = async () => {
-    if (!allGradesHaveBags) {
-      setError("Add a bag for every grade.");
+    if (!oneRotaryReady) {
+      setError(
+        "Choose Rotary A or Rotary B and add a grade value plus Stones and Unburnt on that rotary."
+      );
       return;
     }
+    if (ourKg > 0 && bagTotal > ourKg + 0.001) {
+      setError(`RMS outward total ${bagTotal} KG cannot exceed inward weight ${ourKg} KG.`);
+      return;
+    }
+    if (saving) return;
     setSaving(true);
     setError("");
     try {
       const outward_splits = bags.map((bag) => ({
-        grade_label: bag.grade,
+        grade_label: bagGradeName(bag),
+        rotary: bagRotaryName(bag),
         quantity_kg: numberOrEmpty(bag.weight_kg),
         bag_code: bag.bag_code
       }));
@@ -521,7 +601,7 @@ function OutwardStep({ selected, nextStepMeta, onCompleted }) {
       });
       onCompleted(saved);
     } catch (e) {
-      setError(formatAcApiError(e, "Could not finish RM outward"));
+      setError(formatAcApiError(e, "Could not finish RMS outward"));
     } finally {
       setSaving(false);
     }
@@ -531,17 +611,34 @@ function OutwardStep({ selected, nextStepMeta, onCompleted }) {
     <div className="wf-light-panel rounded-xl p-4 max-w-2xl border border-blue-200 space-y-3">
       {error ? <AcAlert variant="error">{error}</AcAlert> : null}
       <p className="text-sm text-slate-700">
-        Every grade is mandatory. Enter weight and add a bag on each line. Bag numbers are assigned
-        automatically.
+        RMS outward bags are crusher output, ready for Release to Production. Choose Rotary A or
+        Rotary B. That rotary needs a grade value plus Stones and Unburnt. The other rotary is not
+        required. Total RO kg cannot exceed inward weight.
       </p>
+      <p className={`text-sm ${overrun ? "text-red-700" : "text-slate-700"}`}>
+        Inward{" "}
+        <span className="font-mono font-medium">{ourKg || "—"}</span> KG · RO bags{" "}
+        <span className="font-mono font-medium">{bagTotal}</span> KG · remaining{" "}
+        <span className="font-mono font-semibold">{remaining}</span> KG
+      </p>
+      <AcFormSelect label="Rotary *" value={rotary} onChange={(e) => setRotary(e.target.value)}>
+        <option value="">Select rotary…</option>
+        {rotaries.map((row) => (
+          <option key={row.code} value={row.name}>
+            {row.name}
+          </option>
+        ))}
+      </AcFormSelect>
       <div className="space-y-3">
-        {grades.map((row) => {
-          const gradeBags = bagsByGrade(row.label);
+        {AC_RM_OUTWARD_GRADES.map((row) => {
+          const key = `${rotary}||${row.label}`;
+          const gradeBags = rotary ? bagsFor(rotary, row.label) : [];
           return (
             <div key={row.key} className="rounded-lg border border-slate-200 p-3 space-y-2">
               <div className="flex flex-wrap gap-2 items-end">
                 <div className="text-sm font-medium text-slate-800 flex-1 min-w-[12rem]">
                   {row.label} *
+                  {rotary ? <span className="font-normal text-slate-500"> · {rotary}</span> : null}
                 </div>
                 <label className="text-sm min-w-[8rem]">
                   <span className="block mb-1 font-medium text-slate-700">Weight (kg) *</span>
@@ -550,17 +647,23 @@ function OutwardStep({ selected, nextStepMeta, onCompleted }) {
                     min="0.01"
                     step="0.01"
                     className="w-full rounded border border-slate-300 px-3 py-2"
-                    value={weights[row.label] ?? ""}
+                    value={weights[key] ?? ""}
                     onChange={(e) =>
-                      setWeights((prev) => ({ ...prev, [row.label]: e.target.value }))
+                      setWeights((prev) => ({ ...prev, [key]: e.target.value }))
                     }
+                    disabled={!rotary}
                   />
                 </label>
                 <button
                   type="button"
                   className="wf-btn wf-btn-primary"
                   onClick={() => addBag(row.label)}
-                  disabled={saving || !(Number(weights[row.label]) > 0)}
+                  disabled={
+                    !rotary ||
+                    saving ||
+                    !(Number(weights[key]) > 0) ||
+                    (ourKg > 0 && bagTotal + Number(weights[key] || 0) > ourKg + 0.001)
+                  }
                 >
                   Add bag
                 </button>
@@ -569,7 +672,7 @@ function OutwardStep({ selected, nextStepMeta, onCompleted }) {
                 {gradeBags.map((bag) => (
                   <li key={bag.bag_id} className="flex justify-between gap-3">
                     <span className="font-mono">
-                      {bag.bag_code} · {numberOrEmpty(bag.weight_kg)} KG
+                      {bag.bag_code} · {numberOrEmpty(bag.weight_kg)} KG · {bagRotaryName(bag)}
                     </span>
                     <button
                       type="button"
@@ -585,11 +688,16 @@ function OutwardStep({ selected, nextStepMeta, onCompleted }) {
           );
         })}
       </div>
+      <p className="text-xs text-slate-600">
+        {rotaries
+          .map((row) => `${row.name}: ${rotaryReady(row.name) ? "ready" : "needs grade + Stones + Unburnt"}`)
+          .join(" · ")}
+      </p>
       <AcSaveBar
         onSave={complete}
         saving={saving}
-        saveLabel="Finish outward"
-        disabled={!allGradesHaveBags}
+        saveLabel="Release to Production"
+        disabled={!oneRotaryReady || overrun}
       />
     </div>
   );

@@ -116,8 +116,8 @@ export default function AcInboundAdminPanel() {
       </WfCard>
       <WfCard>
         <WfCardHeader
-          title="RM outward splits"
-          subtitle="Grade / bag lines on Raw Material outward. GR Carbons default: -20 and Grade per rotary, Stones, Unburnt."
+          title="RMS outward splits"
+          subtitle="Grade lines used with the Rotary A / Rotary B dropdown on RMS outward (crusher output bags). Default: -20 1st Stage, Grade 1st Stage, Unburnt, Stones."
         />
         <WfCardBody>
           {loading ? null : (

@@ -16,7 +16,7 @@ function AcSaveBar({
     <div className="mt-4 flex items-center gap-3">
       <button
         type="button"
-        className="wf-btn-primary px-4 py-2 text-sm rounded-md disabled:opacity-50"
+        className="wf-btn wf-btn-primary"
         disabled={readOnly || saving || disabled}
         onClick={onSave}
       >
@@ -25,7 +25,7 @@ function AcSaveBar({
       {onCancel ? (
         <button
           type="button"
-          className="px-4 py-2 text-sm rounded-md border border-slate-300 text-slate-700 bg-white disabled:opacity-50"
+          className="wf-btn wf-btn-ghost"
           disabled={saving}
           onClick={onCancel}
         >

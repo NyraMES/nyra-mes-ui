@@ -123,14 +123,49 @@ export const AC_ONTOLOGY_TRACE_STEPS = [
     api: "POST /api/activated-carbon/lots/{lot_code}/feasibility/run"
   },
   {
-    screen: "Kiln Feed",
+    screen: "Execution — Kiln Feed",
     subject: (code) => acProductionLotSubjectUri(code),
     object: (code) => `urn:nyra:ac:kilnFeed:${code}`,
     predicates: ["chargedTo"],
     api: "POST /api/activated-carbon/kiln-feed"
   },
   {
-    screen: "Lot Routing",
+    screen: "Execution — Kiln feed quality",
+    subject: (code) => `urn:nyra:ac:inwardBag:${code}`,
+    object: (code) => `urn:nyra:ac:parameter:${code}`,
+    predicates: ["captures"],
+    api: "POST /api/activated-carbon/kiln-feed-bag-qc"
+  },
+  {
+    screen: "Execution — Kiln output",
+    subject: (code) => `urn:nyra:ac:kilnOutBag:${code}`,
+    object: (code) => `urn:nyra:ac:kiln:${code}`,
+    predicates: ["containedIn", "generatedFrom"],
+    api: "POST /api/activated-carbon/kiln-output"
+  },
+  {
+    screen: "Execution — Kiln output quality",
+    subject: (code) => `urn:nyra:ac:kilnOutBag:${code}`,
+    object: (code) => `urn:nyra:ac:parameter:${code}`,
+    predicates: ["captures"],
+    api: "POST /api/activated-carbon/kiln-output-bag-qc"
+  },
+  {
+    screen: "Execution — Destoning",
+    subject: (code) => `urn:nyra:ac:destonBag:${code}`,
+    object: (code) => `urn:nyra:ac:kilnOutBag:${code}`,
+    predicates: ["generatedFrom", "containedIn", "captures"],
+    api: "POST /api/activated-carbon/destoning/output"
+  },
+  {
+    screen: "Execution — Destoning quality",
+    subject: (code) => `urn:nyra:ac:destonBag:${code}`,
+    object: (code) => `urn:nyra:ac:parameter:${code}`,
+    predicates: ["captures"],
+    api: "POST /api/activated-carbon/destoning-bag-qc"
+  },
+  {
+    screen: "Execution — Routing",
     subject: (code) => acProductionLotSubjectUri(code),
     object: (code) => `urn:nyra:ac:routing:${code}`,
     predicates: ["generates"],
@@ -142,6 +177,13 @@ export const AC_ONTOLOGY_TRACE_STEPS = [
     object: (code) => acScreeningObjectUri(code),
     predicates: ["screenedAt"],
     api: "POST /api/activated-carbon/screening"
+  },
+  {
+    screen: "Execution — Post activation live load",
+    subject: (code) => `urn:nyra:ac:screenBag:${code}`,
+    object: (code) => `urn:nyra:ac:destonBag:${code}`,
+    predicates: ["generatedFrom", "containedIn", "captures"],
+    api: "POST /api/activated-carbon/post-activation/{process}/output"
   },
   {
     screen: "Grade separation",

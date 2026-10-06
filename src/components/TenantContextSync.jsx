@@ -4,9 +4,9 @@ import { useAuth } from "../auth/AuthContext";
 import { useAppContext } from "../context/AppContext";
 import {
   getIndustrySelection,
-  industryKeyForTenantCode,
-  resolveScopedTenantForIndustry
+  industryKeyForTenantCode
 } from "../config/industrySelection";
+import { resolvePlantScopeForIndustry } from "../config/hostConfig";
 
 /** Track SPA navigations without requiring React Router context. */
 function subscribePathname(onChange) {
@@ -59,7 +59,7 @@ export default function TenantContextSync() {
       industryKey = "automotive-oem";
     }
 
-    const scope = resolveScopedTenantForIndustry(industryKey, user);
+    const scope = resolvePlantScopeForIndustry(industryKey, user);
     const targetTenant = scope.tenant_code;
     const targetWorkspace = scope.workspace_code;
 

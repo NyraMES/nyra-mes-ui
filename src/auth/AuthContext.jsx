@@ -29,6 +29,16 @@ import { primaryRoleLabel } from "./roles";
 
 const AuthContext = createContext(null);
 
+function resolveUserTenantCode(profile) {
+  if (profile?.tenant_code) return profile.tenant_code;
+  const groups = profile?.groups || [];
+  const tenantGroup = groups.find((row) => String(row || "").toUpperCase().startsWith("TENANT_"));
+  if (tenantGroup) return String(tenantGroup).slice(7);
+  const username = String(profile?.username || "").trim();
+  if (/@grcarbons(\.com)?$/i.test(username)) return "GR_CARBONS";
+  return null;
+}
+
 function formatAuthError(err) {
   if (!err) return "Sign-in failed";
   const message =
@@ -80,7 +90,7 @@ async function loadDevUser() {
     sub: data.sub,
     username: data.username,
     email: data.email,
-    tenant_code: data.tenant_code || null,
+    tenant_code: resolveUserTenantCode(data),
     roles: data.roles || data.groups || [],
     displayName: data.email || data.username,
     roleLabel: primaryRoleLabel(data.roles || data.groups || [])
@@ -120,7 +130,7 @@ async function loadCognitoUser({ forceRefresh = true } = {}) {
       sub: profile?.sub,
       username: profile?.username,
       email: profile?.email,
-      tenant_code: profile?.tenant_code || null,
+      tenant_code: resolveUserTenantCode(profile),
       roles,
       displayName: profile?.email || profile?.username,
       roleLabel: primaryRoleLabel(roles)

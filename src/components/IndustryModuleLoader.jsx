@@ -2,10 +2,8 @@ import { lazy, Suspense, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext";
-import {
-  getIndustrySelection,
-  resolveScopedTenantForIndustry
-} from "../config/industrySelection";
+import { getIndustrySelection } from "../config/industrySelection";
+import { resolvePlantScopeForIndustry } from "../config/hostConfig";
 import { useAppContext } from "../context/AppContext";
 import GenericCoreDashboard from "./GenericCoreDashboard";
 import ActivatedCarbonRoutes from "../industries/activated-carbon/routes/ActivatedCarbonRoutes";
@@ -70,7 +68,7 @@ function IndustryModuleLoader() {
     const selection = getIndustrySelection(industryKey);
     if (!selection) return;
 
-    const scope = resolveScopedTenantForIndustry(industryKey, user);
+    const scope = resolvePlantScopeForIndustry(industryKey, user);
     const targetTenant = scope.tenant_code;
     const targetWorkspace = scope.workspace_code;
     if (!targetTenant) return;

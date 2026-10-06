@@ -7,7 +7,7 @@ import {
   mergeIndustrySelectionFallback,
   resolveScopedTenantForIndustry
 } from "../config/industrySelection";
-import { resolveAppHostBinding } from "../config/hostConfig";
+import { resolvePlantScopeForIndustry } from "../config/hostConfig";
 import api from "../services/api";
 import {
   DEFAULT_APP_CONTEXT,
@@ -39,20 +39,16 @@ function resolveInitialContextScope(user, pathname = "") {
     industryKeyForTenantCode(user?.tenant_code) ||
     null;
 
-  // Signed-in users use their assigned plant when it matches this industry module.
+  const hostScope = resolvePlantScopeForIndustry(industryKey, user);
+  if (hostScope?.tenant_code) {
+    return hostScope;
+  }
+
   if (user?.tenant_code && industryKey) {
     const scoped = resolveScopedTenantForIndustry(industryKey, user);
     if (scoped.tenant_code) {
       return scoped;
     }
-  }
-
-  const hostBinding = resolveAppHostBinding();
-  if (hostBinding?.tenant_code) {
-    return {
-      tenant_code: hostBinding.tenant_code,
-      workspace_code: hostBinding.workspace_code
-    };
   }
 
   if (user?.tenant_code) {
@@ -197,7 +193,7 @@ export function AppProvider({ children }) {
       const scoped =
         tenant_code != null && String(tenant_code).trim()
           ? { tenant_code, workspace_code }
-          : resolveScopedTenantForIndustry(industryKey, user);
+          : resolvePlantScopeForIndustry(industryKey, user);
       const resolvedTenant = scoped.tenant_code;
       const resolvedWorkspace =
         scoped.workspace_code ?? resolveDefaultWorkspaceCode(resolvedTenant);

@@ -1,0 +1,385 @@
+/* Sharp contrast: white type on navy, black type on white. Loaded last. */
+
+:root {
+  --ink-on-navy: #ffffff;
+  --ink-on-white: #111111;
+  --nyra-navy: #0d3a6e;
+  --nyra-navy-mid: #124578;
+  --nyra-navy-deep: #0a2f5c;
+  --nyra-navy-hover: #165086;
+}
+
+html,
+body {
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+/* ---------- Navy surfaces: sharp white ---------- */
+
+.wf-sidebar,
+.wf-sidebar .wf-sidebar-title,
+.wf-sidebar .wf-sidebar-subtitle,
+.wf-sidebar .wf-nav-section-toggle,
+.wf-sidebar .wf-nav-link,
+.wf-sidebar .wf-nav-link-label,
+.wf-sidebar .wf-sidebar-status-title,
+.wf-sidebar .wf-sidebar-meta dt,
+.wf-sidebar .wf-sidebar-meta dd,
+.sidebar,
+.sidebar .nav-item,
+.sidebar .nav-subitem,
+.sidebar .nav-label,
+.sidebar-user-name,
+.sidebar-user-role,
+.login-grid .landing-hero,
+.login-grid .landing-hero .landing-eyebrow,
+.login-grid .landing-hero .landing-title,
+.login-grid .landing-hero .landing-text,
+.login-grid .landing-hero .landing-pill,
+.login-card,
+.login-card-eyebrow,
+.login-card-title,
+.login-card-subtitle,
+.login-field label,
+.login-info,
+.login-reset-link,
+.login-footer a,
+.login-secure-note,
+.landing-about-card,
+.landing-about-name,
+.landing-about-role,
+.landing-about-bio,
+.wf-card,
+.wf-card-header-title,
+.wf-card-header-subtitle,
+.wf-card-header-icon,
+.wf-kpi-tile__label,
+.wf-kpi-tile__value,
+.wf-kpi-tile__sub,
+.wf-section-header,
+.wf-section-header-eyebrow,
+.wf-section-header-title,
+.wf-section-header-subtitle,
+.wf-ac-page-frame,
+.wf-ac-process-step,
+.wf-ac-process-step-num,
+.wf-ac-process-step-label,
+.wf-ac-process-step-meta {
+  color: #ffffff !important;
+}
+
+.ac-rm-flow-node--material,
+.ac-rm-flow-node--material .ac-rm-flow-node-kicker,
+.ac-rm-flow-node--material .ac-rm-flow-node-title,
+.ac-rm-flow-node--material .ac-rm-flow-node-step,
+.ac-triplet-preview {
+  color: #ffffff !important;
+}
+
+.ac-rm-flow-node-title,
+.ac-rm-flow-node-step,
+.ac-rm-flow-node-kicker {
+  color: #111111;
+}
+
+.wf-shell .wf-card .text-slate-100,
+.wf-shell .wf-card .text-slate-200,
+.wf-shell .wf-card .text-slate-300,
+.wf-shell .wf-card .text-slate-400,
+.wf-shell .wf-card .text-slate-500,
+.wf-shell .wf-card .text-slate-600,
+.wf-shell .wf-card .text-slate-700,
+.wf-shell .wf-card .text-slate-800,
+.wf-shell .wf-card .text-slate-50,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .text-slate-100,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .text-slate-200,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .text-slate-300,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .text-slate-400,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .text-slate-500,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .text-slate-600,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .text-slate-50 {
+  color: #ffffff !important;
+}
+
+.wf-nav-link--disabled,
+.wf-nav-link--disabled:hover {
+  color: #ffffff !important;
+  opacity: 0.55;
+}
+
+/* ---------- White surfaces: sharp black ---------- */
+
+body,
+.wf-shell,
+.wf-page-frame,
+.wf-content-column,
+.main-content,
+.main-area,
+.landing,
+.landing-header,
+.topbar,
+.dashboard,
+.kpi-card,
+.form-field,
+.wf-light-panel {
+  color: #111111;
+}
+
+.wf-shell header,
+.wf-shell .wf-page-frame,
+.wf-shell .wf-page-frame h1,
+.wf-shell .wf-page-frame h2,
+.wf-shell .wf-page-frame h3,
+.wf-shell .wf-page-frame h4,
+.wf-shell .wf-page-frame p,
+.mes-context-label,
+.mes-context-value,
+.topbar-user-name,
+.topbar-button,
+.dashboard-title,
+.dashboard-subtitle,
+.kpi-card-label,
+.kpi-card-value,
+.kpi-card-sub,
+.form-field label,
+.landing-header-title,
+.landing-header-subtitle,
+.data-table th,
+.data-table td {
+  color: #111111 !important;
+}
+
+.wf-shell .wf-page-frame .wf-section-header,
+.wf-shell .wf-page-frame .wf-section-header h2,
+.wf-shell .wf-page-frame .wf-section-header-title,
+.wf-shell .wf-page-frame .wf-section-header-subtitle,
+.wf-shell .wf-page-frame .wf-section-header-eyebrow {
+  color: #ffffff !important;
+}
+
+.wf-shell .wf-card .wf-light-panel,
+.wf-shell .wf-card .wf-light-panel label,
+.wf-shell .wf-card .wf-light-panel p,
+.wf-shell .wf-card .wf-light-panel h3,
+.wf-shell .wf-card .wf-light-panel h4,
+.wf-shell .wf-card .wf-light-panel th,
+.wf-shell .wf-card .wf-light-panel td,
+.wf-shell .wf-card .wf-light-panel li,
+.wf-shell .wf-card .wf-light-panel span:not([class*="text-red"]):not([class*="text-emerald"]):not([class*="text-amber"]):not([class*="wf-pill"]),
+.wf-shell .wf-card .wf-light-panel .text-slate-300,
+.wf-shell .wf-card .wf-light-panel .text-slate-400,
+.wf-shell .wf-card .wf-light-panel .text-slate-500,
+.wf-shell .wf-card .wf-light-panel .text-slate-600,
+.wf-shell .wf-card .wf-light-panel .text-slate-700,
+.wf-shell .wf-card .wf-light-panel .text-slate-800,
+.wf-shell .wf-card .wf-light-panel .text-slate-900,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel p,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel li,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel h3,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel h4,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel label,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel td,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-light-panel th,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel p,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel td,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel th,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel li,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel label,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel h3,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel h4,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-300,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-400,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-500,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-600,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-700,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-800,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-card .wf-light-panel .text-slate-900 {
+  color: #111111 !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+select,
+textarea,
+.wf-input,
+.wf-select,
+.wf-textarea,
+.login-field input,
+.wf-shell .wf-card .wf-input,
+.wf-shell .wf-card .wf-select,
+.wf-shell .wf-card .wf-textarea,
+.wf-shell .wf-card .wf-light-panel input,
+.wf-shell .wf-card .wf-light-panel select,
+.wf-shell .wf-card .wf-light-panel textarea,
+.wf-shell.wf-ac-shell .wf-ac-page-frame input,
+.wf-shell.wf-ac-shell .wf-ac-page-frame select,
+.wf-shell.wf-ac-shell .wf-ac-page-frame textarea {
+  color: #111111 !important;
+}
+
+::placeholder {
+  color: #333333 !important;
+  opacity: 1;
+}
+
+/* Status, alerts and primary buttons keep their own colours */
+.wf-pill-ok {
+  color: #047857 !important;
+}
+.wf-pill-warn {
+  color: #b45309 !important;
+}
+.wf-pill-bad {
+  color: #be123c !important;
+}
+.wf-pill-info {
+  color: #1d4ed8 !important;
+}
+.login-error,
+.ac-alert--error,
+.border-red-200.bg-red-50 {
+  color: #b91c1c !important;
+}
+.login-warning,
+.ac-alert--warning,
+.border-amber-200.bg-amber-50 {
+  color: #92400e !important;
+}
+.ac-alert--success,
+.border-emerald-200.bg-emerald-50 {
+  color: #166534 !important;
+}
+.wf-btn-primary,
+.login-btn-primary {
+  background: var(--nyra-navy) !important;
+  color: #ffffff !important;
+  border-color: var(--nyra-navy) !important;
+}
+
+img,
+svg,
+canvas,
+video,
+.landing-header-logo,
+.wf-sidebar-logo,
+.sidebar-logo {
+  filter: none;
+}
+
+/* Same blue on every action button */
+.wf-btn-primary,
+.wf-btn-primary-ready,
+.login-btn-primary,
+.login-btn-secondary,
+.primary-button,
+.secondary-button,
+.wf-shell .wf-btn-primary,
+.wf-shell .wf-section-header .wf-btn-primary,
+.wf-shell .wf-card .wf-btn-primary,
+.wf-shell .wf-card .wf-light-panel .wf-btn-primary,
+button.bg-blue-600,
+button.bg-cyan-600,
+a.bg-blue-600,
+a.bg-cyan-600,
+button.bg-\[\#08264a\],
+a.bg-\[\#08264a\] {
+  background: var(--nyra-navy) !important;
+  background-color: var(--nyra-navy) !important;
+  color: #ffffff !important;
+  border-color: var(--nyra-navy) !important;
+}
+
+.wf-btn-primary:hover:not(:disabled),
+.login-btn-primary:hover:not(:disabled),
+.login-btn-secondary:hover:not(:disabled),
+.primary-button:hover:not(:disabled),
+.secondary-button:hover:not(:disabled),
+.wf-shell .wf-btn-primary:hover:not(:disabled),
+.wf-shell .wf-section-header .wf-btn-primary:hover:not(:disabled),
+.wf-shell .wf-card .wf-btn-primary:hover:not(:disabled),
+button.hover\:bg-blue-500:hover,
+button.hover\:bg-cyan-500:hover,
+a.hover\:bg-blue-500:hover,
+a.hover\:bg-cyan-500:hover,
+button.hover\:bg-\[\#0c3d6e\]:hover,
+button.hover\:bg-\[\#103a6b\]:hover,
+a.hover\:bg-\[\#0c3d6e\]:hover,
+a.hover\:bg-\[\#103a6b\]:hover {
+  background: var(--nyra-navy-hover) !important;
+  background-color: var(--nyra-navy-hover) !important;
+  color: #ffffff !important;
+}
+
+button:disabled.bg-blue-600,
+button.disabled\:bg-slate-300:disabled {
+  background: #7d8ea3 !important;
+  background-color: #7d8ea3 !important;
+  color: #ffffff !important;
+  border-color: #7d8ea3 !important;
+}
+
+.wf-shell .wf-card .wf-btn-primary,
+.wf-shell .wf-section-header .wf-btn-primary,
+.wf-shell .wf-card .wf-btn-ghost,
+.wf-shell .wf-section-header .wf-btn-ghost {
+  border-color: rgba(255, 255, 255, 0.45) !important;
+}
+
+.wf-btn-ghost,
+.wf-shell .wf-btn-ghost,
+.wf-shell .wf-card .wf-btn-ghost,
+.wf-shell .wf-section-header .wf-btn-ghost,
+.wf-shell .wf-section-header a.wf-btn-ghost {
+  background: var(--nyra-navy) !important;
+  color: #ffffff !important;
+  border-color: var(--nyra-navy) !important;
+}
+
+.wf-btn-ghost:hover:not(:disabled),
+.wf-shell .wf-btn-ghost:hover:not(:disabled),
+.wf-shell .wf-card .wf-btn-ghost:hover:not(:disabled),
+.wf-shell .wf-section-header .wf-btn-ghost:hover:not(:disabled),
+.wf-shell .wf-section-header a.wf-btn-ghost:hover {
+  background: var(--nyra-navy-hover) !important;
+  color: #ffffff !important;
+}
+
+/* Management dashboard — white cards must stay black-on-white */
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-card,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-card * {
+  color: #111111 !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-card {
+  background: #ffffff !important;
+  border: 1px solid #d6deea !important;
+  color: #111111 !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-card .ac-mgmt-label,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-card .ac-mgmt-muted {
+  color: #475569 !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-card .ac-mgmt-value {
+  color: #0f172a !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-card .wf-pill-ok {
+  color: #047857 !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-card .wf-pill-warn {
+  color: #b45309 !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-card .wf-pill-neutral {
+  color: #334155 !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-card .recharts-cartesian-axis-tick text,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-card .recharts-text {
+  fill: #334155 !important;
+}

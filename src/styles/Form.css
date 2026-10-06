@@ -35,16 +35,29 @@
   }
   
   .secondary-button {
-    background: #e2e8f0;
-    color: #1e293b;
-    border: none;
+    background: var(--nyra-navy, #0d3a6e);
+    color: #ffffff;
+    border: 1px solid var(--nyra-navy, #0d3a6e);
     padding: 10px 18px;
     border-radius: 6px;
     cursor: pointer;
   }
   
   .secondary-button:hover {
-    background: #cbd5e1;
+    background: var(--nyra-navy-hover, #165086);
+  }
+
+  .primary-button {
+    background: var(--nyra-navy, #0d3a6e);
+    color: #ffffff;
+    border: 1px solid var(--nyra-navy, #0d3a6e);
+    padding: 10px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .primary-button:hover:not(:disabled) {
+    background: var(--nyra-navy-hover, #165086);
   }
   .button-group {
     display: flex;

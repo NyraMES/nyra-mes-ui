@@ -5,13 +5,12 @@ import { useAppContext } from "../../../context/AppContext";
 import useIndustryBasePath from "../../../hooks/useIndustryBasePath";
 import useAcPageRefresh from "../hooks/useAcPageRefresh";
 import {
+  bagMatchesDispatchOrder,
   createAcDispatchFromOrder,
   fetchAcDispatches,
-  fetchAcGradeStock,
+  fetchAcInStockBags,
   fetchAcOpenCustomerOrders,
-  fetchAcStockedLots,
-  formatAcApiError,
-  lotMatchesDispatchOrder
+  formatAcApiError
 } from "../../../services/activatedCarbonApi";
 import { isAcContextReady } from "../utils/acContextUtils";
 import AcAlert from "../components/AcAlert";
@@ -19,115 +18,110 @@ import AcFormSelect from "../components/AcFormSelect";
 import AcSaveBar from "../components/AcSaveBar";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
 
+const SOURCE_LABELS = {
+  destoning: "Destoning",
+  screening: "Screening",
+  crushing: "Crushing",
+  dedusting: "De-dusting",
+  demagnetisation: "De-magnetisation",
+  blending: "Blending",
+  fg_qc: "Finished Goods"
+};
+
 function formatKg(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
   return `${n.toLocaleString()} KG`;
 }
 
-function StockSummaryTable({ gradeStock, stockedLots, loading }) {
+function sourceLabel(source) {
+  return SOURCE_LABELS[source] || source || "In Stock";
+}
+
+function StockSummary({ bags, loading }) {
+  const [openSource, setOpenSource] = useState("");
+
+  const groups = useMemo(() => {
+    const bySource = new Map();
+    for (const bag of bags) {
+      const key = bag.source || "in_stock";
+      const current = bySource.get(key) || { source: key, bags: [], kg: 0 };
+      current.bags.push(bag);
+      current.kg += Number(bag.remaining_kg || 0);
+      bySource.set(key, current);
+    }
+    return Array.from(bySource.values()).sort((a, b) =>
+      sourceLabel(a.source).localeCompare(sourceLabel(b.source))
+    );
+  }, [bags]);
+
+  const totalKg = bags.reduce((sum, bag) => sum + Number(bag.remaining_kg || 0), 0);
+
   if (loading) {
     return <p className="text-sm text-slate-600">Loading stock…</p>;
   }
-  if (!gradeStock.length && !stockedLots.length) {
+  if (!bags.length) {
     return (
-      <AcAlert variant="warning">
-        No finished-goods stock yet. Complete execution, screening, and quality testing on a lot —
-        it will appear here when stocked.
-      </AcAlert>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm border-collapse">
-        <thead>
-          <tr className="border-b border-slate-200 text-left text-slate-600">
-            <th className="py-2 pr-4 font-semibold">Grade</th>
-            <th className="py-2 pr-4 font-semibold">Product</th>
-            <th className="py-2 pr-4 font-semibold text-right">In stock</th>
-            <th className="py-2 font-semibold text-right">Stocked lots</th>
-          </tr>
-        </thead>
-        <tbody>
-          {gradeStock.map((row) => (
-            <tr key={row.grade_code} className="border-b border-slate-100 text-slate-900">
-              <td className="py-2.5 pr-4 font-medium">{row.grade_label || row.grade_code}</td>
-              <td className="py-2.5 pr-4 font-mono text-slate-700">{row.product_code || "—"}</td>
-              <td className="py-2.5 pr-4 text-right font-mono tabular-nums">
-                {formatKg(row.quantity_kg)}
-              </td>
-              <td className="py-2.5 text-right tabular-nums">{row.stocked_lot_count ?? "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="text-slate-800 font-semibold">
-            <td className="pt-3" colSpan={2}>
-              Total
-            </td>
-            <td className="pt-3 text-right font-mono tabular-nums">
-              {formatKg(gradeStock.reduce((sum, r) => sum + Number(r.quantity_kg || 0), 0))}
-            </td>
-            <td className="pt-3 text-right tabular-nums">{stockedLots.length}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  );
-}
-
-function StockedLotsTable({ lots, highlightProductId, highlightProductCode }) {
-  if (!lots.length) {
-    return (
-      <p className="text-sm text-slate-900">
-        No stocked lots on hand. Lots appear here after execution, screening, and QC release to
-        in-stock.
+      <p className="text-sm text-slate-600">
+        No bags in stock yet. Set destination to In Stock on destoning, crushing, or
+        de-magnetisation quality.
       </p>
     );
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm border-collapse">
-        <thead>
-          <tr className="border-b border-slate-200 text-left text-slate-600">
-            <th className="py-2 pr-3 font-semibold">Lot</th>
-            <th className="py-2 pr-3 font-semibold">Grade</th>
-            <th className="py-2 pr-3 font-semibold">Product</th>
-            <th className="py-2 pr-3 font-semibold text-right">Qty</th>
-            <th className="py-2 font-semibold">Source PO</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lots.map((lot) => {
-            const highlighted =
-              (highlightProductId &&
-                lot.product_id &&
-                String(lot.product_id) === String(highlightProductId)) ||
-              (highlightProductCode &&
-                lot.product_code &&
-                String(lot.product_code).toUpperCase() ===
-                  String(highlightProductCode).toUpperCase());
-            return (
-              <tr
-                key={lot.production_lot_id || lot.lot_code}
-                className={`border-b border-slate-100 ${
-                  highlighted ? "bg-emerald-50 text-emerald-950" : "text-slate-900"
-                }`}
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Available stock</p>
+          <p className="text-lg font-semibold text-slate-900 tabular-nums">{formatKg(totalKg)}</p>
+        </div>
+        <p className="text-sm text-slate-600">{bags.length} bag{bags.length === 1 ? "" : "s"}</p>
+      </div>
+      <p className="text-xs text-slate-500">Click a process to see bag numbers and quantity.</p>
+      <div className="divide-y divide-slate-200 border border-slate-200 rounded-lg bg-white">
+        {groups.map((group) => {
+          const open = openSource === group.source;
+          return (
+            <div key={group.source}>
+              <button
+                type="button"
+                className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 hover:bg-slate-50"
+                onClick={() => setOpenSource(open ? "" : group.source)}
+                aria-expanded={open}
               >
-                <td className="py-2.5 pr-3 font-mono font-medium">{lot.lot_code}</td>
-                <td className="py-2.5 pr-3">{lot.grade_label || lot.grade_code || "—"}</td>
-                <td className="py-2.5 pr-3 font-mono text-slate-700">{lot.product_code || "—"}</td>
-                <td className="py-2.5 pr-3 text-right font-mono tabular-nums">
-                  {formatKg(lot.lot_quantity)}
-                </td>
-                <td className="py-2.5 font-mono text-slate-600">{lot.order_code || "—"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                <span className="font-medium text-slate-900">{sourceLabel(group.source)}</span>
+                <span className="text-sm text-slate-700 tabular-nums">
+                  {formatKg(group.kg)} · {group.bags.length} bag{group.bags.length === 1 ? "" : "s"}{" "}
+                  <span className="text-slate-400">{open ? "▾" : "▸"}</span>
+                </span>
+              </button>
+              {open ? (
+                <table className="w-full text-sm border-t border-slate-100">
+                  <thead>
+                    <tr className="text-left text-slate-500">
+                      <th className="px-4 py-2 font-semibold">Bag</th>
+                      <th className="px-4 py-2 font-semibold">Grade</th>
+                      <th className="px-4 py-2 font-semibold text-right">Quantity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.bags.map((bag) => (
+                      <tr key={bag.bag_code} className="border-t border-slate-50 text-slate-900">
+                        <td className="px-4 py-2 font-mono">{bag.bag_code}</td>
+                        <td className="px-4 py-2">{bag.grade || "In Stock"}</td>
+                        <td className="px-4 py-2 text-right font-mono tabular-nums">
+                          {formatKg(bag.remaining_kg)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -139,8 +133,7 @@ function DispatchPage() {
   const [searchParams] = useSearchParams();
 
   const [openOrders, setOpenOrders] = useState([]);
-  const [gradeStock, setGradeStock] = useState([]);
-  const [stockedLots, setStockedLots] = useState([]);
+  const [inStockBags, setInStockBags] = useState([]);
   const [dispatches, setDispatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -148,21 +141,19 @@ function DispatchPage() {
   const [success, setSuccess] = useState("");
 
   const [customerOrderId, setCustomerOrderId] = useState("");
-  const [lotCode, setLotCode] = useState("");
+  const [bagCode, setBagCode] = useState("");
   const [dispatchQty, setDispatchQty] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
   const [transporterName, setTransporterName] = useState("");
 
   const reload = useCallback(async () => {
-    const [orders, grades, lots, history] = await Promise.all([
+    const [orders, bags, history] = await Promise.all([
       fetchAcOpenCustomerOrders(),
-      fetchAcGradeStock(),
-      fetchAcStockedLots(),
+      fetchAcInStockBags(),
       fetchAcDispatches()
     ]);
     setOpenOrders(orders || []);
-    setGradeStock(grades || []);
-    setStockedLots(lots || []);
+    setInStockBags(bags || []);
     setDispatches(history || []);
     return orders || [];
   }, []);
@@ -188,28 +179,23 @@ function DispatchPage() {
     [openOrders, customerOrderId]
   );
 
-  const eligibleLots = useMemo(() => {
-    if (!selectedOrder) return stockedLots;
-    return stockedLots.filter((lot) => lotMatchesDispatchOrder(lot, selectedOrder));
-  }, [stockedLots, selectedOrder]);
+  const eligibleBags = useMemo(() => {
+    if (!selectedOrder) return inStockBags;
+    return inStockBags.filter((bag) => bagMatchesDispatchOrder(bag, selectedOrder));
+  }, [inStockBags, selectedOrder]);
 
   useEffect(() => {
     if (!selectedOrder) return;
     setDispatchQty(String(selectedOrder.remaining_kg || ""));
-    if (eligibleLots[0]?.lot_code) {
-      setLotCode(eligibleLots[0].lot_code);
-    } else {
-      setLotCode("");
-    }
-  }, [selectedOrder, eligibleLots]);
+    setBagCode(eligibleBags[0]?.bag_code || "");
+  }, [selectedOrder, eligibleBags]);
 
   const canDispatch =
     selectedOrder &&
     Number(selectedOrder.remaining_kg) > 0 &&
     Number(selectedOrder.stock_on_hand_kg) >= Number(dispatchQty || 0) &&
     Number(dispatchQty) > 0 &&
-    Number(dispatchQty) <= Number(selectedOrder.remaining_kg) &&
-    eligibleLots.length > 0;
+    Number(dispatchQty) <= Number(selectedOrder.remaining_kg);
 
   const handleSave = async () => {
     if (!customerOrderId || !dispatchQty) return;
@@ -220,7 +206,7 @@ function DispatchPage() {
       const result = await createAcDispatchFromOrder({
         customer_order_id: customerOrderId,
         quantity_kg: dispatchQty,
-        lot_code: lotCode || undefined,
+        bag_code: bagCode || undefined,
         vehicle_number: vehicleNumber || undefined,
         transporter_name: transporterName || undefined
       });
@@ -246,47 +232,11 @@ function DispatchPage() {
       <SectionHeader
         eyebrow="Outbound"
         title="Dispatch"
-        subtitle="View grade-wise stock and stocked lots, then ship against a customer PO."
+        subtitle="Ship against a customer PO from In Stock bags (destoning, crushing, de-magnetisation, and other post-activation)."
       />
 
       {error && <AcAlert variant="error">{error}</AcAlert>}
       {success && <AcAlert variant="success">{success}</AcAlert>}
-
-      <WfCard>
-        <WfCardHeader
-          title="Finished goods in stock"
-          subtitle="By grade — from stocked lots after execution, screening & QC"
-        />
-        <WfCardBody>
-          <div className="wf-light-panel rounded-xl p-4">
-            <StockSummaryTable
-              gradeStock={gradeStock}
-              stockedLots={stockedLots}
-              loading={loading}
-            />
-          </div>
-        </WfCardBody>
-      </WfCard>
-
-      <WfCard>
-        <WfCardHeader
-          title="Stocked lots"
-          subtitle={
-            selectedOrder
-              ? `Lots matching PO grade ${selectedOrder.product_code} are highlighted`
-              : "All lots currently in finished-goods stock"
-          }
-        />
-        <WfCardBody>
-          <div className="wf-light-panel rounded-xl p-4">
-            <StockedLotsTable
-              lots={stockedLots}
-              highlightProductId={selectedOrder?.product_id}
-              highlightProductCode={selectedOrder?.product_code}
-            />
-          </div>
-        </WfCardBody>
-      </WfCard>
 
       {!loading && openOrders.length === 0 ? (
         <AcAlert variant="warning">
@@ -299,7 +249,7 @@ function DispatchPage() {
       ) : null}
 
       <WfCard>
-        <WfCardHeader title="Ship against customer PO" subtitle="Select PO · pick lot · confirm qty" />
+        <WfCardHeader title="Ship against customer PO" subtitle="Select PO · pick in-stock bag · confirm qty" />
         <WfCardBody>
           <div className="wf-light-panel rounded-xl p-4 space-y-4">
             <AcFormSelect
@@ -308,7 +258,7 @@ function DispatchPage() {
               loading={loading}
               onChange={(e) => {
                 setCustomerOrderId(e.target.value);
-                setLotCode("");
+                setBagCode("");
                 setDispatchQty("");
               }}
             >
@@ -349,8 +299,8 @@ function DispatchPage() {
                   <p className="font-mono">{formatKg(selectedOrder.stock_on_hand_kg)}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Matching stocked lots</p>
-                  <p className="font-mono">{eligibleLots.length}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Matching in-stock bags</p>
+                  <p className="font-mono">{eligibleBags.length}</p>
                 </div>
                 <div className="md:col-span-2">
                   {selectedOrder.can_dispatch_from_stock ? (
@@ -373,19 +323,20 @@ function DispatchPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
               <AcFormSelect
-                label="Stocked lot"
-                value={lotCode}
+                label="In-stock bag"
+                value={bagCode}
                 loading={loading}
-                onChange={(e) => setLotCode(e.target.value)}
+                onChange={(e) => setBagCode(e.target.value)}
               >
                 <option value="">
-                  {eligibleLots.length
-                    ? "Auto-select oldest matching lot"
-                    : "No matching stocked lots"}
+                  {eligibleBags.length
+                    ? "Auto-select oldest in-stock bag"
+                    : "No matching in-stock bags"}
                 </option>
-                {eligibleLots.map((lot) => (
-                  <option key={lot.production_lot_id || lot.lot_code} value={lot.lot_code}>
-                    {lot.lot_code} · {lot.grade_label || lot.grade_code} · {formatKg(lot.lot_quantity)}
+                {eligibleBags.map((bag) => (
+                  <option key={bag.bag_code} value={bag.bag_code}>
+                    {bag.bag_code} · {sourceLabel(bag.source)} · {bag.grade || "In Stock"} ·{" "}
+                    {formatKg(bag.remaining_kg)}
                   </option>
                 ))}
               </AcFormSelect>
@@ -421,21 +372,32 @@ function DispatchPage() {
               </label>
             </div>
 
-            {selectedOrder && eligibleLots.length === 0 ? (
+            {selectedOrder && Number(selectedOrder.stock_on_hand_kg) <= 0 ? (
               <AcAlert variant="warning">
-                No stocked lots match grade <strong>{selectedOrder.product_code}</strong>. Check the
-                stocked lots table above — you may need a PO for the correct grade or complete QC on
-                more lots.
+                No In Stock bags are available for <strong>{selectedOrder.product_code}</strong>.
+                Set destoning, crushing, or de-magnetisation destination to In Stock first.
               </AcAlert>
             ) : null}
-          </div>
 
-          <AcSaveBar
-            onSave={handleSave}
-            saving={saving}
-            saveLabel="Confirm dispatch"
-            disabled={loading || !customerOrderId || !canDispatch}
-          />
+            <AcSaveBar
+              onSave={handleSave}
+              saving={saving}
+              saveLabel="Confirm dispatch"
+              disabled={loading || !customerOrderId || !canDispatch}
+            />
+          </div>
+        </WfCardBody>
+      </WfCard>
+
+      <WfCard>
+        <WfCardHeader
+          title="Available stock"
+          subtitle="In Stock bags from destoning, crushing, de-magnetisation, and other post-activation steps"
+        />
+        <WfCardBody>
+          <div className="wf-light-panel rounded-xl p-4">
+            <StockSummary bags={inStockBags} loading={loading} />
+          </div>
         </WfCardBody>
       </WfCard>
 

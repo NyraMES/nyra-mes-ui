@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import WorkOrderCaptureForm from "../../components/WorkOrderCaptureForm";
 import AcExecutionParameterCapture from "../../industries/activated-carbon/components/AcExecutionParameterCapture";
-import AcExecutionRouteRail from "../../industries/activated-carbon/components/AcExecutionRouteRail";
 import AcExecutionKilnFeedPanel from "../../industries/activated-carbon/components/AcExecutionKilnFeedPanel";
+import AcProcessMapTabs from "../../industries/activated-carbon/components/AcProcessMapTabs";
+import AcKilnOutputLabelsList from "../../industries/activated-carbon/components/AcKilnOutputLabelsList";
 import AcExecutionScreeningPanel from "../../industries/activated-carbon/components/AcExecutionScreeningPanel";
 import AcExecutionGradeSeparationPanel from "../../industries/activated-carbon/components/AcExecutionGradeSeparationPanel";
 import AcExecutionQualityPanel from "../../industries/activated-carbon/components/AcExecutionQualityPanel";
@@ -18,7 +19,7 @@ import {
   resumeMesCoreExecution,
   startMesCoreExecution,
 } from "../../services/mesCoreApi";
-import { fetchAcMasters, fetchAcRoutingLots, generateAcRoute, createAcScreening, createAcGradeSeparation, createAcQualityTest, formatAcLotOptionLabel } from "../../services/activatedCarbonApi";
+import { fetchAcMasters, fetchAcRoutingLots, createAcScreening, createAcGradeSeparation, createAcQualityTest, formatAcLotOptionLabel } from "../../services/activatedCarbonApi";
 import useAcPageRefresh from "../../industries/activated-carbon/hooks/useAcPageRefresh";
 import {
   normalizeAcExecutionOperations,
@@ -27,13 +28,43 @@ import {
   resolveAcExecutionOperatorName,
   buildAcParameterReadings,
   resolveAcProcessStep,
-  isAcKilnChargeStep,
   isAcOptionalOperation,
-  hasAcStepSpecificCapture
+  hasAcStepSpecificCapture,
+  isAcKilnFeedUiStep,
+  isAcKilnFeedQualityStep,
+  isAcKilnOutputQualityStep,
+  isAcKilnTempStep,
+  isAcDestoningStep,
+  isAcDestoningQualityStep,
+  isAcPostActivationLiveStep,
+  isAcPostActivationQualityStep,
+  postActivationProcessKey,
+  acProcessTabKey,
+  acProcessMapTabs,
+  acProcessTabsForStage,
+  acExecutionStageOf,
+  unlockAcAnyOrderStart
 } from "../../industries/activated-carbon/utils/acExecutionOperations";
-import { loadAcProductRoutingForExecution } from "../../industries/activated-carbon/utils/acRoutingResolver";
+import AcKilnFeedQualityPanel from "../../industries/activated-carbon/components/AcKilnFeedQualityPanel";
+import AcKilnOutputQualityPanel from "../../industries/activated-carbon/components/AcKilnOutputQualityPanel";
+import AcDestoningPanel from "../../industries/activated-carbon/components/AcDestoningPanel";
+import AcDestoningQualityPanel from "../../industries/activated-carbon/components/AcDestoningQualityPanel";
+import AcPostActivationLivePanel from "../../industries/activated-carbon/components/AcPostActivationLivePanel";
+import AcPostActivationQualityPanel from "../../industries/activated-carbon/components/AcPostActivationQualityPanel";
+import AcSectionReportsPanel from "../../industries/activated-carbon/components/AcSectionReportsPanel";
+import AcKilnParametersPanel from "../../industries/activated-carbon/components/AcKilnParametersPanel";
+import {
+  loadAcProductRoutingForExecution,
+  loadAcShopProcessMapForExecution
+} from "../../industries/activated-carbon/utils/acRoutingResolver";
 import useWorkflowNavPaths from "../../hooks/useWorkflowNavPaths";
-import { isFeasibilityReady } from "../../utils/workflowValidation";
+import { useAuth } from "../../auth/AuthContext";
+import {
+  acExecutionStagesForRoles,
+  acOperationVisibleForRoles,
+  userCanAccessAcActivation,
+  userIsAcQualityOnly
+} from "../../industries/activated-carbon/utils/acPrivileges";
 import { useWorkflow } from "../WorkflowContext";
 import {
   WfCard,
@@ -47,6 +78,8 @@ import {
 } from "../ui";
 import FlowDiagram from "../FlowDiagram";
 
+
+const EMPTY_AC_ROLES = [];
 
 function statusKind(status) {
   const s = (status || "").toLowerCase();
@@ -80,7 +113,7 @@ function recomputeCanStart(ops) {
   });
 }
 
-function applyWoToOperations(ops, woCode, wo) {
+function applyWoToOperations(ops, woCode, wo, { anyOrder = false } = {}) {
   if (!wo) return ops;
   const merged = ops.map((op) => {
     const id = op.work_order_id || op.lot_operation_id;
@@ -103,16 +136,36 @@ function applyWoToOperations(ops, woCode, wo) {
       can_start: false
     };
   });
-  return recomputeCanStart(merged);
+  return anyOrder ? unlockAcAnyOrderStart(merged) : recomputeCanStart(merged);
 }
 
 function ExecutionScreen({ variant = "default" }) {
   const { context, markStage, update } = useWorkflow();
   const nav = useWorkflowNavPaths();
-  const { pathname } = useLocation();
-  const { locationKey, focusTick } = useAcPageRefresh();
+  const { pathname, search } = useLocation();
+  const navigate = useNavigate();
+  const { user } = useAuth() || {};
+  const acRoles = user?.roles || EMPTY_AC_ROLES;
+  const { locationKey } = useAcPageRefresh();
   const isAcExecution = pathname.startsWith("/activated-carbon");
   const isAcUnified = isAcExecution && variant === "ac-unified";
+  const execStage =
+    new URLSearchParams(search || "").get("stage") === "post_activation"
+      ? "post_activation"
+      : "activation";
+  const acExecTab = isAcUnified ? new URLSearchParams(search || "").get("tab") || "" : "";
+  const acReportsOpen = acExecTab === "reports";
+  const acQualityOnly = isAcUnified && userIsAcQualityOnly(acRoles);
+  const acKilnParamsOpen =
+    execStage === "activation" && acExecTab === "kiln-parameters" && !acQualityOnly;
+  const setAcExecTab = (tab) => {
+    const params = new URLSearchParams(search || "");
+    if (tab) params.set("tab", tab);
+    else params.delete("tab");
+    const next = params.toString();
+    navigate({ pathname, search: next ? `?${next}` : "" }, { replace: true });
+  };
+  const acCanRunMachines = isAcUnified && !acQualityOnly;
 
   const [lots, setLots] = useState([]);
   const [lotId, setLotId] = useState(context.lotId || "");
@@ -140,6 +193,7 @@ function ExecutionScreen({ variant = "default" }) {
   const [holdReason, setHoldReason] = useState("");
   const captureRef = useRef(null);
   const stepExtraRef = useRef(null);
+  const loadGenRef = useRef(0);
 
   useEffect(() => {
     const loader = isAcUnified
@@ -160,13 +214,44 @@ function ExecutionScreen({ variant = "default" }) {
           tools: masters.tools || [],
           labor_pools: masters.labor_pools || []
         });
+        if (isAcUnified && !lotId) {
+          const types = masters.raw_material_types || [];
+          const type =
+            types.find((t) => String(t.product_code || "").toUpperCase() === "RAW-COCO-SHELL") ||
+            types.find((t) => !t.is_obsolete && t.operations?.length);
+          if (type?.operations?.length) {
+            const mapped = unlockAcAnyOrderStart(
+              normalizeAcExecutionOperations([], {
+                operations: type.operations,
+                process_parameters: type.process_parameters || []
+              })
+            );
+            setOperations((prev) => (prev.length ? prev : mapped));
+          }
+        }
       })
       .catch(() => {});
-  }, [locationKey, focusTick, isAcExecution, isAcUnified]);
+  }, [locationKey, isAcExecution, isAcUnified]);
 
   useEffect(() => {
     if (context.lotId && !lotId) setLotId(context.lotId);
   }, [context.lotId, lotId]);
+
+  useEffect(() => {
+    if (!isAcUnified || lotId || !lots.length) return;
+    const charged = lots.find((row) => {
+      const meta = row.metadata || row.metadata_ || {};
+      return Boolean(
+        meta.charged_at ||
+          row.charged_at ||
+          meta.kiln_live_status === "IN_KILN" ||
+          (row.kiln_feed_events || []).length
+      );
+    });
+    const pick = charged || lots[0];
+    const code = pick?.lot_id || pick?.lot_code;
+    if (code) selectLot(code);
+  }, [isAcUnified, lots, lotId]);
 
   const selectLot = (value) => {
     setLotId(value);
@@ -174,7 +259,7 @@ function ExecutionScreen({ variant = "default" }) {
   };
 
   useEffect(() => {
-    if (lotId) loadSummary({ sync: true });
+    if (lotId) loadSummary({ sync: !isAcUnified });
     else {
       setSummary(null);
       setOperations([]);
@@ -183,6 +268,7 @@ function ExecutionScreen({ variant = "default" }) {
   }, [lotId]);
 
   const woId = (op) => op?.work_order_id || op?.lot_operation_id;
+  const tabKey = (op) => (isAcUnified ? acProcessTabKey(op) : woId(op));
 
   const sortedOperations = useMemo(() => {
     return [...operations].sort((a, b) => {
@@ -199,53 +285,52 @@ function ExecutionScreen({ variant = "default" }) {
   );
 
   const pickDefaultWoId = (ops, preferId) => {
-    if (preferId && ops.some((o) => woId(o) === preferId)) return preferId;
-    const inProgress = ops.find((o) => o.status === "In Progress");
-    if (inProgress) return woId(inProgress);
-    const onHold = ops.find((o) => o.status === "On Hold");
-    if (onHold) return woId(onHold);
-    const nextUp = ops.find((o) => o.can_start && o.status === "Ready");
-    if (nextUp) return woId(nextUp);
-    return ops.length ? woId(ops[0]) : "";
+    const pool = isAcUnified ? acProcessTabsForStage(ops, execStage) : ops;
+    if (preferId && pool.some((o) => tabKey(o) === preferId || woId(o) === preferId)) {
+      return preferId;
+    }
+    if (isAcUnified && execStage === "activation") {
+      const feed = pool.find((o) => isAcKilnFeedUiStep(o));
+      if (feed) return tabKey(feed);
+    }
+    const inProgress = pool.find((o) => o.status === "In Progress");
+    if (inProgress) return tabKey(inProgress);
+    const onHold = pool.find((o) => o.status === "On Hold");
+    if (onHold) return tabKey(onHold);
+    const nextUp = pool.find((o) => o.can_start && o.status === "Ready");
+    if (nextUp) return tabKey(nextUp);
+    return pool.length ? tabKey(pool[0]) : "";
   };
 
   const loadSummary = async (options = {}) => {
     if (!lotId) return;
     const { sync = false, silent = false, preserveSelection = false, preferId } = options;
     const keepId = preserveSelection ? (preferId ?? selectedWoId) : "";
+    const gen = ++loadGenRef.current;
     if (!silent) setLoading(true);
     try {
-      let d = (await fetchMesCoreExecutionSummary(lotId, { sync })) || {};
-      let ops = Array.isArray(d.operations) ? d.operations : [];
+      const routingPromise = isAcExecution
+        ? isAcUnified
+          ? loadAcShopProcessMapForExecution(lotId).catch(() =>
+              loadAcProductRoutingForExecution(lotId).catch(() => null)
+            )
+          : loadAcProductRoutingForExecution(lotId).catch(() => null)
+        : Promise.resolve(null);
 
-      if (isAcUnified) {
-        const lotRow = lots.find((l) => (l.lot_id || l.lot_code) === lotId);
-        let feasibilityReady = lotRow?.feasibility_ready;
-        if (feasibilityReady == null) {
-          try {
-            const { fetchMesCoreLotFeasibility } = await import("../../services/mesCoreApi");
-            const gate = await fetchMesCoreLotFeasibility(lotId);
-            feasibilityReady = isFeasibilityReady(gate?.overall_status);
-          } catch {
-            feasibilityReady = false;
-          }
-        }
-        if (feasibilityReady) {
-          try {
-            await generateAcRoute(lotId);
-            d = (await fetchMesCoreExecutionSummary(lotId, { sync: true })) || d;
-            ops = Array.isArray(d.operations) ? d.operations : ops;
-          } catch (e) {
-            console.warn("Auto route generation:", e?.message || e);
-          }
-        }
-      }
+      const [dRaw, productRouting] = await Promise.all([
+        fetchMesCoreExecutionSummary(lotId, { sync }),
+        routingPromise
+      ]);
+      if (gen !== loadGenRef.current) return;
+
+      const d = dRaw || {};
+      let ops = Array.isArray(d.operations) ? d.operations : [];
 
       setExecutionReady(!!d.execution_ready);
 
       if (isAcExecution) {
-        const productRouting = await loadAcProductRoutingForExecution(lotId).catch(() => null);
         ops = normalizeAcExecutionOperations(ops, productRouting);
+        if (isAcUnified) ops = unlockAcAnyOrderStart(ops);
       }
 
       const baseSummary = {
@@ -261,17 +346,19 @@ function ExecutionScreen({ variant = "default" }) {
         operations_completed: d.operations_completed ?? 0
       };
 
+      if (gen !== loadGenRef.current) return;
       setSummary(isAcExecution ? summarizeAcExecution(baseSummary, ops) : baseSummary);
       setOperations(ops);
       setSelectedWoId(pickDefaultWoId(ops, keepId));
     } catch (e) {
+      if (gen !== loadGenRef.current) return;
       if (e.response?.status !== 404) console.error(e);
       setSummary(null);
       setOperations([]);
       setExecutionReady(false);
       setSelectedWoId("");
     } finally {
-      if (!silent) setLoading(false);
+      if (gen === loadGenRef.current && !silent) setLoading(false);
     }
   };
 
@@ -284,9 +371,23 @@ function ExecutionScreen({ variant = "default" }) {
     });
   };
 
+  const allProcessTabOps = useMemo(
+    () => (isAcUnified ? acProcessMapTabs(sortedOperations) : sortedOperations),
+    [isAcUnified, sortedOperations]
+  );
+
+  const processTabOps = useMemo(() => {
+    const rows = isAcUnified ? acProcessTabsForStage(allProcessTabOps, execStage) : allProcessTabOps;
+    if (!isAcUnified) return rows;
+    return rows.filter((op) => acOperationVisibleForRoles(op, acRoles));
+  }, [isAcUnified, allProcessTabOps, execStage, acRoles]);
+
   const selectedOp = useMemo(
-    () => sortedOperations.find((o) => woId(o) === selectedWoId) || null,
-    [sortedOperations, selectedWoId]
+    () =>
+      (isAcUnified ? processTabOps : sortedOperations).find(
+        (o) => tabKey(o) === selectedWoId || woId(o) === selectedWoId
+      ) || null,
+    [isAcUnified, processTabOps, sortedOperations, selectedWoId]
   );
 
   const acUiFlags = useMemo(() => {
@@ -304,30 +405,27 @@ function ExecutionScreen({ variant = "default" }) {
     [selectedOp]
   );
 
-  const needsKilnCharge = useMemo(() => {
-    if (!isAcUnified || !selectedLot) return false;
-    const lotStatus = (selectedLot.status || "").toUpperCase();
-    if (lotStatus !== "CREATED") return false;
-    const target = selectedOp || nextStartableOp;
-    if (!target) return false;
-    return isAcKilnChargeStep(target);
-  }, [isAcUnified, selectedLot, selectedOp, nextStartableOp]);
-
-  const showKilnLiveTracking = useMemo(() => {
-    if (!isAcUnified || !selectedLot || needsKilnCharge) return false;
-    const meta = selectedLot.metadata || selectedLot.metadata_ || {};
-    if (!meta.charged_at && meta.kiln_live_status !== "IN_KILN") return false;
-    const target = selectedOp || nextStartableOp;
-    if (!target || !isAcKilnChargeStep(target)) return false;
-    const lotStatus = (selectedLot.status || "").toUpperCase();
-    return lotStatus === "IN_PROGRESS";
-  }, [isAcUnified, selectedLot, selectedOp, nextStartableOp, needsKilnCharge]);
+  useEffect(() => {
+    if (!isAcUnified) return;
+    const allowed = acExecutionStagesForRoles(acRoles);
+    if (allowed.includes(execStage)) return;
+    if (!allowed.length) {
+      navigate("/activated-carbon/raw-material?tab=inward", { replace: true });
+      return;
+    }
+    navigate(`/activated-carbon/execution?stage=${allowed[0]}`, { replace: true });
+  }, [isAcUnified, execStage, acRoles, navigate]);
 
   useEffect(() => {
-    if (!isAcUnified || !sortedOperations.length) return;
-    const id = pickDefaultWoId(sortedOperations, selectedWoId);
+    if (!isAcUnified || !allProcessTabOps.length) return;
+    if (acReportsOpen || acKilnParamsOpen) return;
+    const current = processTabOps.find(
+      (o) => tabKey(o) === selectedWoId || woId(o) === selectedWoId
+    );
+    if (current && acExecutionStageOf(current) === execStage) return;
+    const id = pickDefaultWoId(processTabOps, selectedWoId);
     if (id && id !== selectedWoId) setSelectedWoId(id);
-  }, [isAcUnified, sortedOperations, selectedWoId]);
+  }, [isAcUnified, execStage, allProcessTabOps, processTabOps, selectedWoId, acReportsOpen, acKilnParamsOpen]);
 
   useEffect(() => {
     if (!selectedOp) return;
@@ -386,7 +484,12 @@ function ExecutionScreen({ variant = "default" }) {
     if (!selectedOp || acting) return;
     if (selectedOp.status !== "Ready") return;
     const id = woId(selectedOp);
-    if (!id) return;
+    if (!id) {
+      if (isAcUnified) {
+        alert("Load the kiln first so this process-map step can be started.");
+      }
+      return;
+    }
 
     setActing(true);
     try {
@@ -415,7 +518,7 @@ function ExecutionScreen({ variant = "default" }) {
         tool_codes:
           flags?.skip_tools || !selectedToolCodes.length ? undefined : selectedToolCodes
       });
-      setOperations((ops) => applyWoToOperations(ops, id, res));
+      setOperations((ops) => applyWoToOperations(ops, id, res, { anyOrder: isAcUnified }));
       setSelectedWoId(id);
       refreshInBackground(id);
     } catch (e) {
@@ -437,7 +540,7 @@ function ExecutionScreen({ variant = "default" }) {
     try {
       const res = await holdMesCoreExecution(id, { reason });
       setHoldReason("");
-      setOperations((ops) => applyWoToOperations(ops, id, res));
+      setOperations((ops) => applyWoToOperations(ops, id, res, { anyOrder: isAcUnified }));
       setSelectedWoId(id);
       refreshInBackground(id);
     } catch (e) {
@@ -453,7 +556,7 @@ function ExecutionScreen({ variant = "default" }) {
     setActing(true);
     try {
       const res = await resumeMesCoreExecution(id);
-      setOperations((ops) => applyWoToOperations(ops, id, res));
+      setOperations((ops) => applyWoToOperations(ops, id, res, { anyOrder: isAcUnified }));
       setSelectedWoId(id);
       refreshInBackground(id);
     } catch (e) {
@@ -493,7 +596,7 @@ function ExecutionScreen({ variant = "default" }) {
       tool_codes:
         flags?.skip_tools || !selectedToolCodes.length ? undefined : selectedToolCodes
     });
-    setOperations((ops) => applyWoToOperations(ops, id, res));
+    setOperations((ops) => applyWoToOperations(ops, id, res, { anyOrder: isAcUnified }));
     setSelectedWoId(id);
     return true;
   };
@@ -592,7 +695,7 @@ function ExecutionScreen({ variant = "default" }) {
             ? undefined
             : res?.actual_machine_id || machineId.trim() || undefined
       };
-      const updated = applyWoToOperations(operations, id, woPayload);
+      const updated = applyWoToOperations(operations, id, woPayload, { anyOrder: isAcUnified });
       setOperations(updated);
       const nextId = pickDefaultWoId(updated, null);
       setSelectedWoId(nextId);
@@ -654,31 +757,35 @@ function ExecutionScreen({ variant = "default" }) {
     }
   };
 
+  const completableOps = isAcUnified
+    ? processTabOps.filter((o) => !isAcPostActivationQualityStep(o))
+    : sortedOperations;
   const allComplete =
-    sortedOperations.length > 0 && sortedOperations.every((o) => o.status === "Completed");
+    completableOps.length > 0 && completableOps.every((o) => o.status === "Completed");
 
   const canActOnSelected =
+    !isAcUnified &&
     selectedOp &&
+    !isAcKilnFeedUiStep(selectedOp) &&
     ["Ready", "In Progress", "On Hold"].includes(selectedOp.status);
 
   return (
     <div className="space-y-6">
+      {isAcUnified ? (
       <SectionHeader
-        eyebrow={
-          isAcUnified
-            ? "Shop floor · Execution"
-            : "Stage 07 · Work Order Execution"
-        }
-        title={
-          isAcUnified
-            ? "Raw material → finished goods"
-            : "Shop floor — operation by operation"
-        }
+        eyebrow={execStage === "post_activation" ? "Post-activation" : "Activation"}
+        title="Execution"
         subtitle={
-          isAcUnified
-            ? "Follow the routing defined for this raw material type. Complete each step in order — kiln feed, activation, screening, and quality testing run here."
-            : "After scheduling, run each routing step here: start, record output/scrap, complete, or put on hold if material or machine is not ready."
+          execStage === "post_activation"
+            ? "Screening through finished goods. Choose a step from the process map on the right."
+            : "Kiln feed first, then output, destoning, and kiln parameters. Choose a step from the process map on the right."
         }
+      />
+      ) : (
+      <SectionHeader
+        eyebrow="Stage 07 · Work Order Execution"
+        title="Shop floor — operation by operation"
+        subtitle="After scheduling, run each routing step here: start, record output/scrap, complete, or put on hold if material or machine is not ready."
         right={
           allComplete && (
             <Link to={nav.afterExecution} className="wf-btn wf-btn-primary">
@@ -687,12 +794,6 @@ function ExecutionScreen({ variant = "default" }) {
           )
         }
       />
-
-      {isAcUnified && allComplete && (
-        <div className="rounded-xl border border-emerald-300/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-          <span className="font-semibold">All routing steps complete.</span> Lot is ready for
-          dispatch when finished-goods stock is available.
-        </div>
       )}
 
       {isAcExecution && allComplete && !isAcUnified && (
@@ -706,6 +807,7 @@ function ExecutionScreen({ variant = "default" }) {
         </div>
       )}
 
+      {!isAcUnified && (
       <ContextBanner
         items={[
           { label: "Lot", value: lotId || "—" },
@@ -717,8 +819,9 @@ function ExecutionScreen({ variant = "default" }) {
           { label: "Selected", value: selectedOp?.operation_name || "—" }
         ]}
       />
+      )}
 
-      {lotId && !loading && summary && (
+      {lotId && !loading && summary && !isAcUnified && (
         <div
           className={[
             "rounded-xl border px-4 py-3 text-sm",
@@ -738,8 +841,10 @@ function ExecutionScreen({ variant = "default" }) {
           ) : executionReady ? (
             <>
               <span className="font-semibold">Shop floor ready.</span>{" "}
-              {isAcExecution
-                ? "Run each routing step in order. Production steps use labor pool + machine; QC and feasibility gate steps need parameters only."
+              {isAcUnified
+                ? "Kiln feed is live above. Remaining steps are tabs from this lot’s process map and can be run in any order."
+                : isAcExecution
+                ? "Run each routing step in order. Production steps use labor pool + machine; QC steps need parameters only."
                 : "Select each operation in routing order, start it, enter production data, then complete — or put on hold if material/machine is not available. Machine is pre-filled from scheduling when assigned."}
             </>
           ) : operations.length === 0 ? (
@@ -747,11 +852,7 @@ function ExecutionScreen({ variant = "default" }) {
               <span className="font-semibold">Not ready yet.</span>{" "}
               {isAcUnified ? (
                 <>
-                  Run{" "}
-                  <Link to={nav.prerequisiteForExecution} className="underline text-cyan-200">
-                    Feasibility Gate
-                  </Link>{" "}
-                  for this lot — the route is generated automatically when feasibility passes.
+                  Load the kiln above — work orders are created automatically after Load.
                 </>
               ) : (
                 <>
@@ -772,22 +873,42 @@ function ExecutionScreen({ variant = "default" }) {
         </div>
       )}
 
-      {loading && lotId && (
+      {loading && lotId && !isAcUnified && (
         <div className="text-sm text-slate-400 text-center py-4">
           Syncing schedules → work orders for lot {lotId}…
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <WfCard className="lg:col-span-2" glow>
+      {isAcUnified ? (
+        <AcProcessMapTabs
+          operations={processTabOps}
+          activeId={acReportsOpen ? "reports" : acKilnParamsOpen ? "kiln-parameters" : selectedWoId}
+          showReports
+          showKilnParameters={execStage === "activation" && !acQualityOnly}
+          onSelect={(id) => {
+            if (id === "reports") {
+              setAcExecTab("reports");
+              return;
+            }
+            if (id === "kiln-parameters") {
+              setAcExecTab("kiln-parameters");
+              return;
+            }
+            setAcExecTab("");
+            setSelectedWoId(id);
+          }}
+        />
+      ) : null}
+
+      <div className={isAcUnified ? (acReportsOpen ? "grid grid-cols-1 gap-4" : "wf-ac-gate-receipt-grid wf-ac-gate-receipt-grid--wide") : "grid grid-cols-1 gap-5 lg:grid-cols-3"}>
+        <WfCard className={isAcUnified ? "" : "lg:col-span-2"} glow>
+          {!isAcUnified && (
           <WfCardHeader
-            title={isAcUnified ? "Current step" : "Routing Operations"}
+            title="Routing Operations"
             subtitle={
-              isAcUnified && selectedOp
-                ? `Step ${selectedOp.seq} · ${selectedOp.operation_name}`
-                : summary
-                  ? `Lot ${summary.lot_id} · ${summary.part_name || summary.part_id}`
-                  : "Pick a lot to run"
+              summary
+                ? `Lot ${summary.lot_id} · ${summary.part_name || summary.part_id}`
+                : "Pick a lot to run"
             }
             icon={<IconPlay />}
             right={
@@ -796,8 +917,10 @@ function ExecutionScreen({ variant = "default" }) {
               )
             }
           />
+          )}
           <WfCardBody className="space-y-5">
             <div className={`grid grid-cols-1 gap-3 ${isAcExecution ? "" : "md:grid-cols-3"}`}>
+              {!isAcUnified && (
               <div className={isAcExecution ? "" : "md:col-span-2"}>
                 <label className="wf-label">Lot</label>
                 <select className="wf-select" value={lotId} onChange={(e) => selectLot(e.target.value)}>
@@ -812,6 +935,7 @@ function ExecutionScreen({ variant = "default" }) {
                   })}
                 </select>
               </div>
+              )}
               {!isAcExecution && (
                 <div>
                   <label className="wf-label">Operator (required to start)</label>
@@ -825,12 +949,12 @@ function ExecutionScreen({ variant = "default" }) {
               )}
             </div>
 
-            {sortedOperations.length === 0 && !loading && (
+            {sortedOperations.length === 0 && !loading && !acReportsOpen && !acKilnParamsOpen && (
               <EmptyState
                 title="No work orders for this lot"
                 hint={
                   isAcUnified
-                    ? "Run Feasibility Gate for this lot first — the route is generated automatically when feasibility passes."
+                    ? "Load the kiln above. Process-map tabs appear from this lot’s routing."
                     : isAcExecution
                       ? "Open Lot Routing, generate work orders for this lot, then return here."
                       : "Schedule this lot in Scheduling — each operation becomes a shop-floor work order you run here."
@@ -900,38 +1024,124 @@ function ExecutionScreen({ variant = "default" }) {
               </div>
             )}
 
-            {isAcUnified && needsKilnCharge && (
+            {isAcUnified && acReportsOpen && (
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost"
+                  onClick={() => setAcExecTab("")}
+                >
+                  ← Back to execution
+                </button>
+                <AcSectionReportsPanel
+                  section={execStage === "post_activation" ? "post_activation" : "activation"}
+                />
+              </div>
+            )}
+
+            {isAcUnified &&
+              !acReportsOpen &&
+              !acKilnParamsOpen &&
+              !acQualityOnly &&
+              (isAcKilnFeedUiStep(selectedOp) ||
+                (!processTabOps.length && userCanAccessAcActivation(acRoles))) && (
               <AcExecutionKilnFeedPanel
                 lot={selectedLot}
-                onCharged={() => {
-                  void loadSummary({ sync: true, preserveSelection: true });
-                  fetchAcRoutingLots()
-                    .then((rows) => setLots(rows || []))
-                    .catch(() => {});
-                  fetchMesCoreProductionLots()
-                    .then((rows) => {
-                      if (!rows?.length) return;
-                      setLots((prev) => {
-                        const byId = new Map(
-                          (prev || []).map((l) => [l.production_lot_id || l.lot_id || l.lot_code, l])
-                        );
-                        for (const row of rows) {
-                          const id = row.production_lot_id || row.lot_id || row.lot_code;
-                          byId.set(id, { ...byId.get(id), ...row });
-                        }
-                        return Array.from(byId.values());
-                      });
-                    })
-                    .catch(() => {});
+                lots={lots}
+                onSelectLot={(code) => {
+                  if (code) selectLot(code);
+                }}
+                onCharged={(updated) => {
+                  if (!updated) return;
+                  setLots((prev) => {
+                    let found = false;
+                    const next = (prev || []).map((row) => {
+                      const sameCode =
+                        (row.lot_id || row.lot_code) === (updated.lot_code || updated.lot_id);
+                      const samePk =
+                        row.production_lot_id &&
+                        updated.production_lot_id &&
+                        row.production_lot_id === updated.production_lot_id;
+                      if (!sameCode && !samePk) return row;
+                      found = true;
+                      return {
+                        ...row,
+                        ...updated,
+                        metadata: { ...(row.metadata || {}), ...(updated.metadata || {}) }
+                      };
+                    });
+                    return found ? next : [...next, updated];
+                  });
                 }}
               />
             )}
 
-            {isAcUnified && showKilnLiveTracking && (
-              <AcExecutionKilnFeedPanel lot={selectedLot} liveOnly />
+            {isAcUnified && !acReportsOpen && !acKilnParamsOpen && isAcKilnFeedQualityStep(selectedOp) && (
+              <AcKilnFeedQualityPanel
+                parameters={selectedOp.parameters || []}
+                lot={selectedLot}
+              />
             )}
 
-            {selectedOp && selectedOp.status === "Completed" && (
+            {isAcUnified && !acReportsOpen && !acKilnParamsOpen && isAcKilnOutputQualityStep(selectedOp) && (
+              <AcKilnOutputQualityPanel
+                parameters={selectedOp.parameters || []}
+                kilnCode={
+                  selectedLot?.kiln_resource_code ||
+                  selectedLot?.metadata?.kiln_resource_code ||
+                  ""
+                }
+                lot={selectedLot}
+              />
+            )}
+
+            {isAcUnified && !acReportsOpen && !acKilnParamsOpen && isAcDestoningStep(selectedOp) && acCanRunMachines && (
+              <AcDestoningPanel lot={selectedLot} />
+            )}
+
+            {isAcUnified && !acReportsOpen && !acKilnParamsOpen && isAcDestoningQualityStep(selectedOp) && (
+              <AcDestoningQualityPanel parameters={selectedOp.parameters || []} />
+            )}
+
+            {isAcUnified && !acReportsOpen && acKilnParamsOpen && (
+              <AcKilnParametersPanel />
+            )}
+
+            {isAcUnified && !acReportsOpen && !acKilnParamsOpen && isAcPostActivationLiveStep(selectedOp) && (
+              <AcPostActivationLivePanel
+                processKey={postActivationProcessKey(selectedOp)}
+                lot={selectedLot}
+                canRun={acCanRunMachines}
+              />
+            )}
+
+            {isAcUnified && !acReportsOpen && !acKilnParamsOpen && isAcPostActivationQualityStep(selectedOp) && (
+              <AcPostActivationQualityPanel />
+            )}
+
+            {isAcUnified &&
+              !acReportsOpen &&
+              !acKilnParamsOpen &&
+              selectedOp &&
+              !isAcKilnFeedUiStep(selectedOp) &&
+              !isAcKilnFeedQualityStep(selectedOp) &&
+              !isAcKilnOutputQualityStep(selectedOp) &&
+              !isAcKilnTempStep(selectedOp) &&
+              !isAcDestoningStep(selectedOp) &&
+              !isAcDestoningQualityStep(selectedOp) &&
+              !isAcPostActivationLiveStep(selectedOp) &&
+              !isAcPostActivationQualityStep(selectedOp) && (
+              <AcKilnOutputLabelsList
+                kilnCode={
+                  selectedLot?.kiln_resource_code ||
+                  selectedLot?.metadata?.kiln_resource_code ||
+                  ""
+                }
+                title={`${selectedOp.operation_name} — kiln output labels`}
+              />
+            )}
+
+            {selectedOp && selectedOp.status === "Completed" && !isAcUnified && !isAcKilnFeedUiStep(selectedOp) && (
               <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-5 space-y-4">
                 <div className="text-sm font-semibold text-emerald-100">{selectedOp.operation_name} — completed</div>
                 {selectedOp.captured_readings?.length > 0 && (
@@ -1012,7 +1222,7 @@ function ExecutionScreen({ variant = "default" }) {
               </div>
             )}
 
-            {selectedOp && canActOnSelected && !needsKilnCharge && (
+            {selectedOp && canActOnSelected && (
               <div className="rounded-2xl bg-gradient-to-br from-blue-500/10 to-indigo-500/10 border border-blue-400/30 p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -1036,7 +1246,7 @@ function ExecutionScreen({ variant = "default" }) {
                   </div>
                 )}
 
-                {selectedOp.status === "Ready" && !selectedOp.can_start && (
+                {selectedOp.status === "Ready" && !selectedOp.can_start && !isAcUnified && (
                   <div className="mt-3 rounded-lg bg-slate-800/60 border border-slate-600/40 px-3 py-2 text-sm text-slate-300">
                     Complete the previous routing step before starting this one.
                   </div>
@@ -1056,7 +1266,9 @@ function ExecutionScreen({ variant = "default" }) {
 
                 {isAcUnified &&
                   (selectedOp.status === "Ready" || selectedOp.status === "In Progress") &&
-                  activeProcessStep === "GRADE_SEPARATION" && (
+                  !(selectedOp.parameters?.length > 0) &&
+                  activeProcessStep === "GRADE_SEPARATION" &&
+                  !isAcPostActivationLiveStep(selectedOp) && (
                     <div className="mt-4">
                       <AcExecutionGradeSeparationPanel
                         key={`grade-${selectedWoId}`}
@@ -1068,7 +1280,9 @@ function ExecutionScreen({ variant = "default" }) {
 
                 {isAcUnified &&
                   (selectedOp.status === "Ready" || selectedOp.status === "In Progress") &&
-                  activeProcessStep === "SCREENING" && (
+                  !(selectedOp.parameters?.length > 0) &&
+                  activeProcessStep === "SCREENING" &&
+                  !isAcPostActivationLiveStep(selectedOp) && (
                     <div className="mt-4">
                       <AcExecutionScreeningPanel
                         key={`screening-${selectedWoId}`}
@@ -1080,7 +1294,9 @@ function ExecutionScreen({ variant = "default" }) {
 
                 {isAcUnified &&
                   (selectedOp.status === "Ready" || selectedOp.status === "In Progress") &&
-                  activeProcessStep === "QC" && (
+                  !(selectedOp.parameters?.length > 0) &&
+                  activeProcessStep === "QC" &&
+                  !isAcPostActivationLiveStep(selectedOp) && (
                     <div className="mt-4">
                       <AcExecutionQualityPanel
                         key={`qc-${selectedWoId}`}
@@ -1420,25 +1636,40 @@ function ExecutionScreen({ variant = "default" }) {
           </WfCardBody>
         </WfCard>
 
-        <div className="space-y-5">
-          {isAcUnified ? (
-            <WfCard glow>
-              <WfCardHeader
-                title="Process route"
-                subtitle="Raw material → finished goods"
-                icon={<IconWave />}
+        {isAcUnified ? (
+          acReportsOpen ? null : (
+          <aside className="wf-ac-gate-receipt-flow ac-exec-process-aside">
+            <p className="ac-exec-process-flow-title">Process map</p>
+            <div className="wf-light-panel rounded-xl p-3">
+              <AcProcessMapTabs
+                sidebar
+                operations={processTabOps}
+                activeId={acKilnParamsOpen ? "kiln-parameters" : selectedWoId}
+                showReports
+                showKilnParameters={execStage === "activation" && !acQualityOnly}
+                onSelect={(id) => {
+                  if (id === "reports") {
+                    setAcExecTab("reports");
+                    return;
+                  }
+                  if (id === "kiln-parameters") {
+                    setAcExecTab("kiln-parameters");
+                    return;
+                  }
+                  setAcExecTab("");
+                  setSelectedWoId(id);
+                }}
               />
-              <WfCardBody>
-                <AcExecutionRouteRail
-                  operations={sortedOperations}
-                  activeId={selectedWoId}
-                  onSelect={(id) => setSelectedWoId(id)}
-                  readOnlyFuture
-                />
-              </WfCardBody>
-            </WfCard>
-          ) : (
-            <>
+              {!processTabOps.length ? (
+                <p className="text-xs text-slate-600 mt-2 mb-0">
+                  Load the kiln to unlock this stage’s remaining steps.
+                </p>
+              ) : null}
+            </div>
+          </aside>
+          )
+        ) : (
+        <div className="space-y-5">
           <WfCard>
             <WfCardHeader title="How it works" subtitle="After scheduling" icon={<IconAtom />} />
             <WfCardBody className="space-y-3 text-xs text-slate-400">
@@ -1481,9 +1712,8 @@ function ExecutionScreen({ variant = "default" }) {
               )}
             </WfCardBody>
           </WfCard>
-            </>
-          )}
         </div>
+        )}
       </div>
     </div>
   );

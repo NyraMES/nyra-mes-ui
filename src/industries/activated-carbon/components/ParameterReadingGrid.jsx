@@ -1,4 +1,4 @@
-function ParameterReadingGrid({ definitions = [], readings, values = {}, onChange }) {
+function ParameterReadingGrid({ definitions = [], readings, values = {}, onChange, disabled = false }) {
   const rows =
     definitions.length > 0
       ? definitions.map((d) => ({
@@ -40,6 +40,7 @@ function ParameterReadingGrid({ definitions = [], readings, values = {}, onChang
                     className="w-full max-w-xs rounded border border-slate-300 px-2 py-1"
                     placeholder="Enter value"
                     value={values[fieldKey] ?? row.value ?? ""}
+                    disabled={disabled}
                     onChange={(e) => onChange?.(fieldKey, e.target.value)}
                   />
                 </td>

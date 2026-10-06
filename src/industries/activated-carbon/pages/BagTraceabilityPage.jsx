@@ -119,7 +119,7 @@ function BagTraceabilityPage() {
       {success ? <AcAlert variant="success">{success}</AcAlert> : null}
 
       <WfCard>
-        <WfCardHeader title="Register bag" subtitle="Bag code auto-generated (BAG-AC-*)." />
+        <WfCardHeader title="Register bag" subtitle="Bag code auto-generated (RI_BAG_* inward, RO_BAG_* outward)." />
         <WfCardBody>
           <div className="wf-light-panel rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
             {loading ? (

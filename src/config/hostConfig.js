@@ -8,10 +8,15 @@ import {
   ACTIVATED_CARBON_DEV_TENANT,
   getIndustrySelection,
   resolveIndustryTenantScope,
+  resolveScopedTenantForIndustry,
   userCanAccessIndustry
 } from "./industrySelection";
 import { apiBaseUrl } from "../auth/cognitoConfig";
-import { resolveDefaultWorkspaceCode } from "../services/mesCorePaths";
+import {
+  canonicalTenantCode,
+  canonicalWorkspaceCode,
+  resolveDefaultWorkspaceCode
+} from "../services/mesCorePaths";
 
 /** Industry-only dev hosts; tenant resolved from env or generic AC demo. */
 const BUILTIN_BINDINGS = {
@@ -66,8 +71,8 @@ function parseHostTenantMap(raw) {
 
       if (!parts.length) return;
       parsed[host] = {
-        tenant_code: parts[0],
-        workspace_code: parts[1] || null,
+        tenant_code: canonicalTenantCode(parts[0]) || parts[0],
+        workspace_code: canonicalWorkspaceCode(parts[1] || null),
         industry_key: parts[2] || industryKeyForTenant(parts[0])
       };
     });
@@ -135,7 +140,7 @@ export function userMatchesHostTenant(user, binding) {
   if (!user?.tenant_code) return false;
   const userTenant = String(user.tenant_code).trim();
   const hostTenant = String(binding.tenant_code).trim();
-  if (userTenant === hostTenant) return true;
+  if (canonicalTenantCode(userTenant) === canonicalTenantCode(hostTenant)) return true;
   if (AC_VALIDATION_TENANTS.has(userTenant) && AC_VALIDATION_TENANTS.has(hostTenant)) {
     return true;
   }
@@ -143,6 +148,25 @@ export function userMatchesHostTenant(user, binding) {
     return userCanAccessIndustry(binding.industry_key, user);
   }
   return false;
+}
+
+/**
+ * On a plant-locked host (testbed /mes → GR_CARBONS), prefer the host tenant
+ * over Cognito demo tenants so signed-in users see the same plant as localhost.
+ */
+export function resolvePlantScopeForIndustry(industryKey, user) {
+  const binding = resolveAppHostBinding();
+  if (
+    binding?.tenant_code &&
+    (!industryKey || !binding.industry_key || binding.industry_key === industryKey) &&
+    (!user?.tenant_code || userMatchesHostTenant(user, binding))
+  ) {
+    return {
+      tenant_code: binding.tenant_code,
+      workspace_code: binding.workspace_code
+    };
+  }
+  return resolveScopedTenantForIndustry(industryKey, user);
 }
 
 export function tenantMismatchMessage(binding) {

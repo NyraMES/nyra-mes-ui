@@ -54,15 +54,26 @@ export function displayOperationLabel(operation) {
 }
 
 /** Shop-floor / inbound list label from an operation name or process_step code. */
+function isRmsOutwardLabel(code, name) {
+  const rawCode = String(code || "").toUpperCase();
+  const lower = String(name || "").toLowerCase();
+  return rawCode === "IN-RM-OUT" || lower.includes("rm outward") || lower.includes("rms outward");
+}
+
 export function displayInboundStepLabel(stepOrName) {
   if (stepOrName && typeof stepOrName === "object") {
     const name = String(stepOrName.operation_name || "").trim();
+    const code = String(stepOrName.operation_code || "").trim();
+    if (isRmsOutwardLabel(code, name)) return "RMS Outward — crusher output bags";
     if (name) return name;
     stepOrName = stepOrName.process_step;
   }
   const raw = String(stepOrName || "").trim();
   if (!raw) return "Inbound step";
   const code = raw.toUpperCase().replace(/\s+/g, "_");
+  if (isRmsOutwardLabel(code, raw)) {
+    return "RMS Outward — crusher output bags";
+  }
   const opt =
     AC_INBOUND_PROCESS_STEP_OPTIONS.find((o) => o.value === code) ||
     AC_PROCESS_STEP_OPTIONS.find((o) => o.value === code);
@@ -74,8 +85,22 @@ export const AC_LAB_INBOUND_PARAMETERS = [
   { key: "moisture_pct", label: "Moisture", unit: "%" },
   { key: "dust_pct", label: "Dust", unit: "%" },
   { key: "ad_value", label: "AD value" },
-  { key: "qc_decision", label: "Approve / deny" }
+  { key: "qc_decision", label: "Approve / deny" },
+  { key: "qc_remarks", label: "Remarks" }
 ];
+
+export const AC_RM_OUTWARD_GRADES = [
+  { key: "minus20_1st", label: "-20 1st Stage" },
+  { key: "grade_1st", label: "Grade 1st Stage" },
+  { key: "unburnt", label: "Unburnt" },
+  { key: "stones", label: "Stones" }
+];
+
+export function isAcKilnFeedOutwardBag(bag) {
+  const grade = String(bag?.grade || bag?.grade_label || "").toLowerCase();
+  if (!grade.trim()) return false;
+  return !grade.includes("unburnt") && !grade.includes("stone");
+}
 
 /** Inward crusher performance mesh shares — % (keep grade / rotary / dust / moisture). */
 export const AC_CRUSHER_MESH_PCT_FIELDS = [

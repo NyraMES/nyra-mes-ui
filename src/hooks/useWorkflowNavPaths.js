@@ -16,8 +16,8 @@ export function useWorkflowNavPaths() {
       afterFeasibilityLabel: "Proceed to Execution →",
       afterExecution: `${base}/dispatch`,
       afterExecutionLabel: "Proceed to Dispatch →",
-      prerequisiteForExecution: `${base}/feasibility`,
-      prerequisiteLabel: "Feasibility Gate"
+      prerequisiteForExecution: `${base}/execution`,
+      prerequisiteLabel: "Execution"
     };
   }
 

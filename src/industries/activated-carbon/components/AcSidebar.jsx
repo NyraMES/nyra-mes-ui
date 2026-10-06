@@ -1,18 +1,36 @@
 ﻿import { useState } from "react";
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 
 import nyraLogo from "../../../assets/nyra-logo.png";
 import { useAuth } from "../../../auth/AuthContext";
 import { useAppContext } from "../../../context/AppContext";
 import { getActivatedCarbonMenu } from "../menu/activatedCarbonMenu";
-import { canAccessAcMenuItem, AC_DEMO_BLOCKED_HINT } from "../utils/acMenuAccess";
+import { canAccessAcMenuItem, AC_DEMO_BLOCKED_HINT, userIsAcDemoViewer } from "../utils/acMenuAccess";
+import {
+  userCanAccessAcActivation,
+  userCanAccessAcPostActivation,
+  userCanAccessAcQuality
+} from "../utils/acPrivileges";
 import { resolveAcAppContext } from "../utils/acContextUtils";
 
-function SidebarLink({ to, label, end = false, disabled = false }) {
+function executionStage(location) {
+  const params = new URLSearchParams(location.search || "");
+  return params.get("stage") === "post_activation" ? "post_activation" : "activation";
+}
+
+function SidebarLink({
+  to,
+  label,
+  end = false,
+  disabled = false,
+  indent = false,
+  isItemActive
+}) {
+  const location = useLocation();
   if (disabled) {
     return (
       <span
-        className="wf-nav-link wf-nav-link--disabled"
+        className={"wf-nav-link wf-nav-link--disabled" + (indent ? " wf-nav-link--indent" : "")}
         title={AC_DEMO_BLOCKED_HINT}
         aria-disabled="true"
       >
@@ -26,7 +44,9 @@ function SidebarLink({ to, label, end = false, disabled = false }) {
       to={to}
       end={end}
       className={({ isActive }) =>
-        "wf-nav-link" + (isActive ? " wf-nav-link--active" : "")
+        "wf-nav-link" +
+        (indent ? " wf-nav-link--indent" : "") +
+        ((isItemActive ? isItemActive(location) : isActive) ? " wf-nav-link--active" : "")
       }
     >
       <span className="wf-nav-link-label">{label}</span>
@@ -42,19 +62,20 @@ const SECTIONS = [
     ids: [
       "raw-material",
       "bag-tracing",
-      "feasibility",
       "execution",
-      "kiln-parameters",
       "customer-sales",
       "dispatch",
-      "reports",
-      "yield",
-      "traceability"
+      "reports"
     ]
   },
   {
+    id: "admin",
+    label: "Administration",
+    ids: ["users"]
+  },
+  {
     id: "masters",
-    label: "Master Data & Admin",
+    label: "Master Data",
     ids: ["masters", "routing-builder"]
   }
 ];
@@ -70,6 +91,7 @@ function AcSidebar() {
   const [openSections, setOpenSections] = useState({
     overview: true,
     production: true,
+    admin: true,
     masters: true
   });
 
@@ -90,7 +112,10 @@ function AcSidebar() {
 
       <nav className="wf-sidebar-nav" aria-label="Activated Carbon navigation">
         {SECTIONS.map((section) => {
-          const items = section.ids.map((id) => byId[id]).filter(Boolean);
+          const items = section.ids
+            .map((id) => byId[id])
+            .filter(Boolean)
+            .filter((item) => canAccessAcMenuItem(item.id, roles, user) || userIsAcDemoViewer(roles));
           if (!items.length) return null;
           const isOpen = openSections[section.id];
           return (
@@ -110,15 +135,56 @@ function AcSidebar() {
               </button>
               {isOpen && (
                 <div className="wf-nav-section-links">
-                  {items.map((item) => (
-                    <SidebarLink
-                      key={item.id}
-                      to={item.to}
-                      label={item.label}
-                      end={item.end}
-                      disabled={!canAccessAcMenuItem(item.id, roles)}
-                    />
-                  ))}
+                  {items.map((item) => {
+                    const blocked = !canAccessAcMenuItem(item.id, roles, user);
+                    if (item.id !== "execution") {
+                      return (
+                        <SidebarLink
+                          key={item.id}
+                          to={item.to}
+                          label={item.label}
+                          end={item.end}
+                          disabled={blocked}
+                        />
+                      );
+                    }
+                    return (
+                      <div key={item.id}>
+                        <SidebarLink
+                          to={`${item.to}?stage=activation`}
+                          label={item.label}
+                          disabled={blocked}
+                          isItemActive={(loc) => String(loc.pathname || "").includes("/execution")}
+                        />
+                        <div className="wf-nav-submenu">
+                          {userCanAccessAcActivation(roles) || userCanAccessAcQuality(roles) ? (
+                            <SidebarLink
+                              to={`${item.to}?stage=activation`}
+                              label="Activation"
+                              indent
+                              disabled={blocked}
+                              isItemActive={(loc) =>
+                                String(loc.pathname || "").includes("/execution") &&
+                                executionStage(loc) === "activation"
+                              }
+                            />
+                          ) : null}
+                          {userCanAccessAcPostActivation(roles) || userCanAccessAcQuality(roles) ? (
+                            <SidebarLink
+                              to={`${item.to}?stage=post_activation`}
+                              label="Post activation"
+                              indent
+                              disabled={blocked}
+                              isItemActive={(loc) =>
+                                String(loc.pathname || "").includes("/execution") &&
+                                executionStage(loc) === "post_activation"
+                              }
+                            />
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -126,18 +192,6 @@ function AcSidebar() {
         })}
       </nav>
 
-      <div className="wf-sidebar-footer">
-        <div className="wf-sidebar-footer-line">
-          <span className="wf-sidebar-footer-label">Tenant</span>
-          <span className="wf-sidebar-footer-value">{context.tenant_name || "—"}</span>
-        </div>
-        <div className="wf-sidebar-footer-line">
-          <span className="wf-sidebar-footer-label">Workspace</span>
-          <span className="wf-sidebar-footer-value">
-            {context.workspace_name || context.workspace_code || "—"}
-          </span>
-        </div>
-      </div>
     </aside>
   );
 }

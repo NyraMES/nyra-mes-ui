@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { useAppContext } from "../../../context/AppContext";
 import useAcPageRefresh from "../hooks/useAcPageRefresh";
 import {
   createAcKilnFeedLot,
+  fetchAcDashboard,
   fetchAcKilnChargeLots,
   fetchAcKilnFeedLots,
   formatAcApiError
@@ -12,13 +13,17 @@ import {
 import AcCreatedIdsDialog from "../components/AcCreatedIdsDialog";
 import AcAlert from "../components/AcAlert";
 import AcFormSelect from "../components/AcFormSelect";
+import AcKilnFeedLiveTrack from "../components/AcKilnFeedLiveTrack";
 import AcSaveBar from "../components/AcSaveBar";
 import useAcMasters from "../hooks/useAcMasters";
 import { isValidUuid } from "../utils/acProductUtils";
 import AcActivationProductionFlow from "../components/AcActivationProductionFlow";
 import useIndustryBasePath from "../../../hooks/useIndustryBasePath";
 import { isAcContextReady } from "../utils/acContextUtils";
+import { isAcKilnFeedOutwardBag } from "../constants/processSteps";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
+
+const LIVE_REFRESH_MS = 15_000;
 
 function KilnFeedPage() {
   const { context, loading: contextLoading } = useAppContext();
@@ -37,26 +42,37 @@ function KilnFeedPage() {
 
   const [productionLotId, setProductionLotId] = useState("");
   const [kilnCode, setKilnCode] = useState("");
+  const [dashboard, setDashboard] = useState(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const chargeFormRef = useRef(null);
 
   const kilns = masters.kilns || [];
 
   const reloadLots = async () => {
     setLotsLoading(true);
+    setLiveLoading(true);
     try {
-      const [allLots, readyLots] = await Promise.all([
+      const [allLots, readyLots, board] = await Promise.all([
         fetchAcKilnFeedLots(),
-        fetchAcKilnChargeLots()
+        fetchAcKilnChargeLots(),
+        fetchAcDashboard().catch(() => null)
       ]);
       setLots(allLots || []);
       setChargeableLots(readyLots || []);
+      if (board) setDashboard(board);
     } finally {
       setLotsLoading(false);
+      setLiveLoading(false);
     }
   };
 
   useEffect(() => {
     if (!isAcContextReady(context, contextLoading)) return;
     reloadLots().catch((e) => setError(formatAcApiError(e, "Failed to load lots")));
+    const timer = setInterval(() => {
+      reloadLots().catch(() => {});
+    }, LIVE_REFRESH_MS);
+    return () => clearInterval(timer);
   }, [context, contextLoading, context.tenant_code, context.workspace_code, location.key, focusTick]);
 
   useEffect(() => {
@@ -116,6 +132,11 @@ function KilnFeedPage() {
     }
   };
 
+  const handleLiveLoad = (row) => {
+    if (row?.resourceCode) setKilnCode(row.resourceCode);
+    chargeFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const noKilns = ready && kilns.length === 0;
   const noChargeable = ready && !lotsLoading && chargeableLots.length === 0;
 
@@ -137,26 +158,37 @@ function KilnFeedPage() {
       <SectionHeader
         eyebrow="Pyrolysis"
         title="Kiln Feed"
-        subtitle="Charge the activation kiln after Feasibility Gate passes for the lot."
+        subtitle="Live load on each kiln — charge a released lot and watch the cycle."
       />
+
+      <div className="mb-6">
+        <AcKilnFeedLiveTrack
+          dashboard={dashboard}
+          kilnLots={lots}
+          selectedKilnCode={kilnCode}
+          onLoad={handleLiveLoad}
+          loading={liveLoading}
+        />
+      </div>
 
       {(mastersError || error) && <AcAlert variant="error">{mastersError || error}</AcAlert>}
       {success && <AcAlert variant="success">{success}</AcAlert>}
 
       {noChargeable && (
         <AcAlert variant="warn">
-          No lots ready for kiln feed yet. After release, run{" "}
-          <Link to={`${basePath}/feasibility`} className="underline font-medium">
-            Feasibility Gate
+          No lots ready for kiln feed yet. Release inward on{" "}
+          <Link to={`${basePath}/raw-material?tab=release`} className="underline font-medium">
+            Raw Material → Release
           </Link>{" "}
-          for the new lot (LOT-AC-* · your inward order), then return here to charge the kiln.
+          to create a lot (LOT-AC-*), then charge the kiln here.
         </AcAlert>
       )}
 
+      <div ref={chargeFormRef}>
       <WfCard className="mb-6">
         <WfCardHeader
           title="Charge kiln"
-          subtitle="Select a feasibility-approved lot and assign the activation kiln."
+          subtitle="Select a released lot and assign the activation kiln."
         />
         <WfCardBody>
           <div className="wf-light-panel rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
@@ -177,8 +209,7 @@ function KilnFeedPage() {
                     {code}
                     {inward}
                     {lot.crusher_bag_code ? ` · ${lot.crusher_bag_code}` : ""}
-                    {lot.crusher_grade ? ` · ${lot.crusher_grade}` : ""} · {lot.lot_quantity} KG ·
-                    feasibility OK
+                    {lot.crusher_grade ? ` · ${lot.crusher_grade}` : ""} · {lot.lot_quantity} KG
                   </option>
                 );
               })}
@@ -190,14 +221,16 @@ function KilnFeedPage() {
                   Lot {selectedLot.lot_code || selectedLot.lot_id} · {selectedLot.lot_quantity} KG ·
                   status {selectedLot.status || "CREATED"}
                 </p>
-                {(selectedLot.crusher_outward_bags || []).length ? (
+                {(selectedLot.crusher_outward_bags || []).filter(isAcKilnFeedOutwardBag).length ? (
                   <div>
-                    <p className="font-medium text-slate-800">Kiln input — crusher outward bags</p>
+                    <p className="font-medium text-slate-800">Kiln input — RO bags (rotary grades only)</p>
                     <ul className="font-mono">
-                      {selectedLot.crusher_outward_bags.map((bag, idx) => (
+                      {selectedLot.crusher_outward_bags.filter(isAcKilnFeedOutwardBag).map((bag, idx) => (
                         <li key={`${bag.bag_code || "bag"}-${idx}`}>
-                          {bag.bag_code || "—"} · {bag.grade_label || selectedLot.crusher_grade || "—"} ·{" "}
-                          {bag.quantity_kg} KG
+                          {bag.bag_code || "—"}
+                          {bag.rotary ? ` · ${bag.rotary}` : ""}
+                          {" · "}
+                          {bag.grade_label || selectedLot.crusher_grade || "—"} · {bag.quantity_kg} KG
                         </li>
                       ))}
                     </ul>
@@ -258,6 +291,7 @@ function KilnFeedPage() {
           ) : null}
         </WfCardBody>
       </WfCard>
+      </div>
 
       <WfCard>
         <WfCardHeader

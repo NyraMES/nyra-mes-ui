@@ -29,7 +29,7 @@
   height: 44px;
   border-radius: 8px;
   overflow: hidden;
-  background: #08264a;
+  background: var(--nyra-navy, #0d3a6e);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -515,7 +515,7 @@ button.industry-tile-link:disabled {
   gap: 16px;
   padding: 20px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #08264a 0%, #0d4a6e 55%, #0f766e 100%);
+  background: linear-gradient(135deg, var(--nyra-navy, #0d3a6e) 0%, #165086 55%, #1a6a8a 100%);
   color: #f8fafc;
 }
 

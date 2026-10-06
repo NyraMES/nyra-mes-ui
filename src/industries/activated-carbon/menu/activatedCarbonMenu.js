@@ -45,22 +45,10 @@ export const ACTIVATED_CARBON_MENU = [
     capability: AC_CAPABILITIES.BAG_TRACING
   },
   {
-    id: "feasibility",
-    to: `${BASE}/feasibility`,
-    label: "Feasibility Gate",
-    capability: null
-  },
-  {
     id: "execution",
     to: `${BASE}/execution`,
     label: "Execution",
     capability: null
-  },
-  {
-    id: "kiln-parameters",
-    to: `${BASE}/kiln-parameters`,
-    label: "Kiln Parameters",
-    capability: AC_CAPABILITIES.HOURLY_KILN_PARAMETERS
   },
   {
     id: "customer-sales",
@@ -81,16 +69,10 @@ export const ACTIVATED_CARBON_MENU = [
     capability: AC_CAPABILITIES.REPORTS
   },
   {
-    id: "yield",
-    to: `${BASE}/yield-analysis`,
-    label: "Yield Analysis",
-    capability: AC_CAPABILITIES.YIELD_ANALYSIS
-  },
-  {
-    id: "traceability",
-    to: `${BASE}/traceability`,
-    label: "Traceability",
-    capability: AC_CAPABILITIES.TRACEABILITY
+    id: "users",
+    to: `${BASE}/users`,
+    label: "Users",
+    capability: null
   },
   {
     id: "masters",

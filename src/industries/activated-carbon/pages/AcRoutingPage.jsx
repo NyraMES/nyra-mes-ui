@@ -17,12 +17,11 @@ export default function AcRoutingPage() {
         loadPlan={fetchAcRoutingPlan}
         generatePlan={generateAcRoute}
         loadLots={fetchAcOpenLots}
-        feasibilityPath={`${base}/feasibility`}
+        feasibilityPath={`${base}/kiln-feed`}
         mastersPath={`${base}/masters`}
-        emptyLotsHint="No open lots — release on Raw Material, run Feasibility Gate, charge the kiln on Kiln Feed, then generate routing here."
-        stageEyebrow="Stage 05 · Lot Routing · Activated Carbon"
+        emptyLotsHint="No open lots — release on Raw Material, charge the kiln on Kiln Feed, then generate routing here."
+        stageEyebrow="Stage 04 · Lot Routing · Activated Carbon"
         showOemRoutingMaster={false}
-        feasibilityFirst
         executionPath={`${base}/execution`}
       />
     </div>

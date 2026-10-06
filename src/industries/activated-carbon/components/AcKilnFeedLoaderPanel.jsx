@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
+import useIndustryBasePath from "../../../hooks/useIndustryBasePath";
 import { fetchAcKilnFeedLots } from "../../../services/activatedCarbonApi";
 import { EmptyState } from "../../../workflow/ui";
-import { buildAcKilnLoaderRows, formatLoaderTime } from "../utils/acKilnLoaderUtils";
+import {
+  buildAcKilnLoaderRows,
+  formatLoaderTime,
+  pendingKilnChargeLots
+} from "../utils/acKilnLoaderUtils";
 
 const CYCLE_TONE_CLASS = {
   active: "text-cyan-300",
@@ -46,8 +51,9 @@ function LoaderTimeline({ progress, totalHours }) {
   );
 }
 
-function KilnLoaderCard({ row }) {
+function KilnLoaderCard({ row, pendingLots = [], loadPath }) {
   const kilnLabel = row.resourceName?.replace(/kiln/i, "Kiln") || row.resourceCode;
+  const readyLots = pendingLots.filter((lot) => lot.feasibilityOk);
 
   return (
     <article className="rounded-lg border border-slate-600/50 bg-slate-900/40 overflow-hidden">
@@ -61,7 +67,7 @@ function KilnLoaderCard({ row }) {
           </div>
         </div>
         <Link
-          to="/activated-carbon/execution"
+          to={loadPath}
           className="shrink-0 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-1"
         >
           Load
@@ -103,7 +109,17 @@ function KilnLoaderCard({ row }) {
             <LoaderTimeline progress={row.progress} totalHours={row.totalHours} />
           </>
         ) : (
-          <p className="text-xs text-slate-500 py-4 text-center">No active load — kiln idle</p>
+          <div className="text-xs text-slate-500 py-4 text-center space-y-1">
+            <p>No active load — kiln idle</p>
+            {readyLots.length ? (
+              <p>
+                Ready to charge{" "}
+                <span className="font-mono text-slate-300">
+                  {readyLots.map((lot) => lot.lotCode).join(", ")}
+                </span>
+              </p>
+            ) : null}
+          </div>
         )}
       </div>
     </article>
@@ -111,6 +127,8 @@ function KilnLoaderCard({ row }) {
 }
 
 export default function AcKilnFeedLoaderPanel({ dashboard }) {
+  const basePath = useIndustryBasePath();
+  const loadPath = `${basePath}/execution`;
   const [kilnLots, setKilnLots] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -134,15 +152,17 @@ export default function AcKilnFeedLoaderPanel({ dashboard }) {
     };
   }, [dashboard]);
 
+  const lotLines = dashboard?.lot_lines || [];
   const rows = useMemo(
     () =>
       buildAcKilnLoaderRows({
         kilns: dashboard?.kilns || [],
         kilnLots,
-        lotLines: dashboard?.lot_lines || []
+        lotLines
       }),
-    [dashboard, kilnLots]
+    [dashboard, kilnLots, lotLines]
   );
+  const pendingLots = useMemo(() => pendingKilnChargeLots(lotLines), [lotLines]);
 
   if (!dashboard) {
     return <p className="text-sm text-slate-400 py-6 text-center">Loading kiln feed…</p>;
@@ -156,7 +176,12 @@ export default function AcKilnFeedLoaderPanel({ dashboard }) {
     <div className="space-y-2">
       {loading ? <p className="text-[11px] text-slate-500">Refreshing feed lots…</p> : null}
       {rows.map((row) => (
-        <KilnLoaderCard key={row.resourceCode} row={row} />
+        <KilnLoaderCard
+          key={row.resourceCode}
+          row={row}
+          pendingLots={row.isActive ? [] : pendingLots}
+          loadPath={loadPath}
+        />
       ))}
     </div>
   );

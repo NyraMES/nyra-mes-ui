@@ -2,7 +2,7 @@
 export const DEFAULT_RAW_MATERIAL_TYPES = [
   {
     product_code: "RAW-COCO-SHELL",
-    product_name: "Coconut Shell",
+    product_name: "Coconut Shell (GR)",
     finished_product_code: "AC-GRAN-8x30",
     finished_product_name: "Granular Activated Carbon 8x30",
     routing_code: "RT-AC-8x30-V1",

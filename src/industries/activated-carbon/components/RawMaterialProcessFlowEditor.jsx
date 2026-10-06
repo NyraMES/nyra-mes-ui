@@ -18,6 +18,7 @@ import {
   splitTerminalFinishedGoodsQc
 } from "../constants/acRawMaterialProcessCatalog";
 import { displayOperationLabel } from "../constants/processSteps";
+import { isGrCoconutShellType, keepGrCoconutShellTypes } from "../utils/acGrCoconutShell";
 
 import "../styles/rawMaterialFlow.css";
 
@@ -89,14 +90,13 @@ function RawMaterialProcessFlowEditor({
   const [markingObsolete, setMarkingObsolete] = useState(false);
 
   const canEditDraft = canEdit && !draft.is_obsolete;
-  const usageLocked = Boolean(
-    draft.usage?.kiln_process_started || draft.usage?.dispatch_completed
-  );
-  const routingLocked = Boolean(draft.usage?.dispatch_completed);
+  const dispatchLocked = Boolean(draft.usage?.dispatch_completed);
+  const usageLocked = Boolean(draft.usage?.kiln_process_started || dispatchLocked);
+  const routingLocked = dispatchLocked;
 
   const sortedTypes = useMemo(
     () =>
-      [...materialTypes].sort((a, b) =>
+      keepGrCoconutShellTypes(materialTypes).sort((a, b) =>
         (a.product_name || a.product_code || "").localeCompare(
           b.product_name || b.product_code || ""
         )
@@ -154,8 +154,9 @@ function RawMaterialProcessFlowEditor({
 
   useEffect(() => {
     if (selectedKey && selectedKey !== PLACEHOLDER_KEY && selectedKey !== NEW_KEY) return;
-    if (sortedTypes.length === 1) {
-      selectTypeByKey(String(sortedTypes[0].product_id || sortedTypes[0].product_code));
+    const preferred = sortedTypes.find(isGrCoconutShellType) || sortedTypes[0];
+    if (preferred) {
+      selectTypeByKey(String(preferred.product_id || preferred.product_code));
     }
   }, [sortedTypes, selectedKey, selectTypeByKey]);
 
@@ -438,7 +439,6 @@ function RawMaterialProcessFlowEditor({
               </option>
             );
             })}
-            {canEdit ? <option value={NEW_KEY}>+ Add new raw material…</option> : null}
           </select>
         </label>
 
@@ -488,9 +488,9 @@ function RawMaterialProcessFlowEditor({
 
       {!draft.is_obsolete && usageLocked ? (
         <div className="ac-rm-flow-lock-banner" role="status">
-          {draft.usage?.kiln_process_started
-            ? "Kiln production has started for this material — process steps cannot be removed or reordered."
-            : "Finished product has been dispatched — routing is locked for integrity."}{" "}
+          {dispatchLocked
+            ? "Finished product has been dispatched — routing is locked for integrity."
+            : "Kiln production has started — existing steps can still be reordered and saved. Adding or removing steps is blocked."}{" "}
           To retire this material, use <strong>Mark obsolete</strong> below.
         </div>
       ) : null}
@@ -876,21 +876,44 @@ function RawMaterialProcessFlowEditor({
                   </button>
                 ) : null}
               </div>
-              {(op.parameters || []).length ? (
+              {(() => {
+                const destonStep =
+                  /deston/i.test(String(op.operation_code || "")) ||
+                  /deston/i.test(String(op.operation_name || ""));
+                const extra = destonStep
+                  ? (draft.process_parameters || []).filter((p) => {
+                      const key = String(p.key || p.parameter_code || "").toLowerCase();
+                      const bound = String(p.operation_code || "").toUpperCase();
+                      return (
+                        bound === "OP-DESTON-QC" ||
+                        key.startsWith("deston_qc") ||
+                        key === "deston_copy_from_kiln_bag"
+                      );
+                    })
+                  : [];
+                const shown = [...(op.parameters || [])];
+                for (const param of extra) {
+                  const key = param.key || param.parameter_code;
+                  if (key && !shown.some((row) => (row.key || row.parameter_code) === key)) {
+                    shown.push(param);
+                  }
+                }
+                return shown.length ? (
                 <ul className="text-sm text-slate-700 mt-2 space-y-1 list-disc pl-5">
-                  {(op.parameters || []).map((param) => (
-                    <li key={param.key}>
-                      {param.label || param.key}
+                  {shown.map((param) => (
+                    <li key={param.key || param.parameter_code}>
+                      {param.label || param.key || param.parameter_code}
                       {param.unit ? ` (${param.unit})` : ""}
                       {param.mandatory !== false ? "" : " — optional"}
                     </li>
                   ))}
                 </ul>
-              ) : (
+                ) : (
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 mt-2">
                   No fields defined for this step yet.
                 </p>
-              )}
+                );
+              })()}
             </div>
           ))}
         </details>

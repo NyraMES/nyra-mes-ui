@@ -1,9 +1,13 @@
 export const MES_ROLES = {
   SUPER_ADMIN: "MES_SuperAdmin",
   ADMIN: "MES_Admin",
+  MANAGER: "MES_Manager",
   PLANNER: "MES_Planner",
   OPERATOR: "MES_Operator",
   QUALITY: "MES_Quality",
+  RMS: "MES_RMS",
+  ACTIVATION: "MES_Activation",
+  POST_ACTIVATION: "MES_PostActivation",
   VIEWER: "MES_Viewer",
   DEMO: "MES_Demo"
 };
@@ -11,9 +15,13 @@ export const MES_ROLES = {
 export const ROLE_LABELS = {
   [MES_ROLES.SUPER_ADMIN]: "Super Administrator",
   [MES_ROLES.ADMIN]: "Administrator",
+  [MES_ROLES.MANAGER]: "Plant Manager",
   [MES_ROLES.PLANNER]: "Production Planner",
   [MES_ROLES.OPERATOR]: "Shop Floor Operator",
-  [MES_ROLES.QUALITY]: "Quality Engineer",
+  [MES_ROLES.QUALITY]: "Quality",
+  [MES_ROLES.RMS]: "RMS",
+  [MES_ROLES.ACTIVATION]: "Activation",
+  [MES_ROLES.POST_ACTIVATION]: "Post Activation",
   [MES_ROLES.VIEWER]: "Read-only Viewer",
   [MES_ROLES.DEMO]: "Demo Viewer"
 };
@@ -38,8 +46,12 @@ export function primaryRoleLabel(roles = []) {
   const order = [
     MES_ROLES.SUPER_ADMIN,
     MES_ROLES.ADMIN,
+    MES_ROLES.MANAGER,
     MES_ROLES.PLANNER,
     MES_ROLES.QUALITY,
+    MES_ROLES.ACTIVATION,
+    MES_ROLES.POST_ACTIVATION,
+    MES_ROLES.RMS,
     MES_ROLES.OPERATOR,
     MES_ROLES.VIEWER,
     MES_ROLES.DEMO

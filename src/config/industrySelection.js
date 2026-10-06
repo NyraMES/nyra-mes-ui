@@ -4,7 +4,11 @@
  * domain map, or Cognito custom:tenant_code — not hardcoded per industry.
  */
 
-import { resolveDefaultWorkspaceCode } from "../services/mesCorePaths";
+import {
+  canonicalTenantCode,
+  canonicalWorkspaceCode,
+  resolveDefaultWorkspaceCode
+} from "../services/mesCorePaths";
 
 /** Generic Activated Carbon dev tenant (migration 003); not a client deployment. */
 export const ACTIVATED_CARBON_DEV_TENANT = {
@@ -145,11 +149,11 @@ export function userCanAccessIndustry(industryKey, user) {
  * @param {{ tenant_code?: string | null } | null | undefined} [user]
  */
 export function resolveScopedTenantForIndustry(industryKey, user) {
-  const userTenant = String(user?.tenant_code || "").trim();
+  const userTenant = canonicalTenantCode(user?.tenant_code);
   if (userTenant && industryKey && userCanAccessIndustry(industryKey, user)) {
     return {
       tenant_code: userTenant,
-      workspace_code: resolveDefaultWorkspaceCode(userTenant)
+      workspace_code: canonicalWorkspaceCode(resolveDefaultWorkspaceCode(userTenant))
     };
   }
   if (industryKey) {
@@ -158,7 +162,7 @@ export function resolveScopedTenantForIndustry(industryKey, user) {
   if (userTenant) {
     return {
       tenant_code: userTenant,
-      workspace_code: resolveDefaultWorkspaceCode(userTenant)
+      workspace_code: canonicalWorkspaceCode(resolveDefaultWorkspaceCode(userTenant))
     };
   }
   return resolveIndustryTenantScope(industryKey);
