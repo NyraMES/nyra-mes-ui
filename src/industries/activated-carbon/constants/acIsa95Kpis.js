@@ -15,6 +15,22 @@ export const AC_ISA95_KPI_ONTOLOGY = {
   thresholds: { green: 90, amber: 70, red: 69 }
 };
 
+export const AC_ISA95_DEFAULT_UTILIZATION_RAG = {
+  green_min_pct: AC_ISA95_KPI_ONTOLOGY.thresholds.green,
+  amber_min_pct: AC_ISA95_KPI_ONTOLOGY.thresholds.amber,
+  red_below_pct: AC_ISA95_KPI_ONTOLOGY.thresholds.amber
+};
+
+export function utilizationRagBand(pct, rag = AC_ISA95_DEFAULT_UTILIZATION_RAG) {
+  if (pct == null || !Number.isFinite(Number(pct))) return "neutral";
+  const value = Number(pct);
+  const green = Number(rag?.green_min_pct ?? AC_ISA95_DEFAULT_UTILIZATION_RAG.green_min_pct);
+  const amber = Number(rag?.amber_min_pct ?? AC_ISA95_DEFAULT_UTILIZATION_RAG.amber_min_pct);
+  if (value >= green) return "green";
+  if (value >= amber) return "amber";
+  return "red";
+}
+
 /** Static KPI tree — values filled by buildAcIsa95KpisFromDashboard(). */
 export const AC_ISA95_KPI_DEFINITIONS = [
   {

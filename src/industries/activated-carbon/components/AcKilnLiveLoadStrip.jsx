@@ -271,25 +271,10 @@ export default function AcKilnLiveLoadStrip({ dashboard, refreshedAt, readOnly =
         ))}
       </div>
 
-      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-700/40 text-[10px] text-slate-500">
-        <span>
-          {refreshedAt
-            ? `Updated ${formatFeedTime(refreshedAt) || "recently"} · auto-refresh every 10 min`
-            : "Auto-refresh every 10 min"}
-        </span>
-        {readOnly ? (
-          <span className="text-xs text-slate-500 wf-btn--disabled">Telemetry</span>
-        ) : (
-          <Link
-            to={`${basePath}/kiln-telemetry`}
-            className="text-xs text-cyan-300 hover:text-cyan-100 inline-flex items-center gap-0.5"
-          >
-            Telemetry
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="m9 6 6 6-6 6" />
-            </svg>
-          </Link>
-        )}
+      <div className="pt-1 border-t border-slate-700/40 text-[10px] text-slate-500">
+        {refreshedAt
+          ? `Updated ${formatFeedTime(refreshedAt) || "recently"} · auto-refresh every 10 min`
+          : "Auto-refresh every 10 min"}
       </div>
     </div>
   );

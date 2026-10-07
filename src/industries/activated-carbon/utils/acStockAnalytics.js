@@ -238,6 +238,139 @@ export function buildCharcoalSimpleBars(inwardOrders = []) {
     .sort((a, b) => b.total - a.total);
 }
 
+function roundPct(numerator, denominator) {
+  const d = num(denominator);
+  if (d <= 0) return null;
+  return Math.round((num(numerator) / d) * 1000) / 10;
+}
+
+function labOutcome(status) {
+  const st = String(status || "").toUpperCase();
+  if (st === "DENIED" || st === "FAIL" || st === "REJECTED") return "deny";
+  if (st === "COMPLETED" || st === "PASS" || st === "APPROVED" || st === "QC_PASSED") return "pass";
+  return "pending";
+}
+
+/**
+ * Supplier efficiency from inward receipts:
+ * recovery = released to production / plant weighbridge kg
+ * weigh match = plant kg / supplier DC kg (100% = claim matched)
+ * lab pass = completed lab approvals / lab decisions
+ */
+export function buildSupplierPerformance(inwardOrders = []) {
+  const bySupplier = new Map();
+
+  for (const order of inwardOrders) {
+    const name = shortLabel(order.supplier_name || order.supplier_code, "Unassigned");
+    const receivedKg = num(order.our_weight_kg ?? order.inward_quantity_kg);
+    const claimedKg = num(order.supplier_weight_kg);
+    const releasedKg = num(order.allocated_to_production_kg);
+    const outcome = labOutcome(order.lab_status);
+    const row = bySupplier.get(name) || {
+      name,
+      receipts: 0,
+      receivedKg: 0,
+      claimedKg: 0,
+      releasedKg: 0,
+      labDone: 0,
+      labPass: 0,
+      labDeny: 0
+    };
+    row.receipts += 1;
+    row.receivedKg += receivedKg;
+    row.claimedKg += claimedKg;
+    row.releasedKg += releasedKg;
+    if (outcome === "pass") {
+      row.labDone += 1;
+      row.labPass += 1;
+    } else if (outcome === "deny") {
+      row.labDone += 1;
+      row.labDeny += 1;
+    }
+    bySupplier.set(name, row);
+  }
+
+  const rows = [...bySupplier.values()]
+    .map((row) => {
+      const recoveryPct = roundPct(row.releasedKg, row.receivedKg);
+      const weighMatchPct = roundPct(row.receivedKg, row.claimedKg);
+      const labPassPct = roundPct(row.labPass, row.labDone);
+      const weighScore =
+        weighMatchPct == null ? null : Math.max(0, 100 - Math.abs(100 - weighMatchPct));
+      const parts = [
+        [recoveryPct, 0.5],
+        [labPassPct, 0.3],
+        [weighScore, 0.2]
+      ].filter(([value]) => value != null);
+      const weightSum = parts.reduce((sum, [, w]) => sum + w, 0);
+      const efficiencyPct =
+        weightSum > 0
+          ? Math.round((parts.reduce((sum, [value, w]) => sum + value * w, 0) / weightSum) * 10) / 10
+          : null;
+      return { ...row, recoveryPct, weighMatchPct, labPassPct, efficiencyPct };
+    })
+    .sort(
+      (a, b) =>
+        (b.efficiencyPct ?? -1) - (a.efficiencyPct ?? -1) ||
+        (b.recoveryPct ?? -1) - (a.recoveryPct ?? -1) ||
+        b.receivedKg - a.receivedKg
+    );
+
+  const totals = rows.reduce(
+    (acc, row) => {
+      acc.receipts += row.receipts;
+      acc.receivedKg += row.receivedKg;
+      acc.claimedKg += row.claimedKg;
+      acc.releasedKg += row.releasedKg;
+      acc.labDone += row.labDone;
+      acc.labPass += row.labPass;
+      acc.labDeny += row.labDeny;
+      return acc;
+    },
+    { receipts: 0, receivedKg: 0, claimedKg: 0, releasedKg: 0, labDone: 0, labPass: 0, labDeny: 0 }
+  );
+
+  const best = rows.find((row) => row.efficiencyPct != null) || null;
+  const recoveryPct = roundPct(totals.releasedKg, totals.receivedKg);
+  const labPassPct = roundPct(totals.labPass, totals.labDone);
+  const weighMatchPct = roundPct(totals.receivedKg, totals.claimedKg);
+
+  return {
+    rows,
+    bars: rows
+      .filter((row) => row.efficiencyPct != null)
+      .map((row) => ({ name: row.name, pct: row.efficiencyPct, fill: "#0D3A6E" })),
+    best,
+    tiles: [
+      {
+        label: "Best supplier",
+        value: best?.name || "—",
+        hint: best?.efficiencyPct != null ? `${best.efficiencyPct.toFixed(1)}% efficiency` : "Need inward + release"
+      },
+      {
+        label: "Usable recovery",
+        value: recoveryPct == null ? "—" : `${recoveryPct.toFixed(1)}%`,
+        hint: "Released ÷ plant weighbridge"
+      },
+      {
+        label: "Lab pass",
+        value: labPassPct == null ? "—" : `${labPassPct.toFixed(1)}%`,
+        hint:
+          totals.labDeny > 0
+            ? `${totals.labPass} pass · ${totals.labDeny} deny`
+            : totals.labDone > 0
+              ? `${totals.labPass} of ${totals.labDone} lab lots`
+              : "No lab decision yet"
+      },
+      {
+        label: "Weigh match",
+        value: weighMatchPct == null ? "—" : `${weighMatchPct.toFixed(1)}%`,
+        hint: "Plant kg ÷ supplier DC kg"
+      }
+    ]
+  };
+}
+
 const DEFAULT_IMPURITY_FIELDS = [
   { key: "stones_kg", series: "Stones", color: "#87CEEB", pctFallbackKey: "foreign_matter_pct" },
   { key: "unburnt_kg", series: "Unburnt", color: "#10B981", pctFallbackKey: "ash_pct" },

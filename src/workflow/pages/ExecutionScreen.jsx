@@ -155,7 +155,7 @@ function ExecutionScreen({ variant = "default" }) {
       : "activation";
   const acExecTab = isAcUnified ? new URLSearchParams(search || "").get("tab") || "" : "";
   const acReportsOpen = acExecTab === "reports";
-  const acQualityOnly = isAcUnified && userIsAcQualityOnly(acRoles);
+  const acQualityOnly = isAcUnified && userIsAcQualityOnly(acRoles, user);
   const acKilnParamsOpen =
     execStage === "activation" && acExecTab === "kiln-parameters" && !acQualityOnly;
   const setAcExecTab = (tab) => {
@@ -379,8 +379,8 @@ function ExecutionScreen({ variant = "default" }) {
   const processTabOps = useMemo(() => {
     const rows = isAcUnified ? acProcessTabsForStage(allProcessTabOps, execStage) : allProcessTabOps;
     if (!isAcUnified) return rows;
-    return rows.filter((op) => acOperationVisibleForRoles(op, acRoles));
-  }, [isAcUnified, allProcessTabOps, execStage, acRoles]);
+    return rows.filter((op) => acOperationVisibleForRoles(op, acRoles, user));
+  }, [isAcUnified, allProcessTabOps, execStage, acRoles, user]);
 
   const selectedOp = useMemo(
     () =>
@@ -407,14 +407,14 @@ function ExecutionScreen({ variant = "default" }) {
 
   useEffect(() => {
     if (!isAcUnified) return;
-    const allowed = acExecutionStagesForRoles(acRoles);
+    const allowed = acExecutionStagesForRoles(acRoles, user);
     if (allowed.includes(execStage)) return;
     if (!allowed.length) {
       navigate("/activated-carbon/raw-material?tab=inward", { replace: true });
       return;
     }
     navigate(`/activated-carbon/execution?stage=${allowed[0]}`, { replace: true });
-  }, [isAcUnified, execStage, acRoles, navigate]);
+  }, [isAcUnified, execStage, acRoles, user, navigate]);
 
   useEffect(() => {
     if (!isAcUnified || !allProcessTabOps.length) return;
@@ -1044,7 +1044,7 @@ function ExecutionScreen({ variant = "default" }) {
               !acKilnParamsOpen &&
               !acQualityOnly &&
               (isAcKilnFeedUiStep(selectedOp) ||
-                (!processTabOps.length && userCanAccessAcActivation(acRoles))) && (
+                (!processTabOps.length && userCanAccessAcActivation(acRoles, user))) && (
               <AcExecutionKilnFeedPanel
                 lot={selectedLot}
                 lots={lots}

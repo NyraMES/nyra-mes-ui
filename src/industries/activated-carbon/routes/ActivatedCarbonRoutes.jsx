@@ -17,9 +17,8 @@ const ActivatedCarbonRoutingBuilderPage = lazy(
   () => import("../pages/ActivatedCarbonRoutingBuilderPage")
 );
 const AcReportsPage = lazy(() => import("../pages/AcReportsPage"));
-const AcUsersPage = lazy(() => import("../pages/AcUsersPage"));
+const AcAdminPage = lazy(() => import("../pages/AcAdminPage"));
 const BagTraceabilityPage = lazy(() => import("../pages/BagTraceabilityPage"));
-const KilnTelemetryPage = lazy(() => import("../pages/KilnTelemetryPage"));
 
 function PageLoading() {
   return <p className="text-sm text-slate-300 py-8">Loading page…</p>;
@@ -61,16 +60,7 @@ export default function ActivatedCarbonRoutes() {
       <Route element={<ActivatedCarbonLayout />}>
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<ActivatedCarbonDashboard />} />
-        <Route
-          path="kiln-telemetry"
-          element={
-            <RoleRoute menuId="kiln-telemetry">
-            <LazyPage>
-              <KilnTelemetryPage />
-            </LazyPage>
-            </RoleRoute>
-          }
-        />
+        <Route path="kiln-telemetry" element={<Navigate to="/activated-carbon/dashboard" replace />} />
         <Route
           path="raw-material"
           element={
@@ -168,14 +158,18 @@ export default function ActivatedCarbonRoutes() {
           element={<Navigate to="/activated-carbon/dashboard" replace />}
         />
         <Route
-          path="users"
+          path="admin"
           element={
-            <RoleRoute menuId="users">
+            <RoleRoute menuId="admin">
             <LazyPage>
-              <AcUsersPage />
+              <AcAdminPage />
             </LazyPage>
             </RoleRoute>
           }
+        />
+        <Route
+          path="users"
+          element={<Navigate to="/activated-carbon/admin?tab=users" replace />}
         />
         <Route
           path="masters"

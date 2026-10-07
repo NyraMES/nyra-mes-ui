@@ -27,12 +27,6 @@ export const ACTIVATED_CARBON_MENU = [
     capability: null
   },
   {
-    id: "kiln-telemetry",
-    to: `${BASE}/kiln-telemetry`,
-    label: "Kiln Telemetry",
-    capability: null
-  },
-  {
     id: "raw-material",
     to: `${BASE}/raw-material?tab=inward`,
     label: "Raw Material",
@@ -69,9 +63,9 @@ export const ACTIVATED_CARBON_MENU = [
     capability: AC_CAPABILITIES.REPORTS
   },
   {
-    id: "users",
-    to: `${BASE}/users`,
-    label: "Users",
+    id: "admin",
+    to: `${BASE}/admin?tab=users`,
+    label: "Admin",
     capability: null
   },
   {

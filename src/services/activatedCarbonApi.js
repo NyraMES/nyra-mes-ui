@@ -567,9 +567,25 @@ export async function createAcResource(payload) {
   return res.data;
 }
 
+export async function updateAcResource(resourceId, payload) {
+  const res = await api.put(`/api/activated-carbon/masters/resources/${resourceId}`, payload);
+  return res.data;
+}
+
+export async function fetchAcUtilizationRag() {
+  const res = await api.get("/api/activated-carbon/masters/utilization-rag");
+  return res.data;
+}
+
+export async function saveAcUtilizationRag(payload) {
+  const res = await api.put("/api/activated-carbon/masters/utilization-rag", payload);
+  return res.data;
+}
+
 export async function createAcKiln(payload) {
   const res = await api.post("/api/activated-carbon/masters/kilns", {
     kiln_name: payload.kiln_name,
+    monthly_capacity_kg: payload.monthly_capacity_kg,
     status: payload.status ?? "ACTIVE"
   });
   return res.data;

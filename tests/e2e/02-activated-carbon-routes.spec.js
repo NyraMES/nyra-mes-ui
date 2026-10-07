@@ -4,7 +4,6 @@ import { expectScreenLoads, openActivatedCarbonFromLanding } from "./helpers.js"
 /** Every AC screen — smoke load only (no save actions). */
 const AC_ROUTES = [
   { path: "/activated-carbon/dashboard", heading: "Operational Intelligence Hub" },
-  { path: "/activated-carbon/kiln-telemetry", heading: "Kiln Telemetry" },
   { path: "/activated-carbon/raw-material-inward", heading: "Raw Material Inward" },
   { path: "/activated-carbon/raw-material-qc", heading: "Raw Material QC" },
   { path: "/activated-carbon/bag-tracing", heading: "Bag traceability" },

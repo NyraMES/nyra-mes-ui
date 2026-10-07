@@ -206,3 +206,15 @@ export const AC_ONTOLOGY_TRACE_STEPS = [
     api: "POST /api/activated-carbon/dispatches"
   }
 ];
+
+/**
+ * ISA-95 L3 machine utilization bands (Masters config).
+ * Not shop-floor capture — inward ORD-* and lot urn:nyra:ac:lot:* subjects stay unchanged.
+ * Defaults match AC_ISA95_KPI_ONTOLOGY.thresholds.
+ */
+export const AC_ISA95_UTILIZATION_RAG = {
+  greenMinPct: 90,
+  amberMinPct: 70,
+  redBelowPct: 70,
+  isa95Area: "Site:AC_Plant"
+};

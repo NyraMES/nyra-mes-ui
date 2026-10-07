@@ -23,10 +23,10 @@ function previewUserId(raw, suffix) {
   return value;
 }
 
-function AcUsersPage() {
+function AcUsersPage({ embedded = false }) {
   const { user } = useAuth();
   const { context } = useAppContext();
-  const canManage = userCanAccessAcUsers(user?.roles || []);
+  const canManage = userCanAccessAcUsers(user?.roles || [], user);
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loginSuffix, setLoginSuffix] = useState("@grcarbons");
@@ -117,10 +117,12 @@ function AcUsersPage() {
 
   return (
     <div className="space-y-6">
-      <SectionHeader
-        title="Users"
-        subtitle="Create plant users. User ID is the login; email is their mailbox. Role maps to the MES Cognito group."
-      />
+      {embedded ? null : (
+        <SectionHeader
+          title="Users"
+          subtitle="Create plant users. User ID is the login; email is their mailbox. Role maps to the MES Cognito group."
+        />
+      )}
 
       {!canManage ? (
         <AcPermissionNotice

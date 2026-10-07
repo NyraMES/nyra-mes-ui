@@ -1,4 +1,4 @@
-﻿import { MES_ROLES } from "../../../auth/roles";
+import { MES_ROLES } from "../../../auth/roles";
 import {
   userCanAccessAcActivation,
   userCanAccessAcDispatch,
@@ -38,20 +38,18 @@ function menuAllowedByRole(menuId, roles = [], user = null) {
   if (menuId === "masters" || menuId === "routing-builder") {
     return userCanAccessAcMasters(roles, user);
   }
-  if (menuId === "users") {
-    return userCanAccessAcUsers(roles);
+  if (userIsNyraServices(user) || roles.includes(MES_ROLES.SUPER_ADMIN)) {
+    return true;
   }
-  if (userIsNyraServices(user)) {
-    return menuId === "dashboard";
+  if (menuId === "admin" || menuId === "users") {
+    return userCanAccessAcUsers(roles, user);
   }
   if (userIsAcAdmin(roles)) {
-    return menuId === "dashboard" || menuId === "users";
+    return menuId === "dashboard" || menuId === "admin" || menuId === "users";
   }
   switch (menuId) {
     case "dashboard":
       return true;
-    case "kiln-telemetry":
-      return userCanAccessAcActivation(roles);
     case "raw-material":
       return userCanAccessAcRms(roles);
     case "bag-tracing":

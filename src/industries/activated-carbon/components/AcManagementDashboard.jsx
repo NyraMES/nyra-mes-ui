@@ -14,6 +14,7 @@ import {
 } from "recharts";
 
 import {
+  fetchAcKilnOutputBags,
   fetchAcPostActivationState,
   fetchAcRawMaterialInward
 } from "../../../services/activatedCarbonApi";
@@ -68,22 +69,40 @@ function EmptyNote({ message }) {
   return <p className="ac-mgmt-muted text-xs py-4 text-center">{message}</p>;
 }
 
-function LightTooltip({ active, payload, label }) {
+function formatMetric(value, kind) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  if (kind === "pct") return `${n.toFixed(1)}%`;
+  return formatKg(n);
+}
+
+function LightTooltip({ active, payload, label, kind = "kg" }) {
   if (!active || !payload?.length) return null;
   return (
     <div style={TOOLTIP} className="px-2 py-1.5">
       {label ? <div className="font-medium mb-0.5">{label}</div> : null}
       {payload.map((row) => (
         <div key={row.name}>
-          {row.name}: {row.unit === "%" ? `${Number(row.value).toFixed(0)}%` : formatKg(row.value)}
+          {row.name}: {formatMetric(row.value, kind)}
         </div>
       ))}
     </div>
   );
 }
 
-function KgBarChart({ data = [], dataKey = "kg", nameKey = "name", color = NAVY, empty = "No data yet." }) {
-  const rows = (data || []).filter((row) => Number(row[dataKey]) > 0);
+function KgBarChart({
+  data = [],
+  dataKey = "kg",
+  nameKey = "name",
+  color = NAVY,
+  empty = "No data yet.",
+  kind = "kg"
+}) {
+  const rows = (data || []).filter((row) => {
+    const n = Number(row[dataKey]);
+    if (!Number.isFinite(n)) return false;
+    return kind === "pct" ? true : n > 0;
+  });
   if (!rows.length) return <EmptyNote message={empty} />;
   return (
     <div className="h-[132px]">
@@ -91,9 +110,15 @@ function KgBarChart({ data = [], dataKey = "kg", nameKey = "name", color = NAVY,
         <BarChart data={rows} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
           <XAxis dataKey={nameKey} {...AXIS} interval={0} height={28} tick={{ fill: "#334155", fontSize: 9 }} />
-          <YAxis {...AXIS} width={36} tick={{ fill: "#334155", fontSize: 9 }} tickFormatter={(v) => Number(v).toLocaleString()} />
-          <Tooltip content={<LightTooltip />} />
-          <Bar dataKey={dataKey} radius={[3, 3, 0, 0]} maxBarSize={28}>
+          <YAxis
+            {...AXIS}
+            width={36}
+            domain={kind === "pct" ? [0, 100] : ["auto", "auto"]}
+            tick={{ fill: "#334155", fontSize: 9 }}
+            tickFormatter={(v) => (kind === "pct" ? `${Number(v).toFixed(0)}` : Number(v).toLocaleString())}
+          />
+          <Tooltip content={<LightTooltip kind={kind} />} />
+          <Bar dataKey={dataKey} name={kind === "pct" ? "Efficiency" : "kg"} radius={[3, 3, 0, 0]} maxBarSize={28}>
             {rows.map((row, idx) => (
               <Cell key={row[nameKey] || idx} fill={row.fill || color} />
             ))}
@@ -180,6 +205,7 @@ export default function AcManagementDashboard({ dashboard }) {
   const navigate = useNavigate();
   const [inwardOrders, setInwardOrders] = useState([]);
   const [stations, setStations] = useState({});
+  const [kilnOutputs, setKilnOutputs] = useState({});
   const [loadingExtra, setLoadingExtra] = useState(false);
 
   const requested = new URLSearchParams(location.search).get("view") || "overview";
@@ -195,18 +221,27 @@ export default function AcManagementDashboard({ dashboard }) {
     (async () => {
       setLoadingExtra(true);
       try {
-        const [inward, ...stationRows] = await Promise.all([
+        const kilnCodes = (dashboard.kilns || [])
+          .map((kiln) => kiln.resource_code)
+          .filter(Boolean);
+        const [inward, ...rest] = await Promise.all([
           fetchAcRawMaterialInward().catch(() => []),
           ...AC_POST_ACTIVATION_MACHINES.map((row) =>
             fetchAcPostActivationState(row.id).catch(() => null)
-          )
+          ),
+          ...kilnCodes.map((code) => fetchAcKilnOutputBags(code).catch(() => ({ bags: [] })))
         ]);
         if (cancelled) return;
+        const stationRows = rest.slice(0, AC_POST_ACTIVATION_MACHINES.length);
+        const kilnRows = rest.slice(AC_POST_ACTIVATION_MACHINES.length);
         setInwardOrders(Array.isArray(inward) ? inward : []);
         setStations(
           Object.fromEntries(
             AC_POST_ACTIVATION_MACHINES.map((row, idx) => [row.id, stationRows[idx]])
           )
+        );
+        setKilnOutputs(
+          Object.fromEntries(kilnCodes.map((code, idx) => [code, kilnRows[idx] || { bags: [] }]))
         );
       } finally {
         if (!cancelled) setLoadingExtra(false);
@@ -218,8 +253,8 @@ export default function AcManagementDashboard({ dashboard }) {
   }, [dashboard]);
 
   const model = useMemo(
-    () => buildAcManagementModel({ dashboard, inwardOrders, stations }),
-    [dashboard, inwardOrders, stations]
+    () => buildAcManagementModel({ dashboard, inwardOrders, stations, kilnOutputs }),
+    [dashboard, inwardOrders, stations, kilnOutputs]
   );
 
   if (!dashboard) {
@@ -287,13 +322,15 @@ function OverviewView({ model }) {
   );
 }
 
-function UtilBar({ pct }) {
-  const width = Math.max(0, Math.min(100, Number(pct) || 0));
+function UtilBar({ pct, label = "Now" }) {
+  const value = Number(pct);
+  const n = Number.isFinite(value) ? value : 0;
+  const width = Math.max(0, Math.min(100, n));
   return (
     <div className="mt-2">
       <div className="flex justify-between text-[10px] ac-mgmt-muted mb-0.5">
-        <span>Now</span>
-        <span className="tabular-nums">{width.toFixed(0)}%</span>
+        <span>{label}</span>
+        <span className="tabular-nums">{n.toFixed(0)}%</span>
       </div>
       <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
         <div className="h-full rounded-full" style={{ width: `${width}%`, background: NAVY }} />
@@ -302,7 +339,93 @@ function UtilBar({ pct }) {
   );
 }
 
+const RAG_FILL = { green: "#15803d", amber: "#d97706", red: "#dc2626", neutral: "#64748b" };
+const RAG_LABEL = { green: "Green", amber: "Amber", red: "Red", neutral: "—" };
+
+function UtilizationPie({ pct, band = "neutral" }) {
+  const used = Math.max(0, Math.min(100, Number(pct) || 0));
+  const data = [
+    { name: "Output", kg: used, fill: RAG_FILL[band] || NAVY },
+    { name: "Remaining", kg: Math.max(0.0001, 100 - used), fill: "#e2e8f0" }
+  ];
+  return (
+    <div className="relative h-[88px] w-[88px] shrink-0">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie data={data} dataKey="kg" innerRadius={22} outerRadius={38} stroke="none" startAngle={90} endAngle={-270}>
+            {data.map((row) => (
+              <Cell key={row.name} fill={row.fill} />
+            ))}
+          </Pie>
+        </PieChart>
+      </ResponsiveContainer>
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <span className="ac-mgmt-value text-xs font-bold tabular-nums">{used.toFixed(0)}%</span>
+      </div>
+    </div>
+  );
+}
+
+function RagStatusBox({ band = "neutral" }) {
+  const label = RAG_LABEL[band] || "—";
+  const color = RAG_FILL[band] || RAG_FILL.neutral;
+  return (
+    <div
+      className="inline-flex items-center justify-center min-w-[4.75rem] rounded px-2 py-1.5 text-xs font-bold uppercase tracking-wide text-white"
+      style={{ background: color }}
+    >
+      {label}
+    </div>
+  );
+}
+
+function formatDashPct(value) {
+  if (value == null) return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return `${n.toFixed(1)}%`;
+}
+
+function SupplierPerformanceTable({ rows = [] }) {
+  if (!rows.length) return <EmptyNote message="No inward receipts yet — record a gate receipt to rank suppliers." />;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[10px] text-left">
+        <thead>
+          <tr className="ac-mgmt-muted uppercase tracking-wide">
+            <th className="py-1 pr-2 font-medium">Supplier</th>
+            <th className="py-1 pr-2 font-medium text-right">Receipts</th>
+            <th className="py-1 pr-2 font-medium text-right">Received</th>
+            <th className="py-1 pr-2 font-medium text-right">Released</th>
+            <th className="py-1 pr-2 font-medium text-right">Recovery</th>
+            <th className="py-1 pr-2 font-medium text-right">Lab pass</th>
+            <th className="py-1 pr-2 font-medium text-right">Weigh</th>
+            <th className="py-1 font-medium text-right">Efficiency</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.name} className="border-t border-slate-200">
+              <td className="py-1 pr-2 ac-mgmt-value font-medium truncate max-w-[9rem]">{row.name}</td>
+              <td className="py-1 pr-2 tabular-nums text-right ac-mgmt-muted">{row.receipts}</td>
+              <td className="py-1 pr-2 tabular-nums text-right ac-mgmt-muted">{formatKg(row.receivedKg)}</td>
+              <td className="py-1 pr-2 tabular-nums text-right ac-mgmt-muted">{formatKg(row.releasedKg)}</td>
+              <td className="py-1 pr-2 tabular-nums text-right ac-mgmt-value">{formatDashPct(row.recoveryPct)}</td>
+              <td className="py-1 pr-2 tabular-nums text-right ac-mgmt-muted">{formatDashPct(row.labPassPct)}</td>
+              <td className="py-1 pr-2 tabular-nums text-right ac-mgmt-muted">{formatDashPct(row.weighMatchPct)}</td>
+              <td className="py-1 tabular-nums text-right ac-mgmt-value font-semibold">
+                {formatDashPct(row.efficiencyPct)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function RawMaterialView({ model, loading }) {
+  const performance = model.supplierPerformance || { tiles: [], rows: [], bars: [] };
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
@@ -323,6 +446,32 @@ function RawMaterialView({ model, loading }) {
               data={model.charcoalBars.map((row) => ({ name: row.name, kg: row.total, fill: NAVY }))}
               empty="No charcoal in stock — record a gate receipt."
             />
+          )}
+        </Card>
+      </div>
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
+        {performance.tiles.map((tile) => (
+          <Tile key={tile.label} {...tile} />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+        <Card title="Supplier efficiency" right="Released, lab, weigh match">
+          {loading && !performance.bars.length ? (
+            <EmptyNote message="Loading supplier performance…" />
+          ) : (
+            <KgBarChart
+              data={performance.bars}
+              dataKey="pct"
+              kind="pct"
+              empty="Release charcoal or complete lab to rank suppliers."
+            />
+          )}
+        </Card>
+        <Card title="Supplier performance" className="lg:col-span-2" right="Ranked by efficiency">
+          {loading && !performance.rows.length ? (
+            <EmptyNote message="Loading supplier performance…" />
+          ) : (
+            <SupplierPerformanceTable rows={performance.rows} />
           )}
         </Card>
       </div>
@@ -412,8 +561,15 @@ function MachineView({ headlines, machines, loading }) {
                     <StatusPill kind={statusKind(row.status)}>{statusLabel(row.status)}</StatusPill>
                   </div>
                   <p className="ac-mgmt-value text-lg font-bold tabular-nums mt-1">{row.load}</p>
+                  <p className="ac-mgmt-muted text-[10px]">{row.loadCaption || "Output this month"}</p>
                   <p className="ac-mgmt-muted text-[10px] truncate">{row.detail}</p>
-                  <UtilBar pct={row.nowPct} />
+                  <div className="flex items-center gap-3 mt-2">
+                    <UtilizationPie pct={row.monthPct ?? row.nowPct} band={row.ragBand} />
+                    <div>
+                      <RagStatusBox band={row.ragBand} />
+                      <p className="ac-mgmt-muted text-[10px] mt-1">vs designed</p>
+                    </div>
+                  </div>
                 </Card>
               ))}
             </div>

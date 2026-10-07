@@ -335,7 +335,7 @@ export default function AcExecutionKilnFeedPanel({
           id="ac-kiln-load-select"
           className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm min-w-[8rem]"
           style={{ color: "#0f172a", background: "#fff" }}
-          value={kilnCode}
+            value={kilnCode}
           disabled={mastersLoading || saving}
           onChange={(e) => {
             setKilnCode(e.target.value);
@@ -345,8 +345,8 @@ export default function AcExecutionKilnFeedPanel({
           {kilns.map((k, index) => (
             <option key={k.resource_id || k.resource_code} value={k.resource_code}>
               {kilnOptionLabel(k, index)}
-            </option>
-          ))}
+              </option>
+            ))}
         </select>
         {ready && kilns.length === 0 ? (
           <p className="text-xs" style={{ color: "#b45309" }}>
@@ -491,8 +491,8 @@ export default function AcExecutionKilnFeedPanel({
                                   const selected = selectedBagKey === key;
                                   return (
                                     <li key={key} style={{ marginBottom: 6 }}>
-                                      <button
-                                        type="button"
+        <button
+          type="button"
                                         disabled={saving}
                                         onClick={() => setSelectedBagKey(key)}
                                         onDoubleClick={() => handleLoadBag(bag.lot, bag)}
@@ -516,7 +516,7 @@ export default function AcExecutionKilnFeedPanel({
                                         <span style={{ display: "block", color: "#64748b", fontSize: 11, marginTop: 2 }}>
                                           Double-click to load
                                         </span>
-                                      </button>
+        </button>
                                     </li>
                                   );
                                 })

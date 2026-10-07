@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 import nyraLogo from "../../../assets/nyra-logo.png";
@@ -16,6 +16,12 @@ import { resolveAcAppContext } from "../utils/acContextUtils";
 function executionStage(location) {
   const params = new URLSearchParams(location.search || "");
   return params.get("stage") === "post_activation" ? "post_activation" : "activation";
+}
+
+function adminTab(location) {
+  const tab = new URLSearchParams(location.search || "").get("tab");
+  if (tab === "customers" || tab === "suppliers") return tab;
+  return "users";
 }
 
 function SidebarLink({
@@ -55,7 +61,7 @@ function SidebarLink({
 }
 
 const SECTIONS = [
-  { id: "overview", label: "Overview", ids: ["dashboard", "kiln-telemetry"] },
+  { id: "overview", label: "Overview", ids: ["dashboard"] },
   {
     id: "production",
     label: "Production Flow",
@@ -71,7 +77,7 @@ const SECTIONS = [
   {
     id: "admin",
     label: "Administration",
-    ids: ["users"]
+    ids: ["admin"]
   },
   {
     id: "masters",
@@ -137,52 +143,96 @@ function AcSidebar() {
                 <div className="wf-nav-section-links">
                   {items.map((item) => {
                     const blocked = !canAccessAcMenuItem(item.id, roles, user);
-                    if (item.id !== "execution") {
+                    if (item.id === "execution") {
                       return (
-                        <SidebarLink
-                          key={item.id}
-                          to={item.to}
-                          label={item.label}
-                          end={item.end}
-                          disabled={blocked}
-                        />
+                        <div key={item.id}>
+                          <SidebarLink
+                            to={`${item.to}?stage=activation`}
+                            label={item.label}
+                            disabled={blocked}
+                            isItemActive={(loc) => String(loc.pathname || "").includes("/execution")}
+                          />
+                          <div className="wf-nav-submenu">
+                            {userCanAccessAcActivation(roles, user) || userCanAccessAcQuality(roles, user) ? (
+                              <SidebarLink
+                                to={`${item.to}?stage=activation`}
+                                label="Activation"
+                                indent
+                                disabled={blocked}
+                                isItemActive={(loc) =>
+                                  String(loc.pathname || "").includes("/execution") &&
+                                  executionStage(loc) === "activation"
+                                }
+                              />
+                            ) : null}
+                            {userCanAccessAcPostActivation(roles, user) || userCanAccessAcQuality(roles, user) ? (
+                              <SidebarLink
+                                to={`${item.to}?stage=post_activation`}
+                                label="Post activation"
+                                indent
+                                disabled={blocked}
+                                isItemActive={(loc) =>
+                                  String(loc.pathname || "").includes("/execution") &&
+                                  executionStage(loc) === "post_activation"
+                                }
+                              />
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    }
+                    if (item.id === "admin") {
+                      return (
+                        <div key={item.id}>
+                          <SidebarLink
+                            to="/activated-carbon/admin?tab=users"
+                            label={item.label}
+                            disabled={blocked}
+                            isItemActive={(loc) => String(loc.pathname || "").includes("/admin")}
+                          />
+                          <div className="wf-nav-submenu">
+                            <SidebarLink
+                              to="/activated-carbon/admin?tab=users"
+                              label="Users"
+                              indent
+                              disabled={blocked}
+                              isItemActive={(loc) =>
+                                String(loc.pathname || "").includes("/admin") &&
+                                adminTab(loc) === "users"
+                              }
+                            />
+                            <SidebarLink
+                              to="/activated-carbon/admin?tab=customers"
+                              label="Customer"
+                              indent
+                              disabled={blocked}
+                              isItemActive={(loc) =>
+                                String(loc.pathname || "").includes("/admin") &&
+                                adminTab(loc) === "customers"
+                              }
+                            />
+                            <SidebarLink
+                              to="/activated-carbon/admin?tab=suppliers"
+                              label="Supplier"
+                              indent
+                              disabled={blocked}
+                              isItemActive={(loc) =>
+                                String(loc.pathname || "").includes("/admin") &&
+                                adminTab(loc) === "suppliers"
+                              }
+                            />
+                          </div>
+                        </div>
                       );
                     }
                     return (
-                      <div key={item.id}>
-                        <SidebarLink
-                          to={`${item.to}?stage=activation`}
-                          label={item.label}
-                          disabled={blocked}
-                          isItemActive={(loc) => String(loc.pathname || "").includes("/execution")}
-                        />
-                        <div className="wf-nav-submenu">
-                          {userCanAccessAcActivation(roles) || userCanAccessAcQuality(roles) ? (
-                            <SidebarLink
-                              to={`${item.to}?stage=activation`}
-                              label="Activation"
-                              indent
-                              disabled={blocked}
-                              isItemActive={(loc) =>
-                                String(loc.pathname || "").includes("/execution") &&
-                                executionStage(loc) === "activation"
-                              }
-                            />
-                          ) : null}
-                          {userCanAccessAcPostActivation(roles) || userCanAccessAcQuality(roles) ? (
-                            <SidebarLink
-                              to={`${item.to}?stage=post_activation`}
-                              label="Post activation"
-                              indent
-                              disabled={blocked}
-                              isItemActive={(loc) =>
-                                String(loc.pathname || "").includes("/execution") &&
-                                executionStage(loc) === "post_activation"
-                              }
-                            />
-                          ) : null}
-                        </div>
-                      </div>
+                      <SidebarLink
+                        key={item.id}
+                        to={item.to}
+                        label={item.label}
+                        end={item.end}
+                        disabled={blocked}
+                      />
                     );
                   })}
                 </div>

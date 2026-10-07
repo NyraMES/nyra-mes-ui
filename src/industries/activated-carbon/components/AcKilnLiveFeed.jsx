@@ -1,5 +1,3 @@
-import { Link } from "react-router-dom";
-
 import { EmptyState, StatusPill } from "../../../workflow/ui";
 
 const STATUS_ORDER = { RUNNING: 0, COOLING: 1, IDLE: 2 };
@@ -115,7 +113,7 @@ export default function AcKilnLiveFeed({ kilns = [], refreshedAt }) {
         ))}
       </div>
 
-      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-700/40">
+      <div className="pt-1 border-t border-slate-700/40">
         {refreshedAt ? (
           <span className="text-[10px] text-slate-500">
             Updated {formatFeedTime(refreshedAt) || "recently"} · auto-refresh every 10 min
@@ -123,15 +121,6 @@ export default function AcKilnLiveFeed({ kilns = [], refreshedAt }) {
         ) : (
           <span className="text-[10px] text-slate-500">Auto-refresh every 10 min</span>
         )}
-        <Link
-          to="/activated-carbon/kiln-telemetry"
-          className="text-xs text-cyan-300 hover:text-cyan-100 inline-flex items-center gap-0.5"
-        >
-          Telemetry
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="m9 6 6 6-6 6" />
-          </svg>
-        </Link>
       </div>
     </div>
   );

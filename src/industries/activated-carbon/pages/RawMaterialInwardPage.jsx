@@ -183,8 +183,8 @@ function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
             {noSuppliers && (
               <p className="text-xs text-amber-700 md:col-span-2">
                 No suppliers yet.{" "}
-                <Link to="/activated-carbon/masters?tab=suppliers" className="text-blue-700 underline font-medium">
-                  Add a supplier in Masters
+                <Link to="/activated-carbon/admin?tab=suppliers" className="text-blue-700 underline font-medium">
+                  Add a supplier in Admin
                 </Link>
                 .
               </p>

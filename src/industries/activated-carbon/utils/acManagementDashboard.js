@@ -1,5 +1,5 @@
-import { computeAcStockBuckets } from "../constants/acIsa95Kpis";
-import { buildCharcoalSimpleBars } from "./acStockAnalytics";
+import { computeAcStockBuckets, utilizationRagBand, AC_ISA95_DEFAULT_UTILIZATION_RAG } from "../constants/acIsa95Kpis";
+import { buildCharcoalSimpleBars, buildSupplierPerformance } from "./acStockAnalytics";
 
 export const AC_MGMT_TABS = [
   { id: "overview", label: "Overview" },
@@ -17,6 +17,9 @@ export const AC_POST_ACTIVATION_MACHINES = [
   { id: "blending", label: "Blending" },
   { id: "fg_qc", label: "Finished Goods" }
 ];
+
+/** Temporary plant standard — monthly designed output per machine (kg). */
+export const AC_MACHINE_MONTHLY_CAPACITY_KG = 15000;
 
 function num(value, fallback = 0) {
   const n = Number(value);
@@ -62,25 +65,41 @@ function kilnNowPct(status) {
   return 0;
 }
 
-function stationNowPct(state) {
-  const loaded = num(state?.loader_count);
-  const capacity = Math.max(num(state?.loader_capacity), 1);
-  if (loaded <= 0 && num(state?.loaded_kg) <= 0) return 0;
-  return Math.min(100, Math.round((loaded / Math.max(capacity, 1)) * 1000) / 10);
+function monthKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function lastStationAt(state) {
-  const events = state?.load_events || [];
-  const stamps = events
-    .map((row) => row.loaded_at)
-    .filter(Boolean)
-    .map((value) => new Date(value).getTime())
-    .filter((ms) => Number.isFinite(ms));
-  if (!stamps.length) return null;
-  return new Date(Math.max(...stamps)).toISOString();
+function currentMonthLabel() {
+  return new Date().toLocaleString(undefined, { month: "short", year: "numeric" });
 }
 
-export function buildAcManagementModel({ dashboard, inwardOrders = [], stations = {} } = {}) {
+function isInCurrentMonth(value) {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return monthKey(date) === monthKey();
+}
+
+function monthToDateOutputKg(bags = []) {
+  return (bags || []).reduce((sum, bag) => {
+    const stamp = bag.created_at || bag.saved_at;
+    if (!isInCurrentMonth(stamp)) return sum;
+    return sum + num(bag.quantity_kg);
+  }, 0);
+}
+
+function bagsFromKilnOutput(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.bags)) return payload.bags;
+  return [];
+}
+
+export function buildAcManagementModel({
+  dashboard,
+  inwardOrders = [],
+  stations = {},
+  kilnOutputs = {}
+} = {}) {
   const raw = dashboard?.raw_material || {};
   const buckets = computeAcStockBuckets(dashboard);
   const kilns = dashboard?.kilns || [];
@@ -93,7 +112,7 @@ export function buildAcManagementModel({ dashboard, inwardOrders = [], stations 
   const openPoKg = openPos.reduce((sum, row) => sum + num(row.remaining_kg), 0);
 
   const plant = [
-    { label: "Plant yield", value: formatPct(yieldPct), hint: "Finished output ÷ raw charged", raw: yieldPct },
+    { label: "Plant yield", value: formatPct(yieldPct), hint: "In Stock + dispatched ÷ raw charged (max 100%)", raw: yieldPct },
     { label: "Material in plant", value: formatKg(buckets.wipTotal), hint: "Charcoal through finished stock", raw: buckets.wipTotal },
     { label: "FG in stock", value: formatKg(buckets.finalGradeStock), hint: "Ready for customer PO", raw: buckets.finalGradeStock },
     {
@@ -128,6 +147,7 @@ export function buildAcManagementModel({ dashboard, inwardOrders = [], stations 
     ],
     balancePct: pct(num(raw.charged_kg) + num(raw.pending_kg), raw.ordered_kg),
     charcoalBars: buildCharcoalSimpleBars(inwardOrders),
+    supplierPerformance: buildSupplierPerformance(inwardOrders),
     mix: [
       { name: "Charcoal", kg: buckets.charcoalStock, fill: "#0D3A6E" },
       { name: "Released", kg: num(raw.charged_kg), fill: "#0284c7" },
@@ -158,7 +178,8 @@ export function buildAcManagementModel({ dashboard, inwardOrders = [], stations 
       status: String(kiln.status || "IDLE").toUpperCase(),
       loadedKg: num(kiln.loaded_kg ?? kiln.active_lot_kg),
       lastAt: kiln.last_reading_at,
-      nowPct: kilnNowPct(kiln.status)
+      nowPct: kilnNowPct(kiln.status),
+      designedKg: num(kiln.monthly_capacity_kg, AC_MACHINE_MONTHLY_CAPACITY_KG) || AC_MACHINE_MONTHLY_CAPACITY_KG
     }))
   };
 
@@ -188,41 +209,63 @@ export function buildAcManagementModel({ dashboard, inwardOrders = [], stations 
     }))
   };
 
+  const monthName = currentMonthLabel();
+  const rag = dashboard?.utilization_rag || AC_ISA95_DEFAULT_UTILIZATION_RAG;
+
   const postMachines = AC_POST_ACTIVATION_MACHINES.map((spec) => {
     const state = stations[spec.id] || null;
     const loaded = num(state?.loader_count);
+    const designedKg =
+      num(state?.monthly_capacity_kg, AC_MACHINE_MONTHLY_CAPACITY_KG) || AC_MACHINE_MONTHLY_CAPACITY_KG;
+    const outputMonthKg = monthToDateOutputKg(state?.output_bags);
+    const monthPct = pct(outputMonthKg, designedKg);
     return {
       id: spec.id,
       group: "Post activation",
       name: state?.process_label || spec.label,
       status: loaded > 0 || num(state?.loaded_kg) > 0 ? "RUNNING" : "IDLE",
-      nowPct: stationNowPct(state),
-      load: formatKg(state?.loaded_kg),
+      nowPct: Math.min(100, monthPct || 0),
+      monthPct,
+      ragBand: utilizationRagBand(monthPct, rag),
+      load: formatKg(outputMonthKg),
       loadKg: num(state?.loaded_kg),
-      detail: state
-        ? `${loaded} / ${num(state.loader_capacity) || 1} machines · last ${formatWhen(lastStationAt(state))}`
-        : `No ${spec.label.toLowerCase()} loads yet`
+      outputMonthKg,
+      designedKg,
+      loadCaption: `Output ${monthName}`,
+      utilLabel: "Month vs designed",
+      detail: `of ${formatKg(designedKg)} designed · loaded ${formatKg(state?.loaded_kg)}`
     };
   });
 
   const machines = [
-    ...activation.kilns.map((kiln) => ({
-      id: kiln.code,
-      group: "Kiln",
-      name: kiln.name,
-      status: kiln.status,
-      nowPct: kiln.nowPct,
-      load: formatKg(kiln.loadedKg),
-      loadKg: kiln.loadedKg,
-      detail: kiln.lastAt ? `Last activity ${formatWhen(kiln.lastAt)}` : "No kiln activity yet"
-    })),
+    ...activation.kilns.map((kiln) => {
+      const designedKg = kiln.designedKg || AC_MACHINE_MONTHLY_CAPACITY_KG;
+      const outputMonthKg = monthToDateOutputKg(bagsFromKilnOutput(kilnOutputs[kiln.code]));
+      const monthPct = pct(outputMonthKg, designedKg);
+      return {
+        id: kiln.code,
+        group: "Kiln",
+        name: kiln.name,
+        status: kiln.status,
+        nowPct: Math.min(100, monthPct || 0),
+        monthPct,
+        ragBand: utilizationRagBand(monthPct, rag),
+        load: formatKg(outputMonthKg),
+        loadKg: kiln.loadedKg,
+        outputMonthKg,
+        designedKg,
+        loadCaption: `Output ${monthName}`,
+        utilLabel: "Month vs designed",
+        detail: `of ${formatKg(designedKg)} designed · loaded ${formatKg(kiln.loadedKg)}`
+      };
+    }),
     ...postMachines
   ];
 
-  const kilnUtil = pct(kilnsRunning, Math.max(kilns.length, 1));
-  const stationsRunning = postMachines.filter((m) => m.status === "RUNNING").length;
-  const stationUtil = pct(stationsRunning, Math.max(postMachines.length, 1));
-  const stationLoadKg = postMachines.reduce((sum, row) => sum + num(row.loadKg), 0);
+  const outputMonthKg = machines.reduce((sum, row) => sum + num(row.outputMonthKg), 0);
+  const designedTotalKg = machines.reduce((sum, row) => sum + num(row.designedKg), 0);
+  const vsDesigned = pct(outputMonthKg, designedTotalKg);
+  const currentlyLoadedKg = machines.reduce((sum, row) => sum + num(row.loadKg), 0);
 
   return {
     plant,
@@ -232,19 +275,28 @@ export function buildAcManagementModel({ dashboard, inwardOrders = [], stations 
     activation,
     postActivation,
     machines,
+    utilizationRag: rag,
     machineHeadlines: [
-      { label: "Kiln utilization now", value: formatPct(kilnUtil), hint: `${kilnsRunning} kiln(s) running` },
       {
-        label: "Post-activation in use",
-        value: `${stationsRunning} / ${postMachines.length}`,
-        hint: formatPct(stationUtil)
+        label: `Designed ${monthName}`,
+        value: formatKg(designedTotalKg),
+        hint: "From Masters · Machines & kilns"
       },
       {
-        label: "Loaded on stations",
-        value: formatKg(stationLoadKg),
-        hint: "All post-activation machines"
+        label: "Output this month",
+        value: formatKg(outputMonthKg),
+        hint: "Recorded output bags"
       },
-      { label: "Stations in use", value: formatPct(stationUtil), hint: "Screening through finished goods" }
+      {
+        label: "vs designed",
+        value: formatPct(vsDesigned),
+        hint: `${formatKg(outputMonthKg)} of ${formatKg(designedTotalKg)}`
+      },
+      {
+        label: "Currently loaded",
+        value: formatKg(currentlyLoadedKg),
+        hint: "On kilns and stations now"
+      }
     ]
   };
 }

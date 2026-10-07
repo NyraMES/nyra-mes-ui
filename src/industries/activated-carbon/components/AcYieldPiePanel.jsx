@@ -40,7 +40,7 @@ function AcYieldPiePanel({ yieldSummary }) {
     <WfCard>
       <WfCardHeader
         title="Yield Overview"
-        subtitle="Recovery percentage — charged mass vs finished output"
+        subtitle="In Stock + dispatched ÷ raw charged — capped at 100%"
         icon={<IconPie />}
         right={
           yieldPct != null ? (
