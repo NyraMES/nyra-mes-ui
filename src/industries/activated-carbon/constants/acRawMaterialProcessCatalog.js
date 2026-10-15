@@ -8,7 +8,7 @@ export const AC_INBOUND_FIXED_START = {
   process_step: "RAW_MATERIAL_INWARD",
   is_mandatory: true,
   fixed: true,
-  description: "Supplier receipt and lot creation"
+  description: "Gate receipt and lot creation"
 };
 
 export const AC_INBOUND_FIXED_END = {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 
 import DemoWatermark from "../../components/DemoWatermark";
 import ContextLoadWarning from "../../components/ContextLoadWarning";
@@ -22,6 +22,12 @@ function ActivatedCarbonLayout() {
   const { user } = useAuth();
   const hideAskNyra = userIsAcDemoViewer(user?.roles || []);
   const [askOpen, setAskOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    setNavOpen(false);
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     const selection = getIndustrySelection("activated-carbon");
@@ -41,11 +47,19 @@ function ActivatedCarbonLayout() {
     <WorkflowProvider>
       <div className="wf-shell wf-ac-shell flex w-full min-h-screen">
         <DemoWatermark />
-        <AcSidebar />
+        <AcSidebar mobileOpen={navOpen} />
+        {navOpen ? (
+          <button
+            type="button"
+            className="wf-ac-sidebar-backdrop"
+            aria-label="Close menu"
+            onClick={() => setNavOpen(false)}
+          />
+        ) : null}
         <div className="wf-content-column wf-ac-content-column">
           <ContextLoadWarning />
-          <AcTopbar />
-          <main className="p-6 flex-1 wf-page-frame wf-ac-page-frame overflow-y-auto">
+          <AcTopbar onOpenMenu={() => setNavOpen(true)} />
+          <main className="p-3 sm:p-6 flex-1 wf-page-frame wf-ac-page-frame overflow-y-auto">
             <AcMenuRouteGuard>
               <Outlet />
             </AcMenuRouteGuard>

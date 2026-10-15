@@ -238,6 +238,18 @@ export function buildCharcoalSimpleBars(inwardOrders = []) {
     .sort((a, b) => b.total - a.total);
 }
 
+function weightedEfficiency(recoveryPct, labPassPct, weighMatchPct) {
+  const weighScore = weighMatchPct == null ? null : Math.max(0, 100 - Math.abs(100 - weighMatchPct));
+  const parts = [
+    [recoveryPct, 0.5],
+    [labPassPct, 0.3],
+    [weighScore, 0.2]
+  ].filter(([value]) => value != null);
+  const weightSum = parts.reduce((sum, [, weight]) => sum + weight, 0);
+  if (weightSum <= 0) return null;
+  return Math.round((parts.reduce((sum, [value, weight]) => sum + value * weight, 0) / weightSum) * 10) / 10;
+}
+
 function roundPct(numerator, denominator) {
   const d = num(denominator);
   if (d <= 0) return null;
@@ -295,18 +307,7 @@ export function buildSupplierPerformance(inwardOrders = []) {
       const recoveryPct = roundPct(row.releasedKg, row.receivedKg);
       const weighMatchPct = roundPct(row.receivedKg, row.claimedKg);
       const labPassPct = roundPct(row.labPass, row.labDone);
-      const weighScore =
-        weighMatchPct == null ? null : Math.max(0, 100 - Math.abs(100 - weighMatchPct));
-      const parts = [
-        [recoveryPct, 0.5],
-        [labPassPct, 0.3],
-        [weighScore, 0.2]
-      ].filter(([value]) => value != null);
-      const weightSum = parts.reduce((sum, [, w]) => sum + w, 0);
-      const efficiencyPct =
-        weightSum > 0
-          ? Math.round((parts.reduce((sum, [value, w]) => sum + value * w, 0) / weightSum) * 10) / 10
-          : null;
+      const efficiencyPct = weightedEfficiency(recoveryPct, labPassPct, weighMatchPct);
       return { ...row, recoveryPct, weighMatchPct, labPassPct, efficiencyPct };
     })
     .sort(
@@ -334,8 +335,10 @@ export function buildSupplierPerformance(inwardOrders = []) {
   const recoveryPct = roundPct(totals.releasedKg, totals.receivedKg);
   const labPassPct = roundPct(totals.labPass, totals.labDone);
   const weighMatchPct = roundPct(totals.receivedKg, totals.claimedKg);
+  const efficiencyPct = weightedEfficiency(recoveryPct, labPassPct, weighMatchPct);
 
   return {
+    efficiencyPct,
     rows,
     bars: rows
       .filter((row) => row.efficiencyPct != null)

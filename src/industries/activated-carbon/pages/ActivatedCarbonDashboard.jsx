@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { useAuth } from "../../../auth/AuthContext";
 import { fetchAcDashboard, formatAcApiError } from "../../../services/activatedCarbonApi";
@@ -9,6 +10,9 @@ import { SectionHeader } from "../../../workflow/ui";
 import { useAppContext } from "../../../context/AppContext";
 import { isAcContextReady } from "../utils/acContextUtils";
 import AcManagementDashboard from "../components/AcManagementDashboard";
+import AcEngineerPerformanceDashboard from "../components/AcEngineerPerformanceDashboard";
+import AcRmsEngineerDashboard from "../components/AcRmsEngineerDashboard";
+import { userIsAcRmsOnly, userIsAcSecurityOnly, userSeesAcPlantDashboard } from "../utils/acPrivileges";
 
 const LIVE_FEED_REFRESH_MS = 10 * 60 * 1000;
 
@@ -16,6 +20,7 @@ function ActivatedCarbonDashboard() {
   const { context, loading: contextLoading } = useAppContext();
   const { user } = useAuth();
   const demoViewer = userIsAcDemoViewer(user?.roles || []);
+  const plantDashboard = userSeesAcPlantDashboard(user?.roles || [], user);
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -25,7 +30,7 @@ function ActivatedCarbonDashboard() {
 
   const loadDashboard = useCallback(
     async ({ silent = false, force = false } = {}) => {
-      if (!contextReady) {
+      if (!plantDashboard || !contextReady) {
         return;
       }
       const now = Date.now();
@@ -53,27 +58,49 @@ function ActivatedCarbonDashboard() {
         }
       }
     },
-    [contextReady, context.tenant_code, context.workspace_code]
+    [plantDashboard, contextReady, context.tenant_code, context.workspace_code]
   );
 
   useEffect(() => {
-    if (!contextReady) return;
+    if (!plantDashboard || !contextReady) return;
     loadDashboard({ force: true });
-  }, [contextReady, context.tenant_code, context.workspace_code, loadDashboard]);
+  }, [plantDashboard, contextReady, context.tenant_code, context.workspace_code, loadDashboard]);
 
   useEffect(() => {
-    if (!contextReady) return undefined;
+    if (!plantDashboard || !contextReady) return undefined;
     const timer = setInterval(() => {
       loadDashboard({ silent: true, force: true });
     }, LIVE_FEED_REFRESH_MS);
     return () => clearInterval(timer);
   }, [contextReady, loadDashboard]);
 
+  if (userIsAcRmsOnly(user?.roles || [], user)) {
+    return <AcRmsEngineerDashboard />;
+  }
+
+  if (userIsAcSecurityOnly(user?.roles || [], user)) {
+    return (
+      <div className="space-y-4">
+        <SectionHeader
+          title="Dashboard"
+          subtitle="Gate receipts for this plant"
+        />
+        <Link to="/activated-carbon/raw-material?tab=inward" className="wf-btn wf-btn-primary">
+          Open gate receipt
+        </Link>
+      </div>
+    );
+  }
+
+  if (!plantDashboard) {
+    return <AcEngineerPerformanceDashboard />;
+  }
+
   return (
     <div className="space-y-6">
       <SectionHeader
         title="Dashboard"
-        subtitle="Plant snapshot — raw material, activation, post activation, and machine use"
+        subtitle="All records to date. Machine output is the current month. Refreshes every 10 minutes."
         right={
           demoViewer ? (
             <AcDemoDisabledAction>Refresh</AcDemoDisabledAction>

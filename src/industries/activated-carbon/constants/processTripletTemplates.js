@@ -66,6 +66,19 @@ export const DEFAULT_EXECUTION_TRIPLETS_BY_STEP = {
       object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
     }
   ],
+  BAG_SPLIT: [
+    {
+      key: "bag_weight_kg",
+      label: "Bag weight",
+      unit: "KG",
+      default_value: "",
+      used_at: "inbound",
+      mandatory: true,
+      ontology_predicate: "captures",
+      subject_uri_template: "urn:nyra:ac:inward:{order_code}",
+      object_datatype: "http://www.w3.org/2001/XMLSchema#decimal"
+    }
+  ],
   CRUSHING: [
     {
       key: "input_lump_size_mm",

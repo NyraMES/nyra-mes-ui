@@ -18,9 +18,19 @@ function executionStage(location) {
   return params.get("stage") === "post_activation" ? "post_activation" : "activation";
 }
 
+const ADMIN_SUBNAV = [
+  { id: "users", label: "Users" },
+  { id: "suppliers", label: "Suppliers" },
+  { id: "destoning-ctc", label: "Destoner CTC allocation" },
+  { id: "kiln-parameters", label: "Kiln parameters" },
+  { id: "work-orders", label: "Work orders" },
+  { id: "in-stock-work-order", label: "Stock Reallocation" }
+];
+
 function adminTab(location) {
   const tab = new URLSearchParams(location.search || "").get("tab");
-  if (tab === "customers" || tab === "suppliers") return tab;
+  if (tab === "customers" || tab === "kiln-ctc") return "work-orders";
+  if (ADMIN_SUBNAV.some((row) => row.id === tab)) return tab;
   return "users";
 }
 
@@ -69,15 +79,10 @@ const SECTIONS = [
       "raw-material",
       "bag-tracing",
       "execution",
-      "customer-sales",
       "dispatch",
-      "reports"
+      "reports",
+      "admin"
     ]
-  },
-  {
-    id: "admin",
-    label: "Administration",
-    ids: ["admin"]
   },
   {
     id: "masters",
@@ -86,7 +91,7 @@ const SECTIONS = [
   }
 ];
 
-function AcSidebar() {
+function AcSidebar({ mobileOpen = false }) {
   const { context } = useAppContext();
   const { user } = useAuth();
   const roles = user?.roles || [];
@@ -97,7 +102,6 @@ function AcSidebar() {
   const [openSections, setOpenSections] = useState({
     overview: true,
     production: true,
-    admin: true,
     masters: true
   });
 
@@ -107,8 +111,8 @@ function AcSidebar() {
     "Activated Carbon";
 
   return (
-    <aside className="wf-sidebar">
-      <Link to="/" className="wf-sidebar-brand">
+    <aside className={`wf-sidebar${mobileOpen ? " wf-sidebar--open" : ""}`}>
+      <Link to="/activated-carbon/dashboard" className="wf-sidebar-brand">
         <img src={nyraLogo} alt="Nyra" className="wf-sidebar-logo" />
         <div className="wf-sidebar-brand-text">
           <span className="wf-sidebar-title">Nyra MES</span>
@@ -191,36 +195,19 @@ function AcSidebar() {
                             isItemActive={(loc) => String(loc.pathname || "").includes("/admin")}
                           />
                           <div className="wf-nav-submenu">
-                            <SidebarLink
-                              to="/activated-carbon/admin?tab=users"
-                              label="Users"
-                              indent
-                              disabled={blocked}
-                              isItemActive={(loc) =>
-                                String(loc.pathname || "").includes("/admin") &&
-                                adminTab(loc) === "users"
-                              }
-                            />
-                            <SidebarLink
-                              to="/activated-carbon/admin?tab=customers"
-                              label="Customer"
-                              indent
-                              disabled={blocked}
-                              isItemActive={(loc) =>
-                                String(loc.pathname || "").includes("/admin") &&
-                                adminTab(loc) === "customers"
-                              }
-                            />
-                            <SidebarLink
-                              to="/activated-carbon/admin?tab=suppliers"
-                              label="Supplier"
-                              indent
-                              disabled={blocked}
-                              isItemActive={(loc) =>
-                                String(loc.pathname || "").includes("/admin") &&
-                                adminTab(loc) === "suppliers"
-                              }
-                            />
+                            {ADMIN_SUBNAV.map((row) => (
+                              <SidebarLink
+                                key={row.id}
+                                to={`/activated-carbon/admin?tab=${row.id}`}
+                                label={row.label}
+                                indent
+                                disabled={blocked}
+                                isItemActive={(loc) =>
+                                  String(loc.pathname || "").includes("/admin") &&
+                                  adminTab(loc) === row.id
+                                }
+                              />
+                            ))}
                           </div>
                         </div>
                       );

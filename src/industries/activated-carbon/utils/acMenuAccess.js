@@ -2,11 +2,14 @@ import { MES_ROLES } from "../../../auth/roles";
 import {
   userCanAccessAcActivation,
   userCanAccessAcDispatch,
+  userCanAccessAcDestoningCtc,
   userCanAccessAcMasters,
   userCanAccessAcPostActivation,
   userCanAccessAcQuality,
   userCanAccessAcReports,
   userCanAccessAcRms,
+  userCanAccessAcGateReceipt,
+  userIsAcSecurityOnly,
   userCanAccessAcUsers,
   userIsAcAdmin,
   userIsNyraServices
@@ -23,6 +26,7 @@ const NON_DEMO_OVERRIDES = [
   MES_ROLES.OPERATOR,
   MES_ROLES.QUALITY,
   MES_ROLES.RMS,
+  MES_ROLES.SECURITY,
   MES_ROLES.ACTIVATION,
   MES_ROLES.POST_ACTIVATION,
   MES_ROLES.VIEWER
@@ -35,38 +39,50 @@ export function userIsAcDemoViewer(roles = []) {
 }
 
 function menuAllowedByRole(menuId, roles = [], user = null) {
-  if (menuId === "masters" || menuId === "routing-builder") {
+  if (menuId === "routing-builder") {
+    return userCanAccessAcMasters(roles, user);
+  }
+  if (menuId === "masters") {
     return userCanAccessAcMasters(roles, user);
   }
   if (userIsNyraServices(user) || roles.includes(MES_ROLES.SUPER_ADMIN)) {
     return true;
   }
-  if (menuId === "admin" || menuId === "users") {
+  if (menuId === "admin") {
+    return userCanAccessAcDestoningCtc(roles, user);
+  }
+  if (menuId === "users") {
     return userCanAccessAcUsers(roles, user);
   }
+  if (userIsAcSecurityOnly(roles, user)) {
+    return menuId === "dashboard" || menuId === "raw-material";
+  }
   if (userIsAcAdmin(roles)) {
-    return menuId === "dashboard" || menuId === "admin" || menuId === "users";
+    return menuId === "dashboard" || menuId === "admin" || menuId === "users" || menuId === "raw-material";
   }
   switch (menuId) {
     case "dashboard":
       return true;
     case "raw-material":
-      return userCanAccessAcRms(roles);
+      return (
+        userCanAccessAcRms(roles, user) ||
+        userCanAccessAcGateReceipt(roles, user) ||
+        roles.includes(MES_ROLES.QUALITY)
+      );
     case "bag-tracing":
-      return userCanAccessAcRms(roles) || userCanAccessAcReports(roles);
+      return userCanAccessAcReports(roles, user) || userCanAccessAcDestoningCtc(roles, user);
     case "execution":
       return (
         userCanAccessAcActivation(roles) ||
         userCanAccessAcPostActivation(roles) ||
         userCanAccessAcQuality(roles)
       );
-    case "customer-sales":
     case "dispatch":
       return userCanAccessAcDispatch(roles);
     case "reports":
       return userCanAccessAcReports(roles);
     default:
-      return true;
+      return false;
   }
 }
 

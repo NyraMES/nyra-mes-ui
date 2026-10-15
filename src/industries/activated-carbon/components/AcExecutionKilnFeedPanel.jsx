@@ -7,6 +7,7 @@ import {
   fetchAcDashboard,
   fetchAcKilnFeedLots,
   fetchAcOpenLots,
+  fetchAcWorkOrders,
   formatAcApiError,
   generateAcRoute
 } from "../../../services/activatedCarbonApi";
@@ -19,7 +20,10 @@ import { isValidUuid } from "../utils/acProductUtils";
 import {
   collectKilnFeedEvents,
   formatLoaderTime,
-  KILN_LIVE_WINDOW_HOURS
+  kilnOutputDone,
+  KILN_LIVE_WINDOW_HOURS,
+  loadedKilnBagCodes,
+  parseKilnFeedEvents
 } from "../utils/acKilnLoaderUtils";
 import { isAcKilnFeedOutwardBag } from "../constants/processSteps";
 
@@ -109,7 +113,8 @@ function bagWeight(bag) {
 
 function remainingBagsFor(lot, kilnEvents = []) {
   const fed = new Set(lotEventsFor(kilnEvents, lotCodeOf(lot)).map((ev) => ev.bagCode).filter(Boolean));
-  return kilnFeedBags(lot).filter((bag) => {
+  const bags = kilnFeedBags(lot).length ? kilnFeedBags(lot) : lotBagRows(lot).filter(isAcKilnFeedOutwardBag);
+  return bags.filter((bag) => {
     const code = bag.bag_code || bag.bagCode;
     return code && !fed.has(code);
   });
@@ -152,8 +157,10 @@ export default function AcExecutionKilnFeedPanel({
   const [kilnLots, setKilnLots] = useState([]);
   const [refreshTick, setRefreshTick] = useState(0);
   const [picking, setPicking] = useState(false);
-  const [expandedInward, setExpandedInward] = useState("");
-  const [selectedBagKey, setSelectedBagKey] = useState("");
+  const [workOrders, setWorkOrders] = useState([]);
+  const [workOrderCode, setWorkOrderCode] = useState("");
+  const [kilnBalance, setKilnBalance] = useState({ loadedKg: 0, outputKg: 0, remainingKg: 0 });
+  const [serverFeed, setServerFeed] = useState([]);
 
   const kilns = [...(masters.kilns || [])].sort((a, b) =>
     kilnPlantLetter(a).localeCompare(kilnPlantLetter(b))
@@ -165,16 +172,13 @@ export default function AcExecutionKilnFeedPanel({
   }, []);
 
   useEffect(() => {
-    if (!kilnCode && kilns[0]) setKilnCode(kilns[0].resource_code);
-  }, [kilns, kilnCode]);
-
-  useEffect(() => {
     let cancelled = false;
     Promise.all([
       fetchAcDashboard().catch(() => null),
       fetchAcKilnFeedLots().catch(() => []),
-      fetchAcOpenLots().catch(() => [])
-    ]).then(([dash, feedRows, openRows]) => {
+      fetchAcOpenLots().catch(() => []),
+      fetchAcWorkOrders()
+    ]).then(([dash, feedRows, openRows, woData]) => {
       if (cancelled) return;
       setKilnStatus(dash?.kilns || []);
       const byCode = new Map();
@@ -191,6 +195,9 @@ export default function AcExecutionKilnFeedPanel({
         byCode.set(code, merged);
       }
       setKilnLots(Array.from(byCode.values()));
+      setWorkOrders(woData?.work_orders || []);
+    }).catch((e) => {
+      if (!cancelled) setError(formatAcApiError(e, "Could not load kiln feed"));
     });
     return () => {
       cancelled = true;
@@ -234,6 +241,32 @@ export default function AcExecutionKilnFeedPanel({
     });
   }, [events, kilnLots]);
 
+  const selectableWorkOrders = useMemo(
+    () => workOrders.filter((row) => !kilnOutputDone(row)),
+    [workOrders]
+  );
+
+  const selectedWorkOrder = useMemo(
+    () => selectableWorkOrders.find((row) => row.work_order_code === workOrderCode) || null,
+    [selectableWorkOrders, workOrderCode]
+  );
+
+  useEffect(() => {
+    if (workOrderCode && !selectedWorkOrder) setWorkOrderCode("");
+  }, [workOrderCode, selectedWorkOrder]);
+
+  useEffect(() => {
+    if (!selectedWorkOrder) return;
+    if (!kilnCode && kilns[0]?.resource_code) {
+      setKilnCode(kilns[0].resource_code);
+    }
+  }, [selectedWorkOrder, kilns, kilnCode]);
+
+  useEffect(() => {
+    setKilnBalance({ loadedKg: 0, outputKg: 0, remainingKg: 0 });
+    setServerFeed([]);
+  }, [kilnCode]);
+
   const pendingLots = useMemo(
     () =>
       kilnLots.filter((row) => {
@@ -241,9 +274,7 @@ export default function AcExecutionKilnFeedPanel({
         if (["COMPLETED", "STOCKED", "DISPATCHED", "CLOSED", "CANCELLED"].includes(status)) {
           return false;
         }
-        if (!kilnFeedBags(row).length && status === "CREATED") {
-          return lotBagRows(row).length === 0;
-        }
+        if (remainingBagsFor(row, events).length) return true;
         return !isLotFullyLoaded(row, events);
       }),
     [kilnLots, events]
@@ -255,23 +286,45 @@ export default function AcExecutionKilnFeedPanel({
     kilns.findIndex((k) => k.resource_code === kilnCode)
   );
   const kilnTitle = `${kilnOptionLabel(kilns[selectedIndex] || { resource_name: "Kiln A" }, selectedIndex)} — Loader`;
-  const pendingInwards = useMemo(
-    () => groupPendingByInward(pendingLots, events),
-    [pendingLots, events]
+  const pendingInwards = useMemo(() => {
+    if (!selectedWorkOrder) return [];
+    return groupPendingByInward(pendingLots, events);
+  }, [pendingLots, events, selectedWorkOrder]);
+  const loadedBagCodes = useMemo(
+    () => loadedKilnBagCodes(kilnLots, [...serverFeed, ...localEvents, ...events]),
+    [kilnLots, serverFeed, localEvents, events]
+  );
+  const pendingBags = useMemo(
+    () =>
+      pendingInwards
+        .flatMap((group) =>
+          group.bags.map((bag) => ({
+            ...bag,
+            inward: group.inward,
+            bagCode: bag.bag_code || bag.bagCode
+          }))
+        )
+        .filter((bag) => bag.bagCode && !loadedBagCodes.has(String(bag.bagCode))),
+    [pendingInwards, loadedBagCodes]
+  );
+  const loadedBags = useMemo(
+    () => parseKilnFeedEvents([...serverFeed, ...events]).filter((ev) => ev.bagCode),
+    [serverFeed, events]
   );
 
   const handleLoadBag = (picked, bag) => {
     const code = lotCodeOf(picked);
     const lotId = picked.production_lot_id || picked.lot_id;
     const bagCode = bag?.bag_code || bag?.bagCode;
-    if (!code || !kilnCode || !bagCode) return;
+    if (!code || !kilnCode || !bagCode || !workOrderCode) return;
     return run(async () => {
     setError("");
     try {
       const payload = {
         kiln_resource_code: kilnCode,
         status: "IN_PROGRESS",
-        bag_code: bagCode
+        bag_code: bagCode,
+        work_order_code: workOrderCode
       };
       if (isValidUuid(lotId)) payload.production_lot_id = lotId;
       else payload.lot_code = code;
@@ -295,7 +348,7 @@ export default function AcExecutionKilnFeedPanel({
         const without = (prev || []).filter((row) => lotCodeOf(row) !== code);
         return [...without, next];
       });
-      setSelectedBagKey("");
+      setRefreshTick((n) => n + 1);
       if (firstFeed) {
         generateAcRoute(code).catch(() => null);
       }
@@ -327,33 +380,61 @@ export default function AcExecutionKilnFeedPanel({
 
   return (
     <section className="wf-light-panel rounded-xl border border-slate-200 bg-white p-4 space-y-4" style={{ color: "#0f172a", background: "#ffffff" }}>
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="text-sm font-medium" htmlFor="ac-kiln-load-select" style={{ color: "#0f172a" }}>
-          Kiln Load / Unload
-        </label>
-        <select
-          id="ac-kiln-load-select"
-          className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm min-w-[8rem]"
-          style={{ color: "#0f172a", background: "#fff" }}
-            value={kilnCode}
-          disabled={mastersLoading || saving}
-          onChange={(e) => {
-            setKilnCode(e.target.value);
-            setPicking(false);
-          }}
-        >
-          {kilns.map((k, index) => (
-            <option key={k.resource_id || k.resource_code} value={k.resource_code}>
-              {kilnOptionLabel(k, index)}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-sm font-medium" htmlFor="ac-wo-select" style={{ color: "#0f172a" }}>
+          Work order number
+          <select
+            id="ac-wo-select"
+            className="mt-1 block rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm min-w-[16rem]"
+            style={{ color: "#0f172a", background: "#fff" }}
+            value={workOrderCode}
+            disabled={saving}
+            onChange={(e) => {
+              setWorkOrderCode(e.target.value);
+              setPicking(false);
+            }}
+          >
+            <option value="">Select work order</option>
+            {selectableWorkOrders.map((row) => (
+              <option key={row.work_order_code} value={row.work_order_code}>
+                {row.work_order_code} · {row.grade} · CTC {row.ctc} · {Number(row.quantity_kg || 0)} kg
               </option>
             ))}
-        </select>
-        {ready && kilns.length === 0 ? (
+          </select>
+        </label>
+        <label className="text-sm font-medium" htmlFor="ac-kiln-load-select" style={{ color: "#0f172a" }}>
+          Kiln
+          <select
+            id="ac-kiln-load-select"
+            className="mt-1 block rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm min-w-[8rem]"
+            style={{ color: "#0f172a", background: "#fff" }}
+            value={kilnCode}
+            disabled={saving || !selectedWorkOrder}
+            onChange={(e) => {
+              setKilnCode(e.target.value);
+              setPicking(false);
+            }}
+          >
+            <option value="">Select kiln</option>
+            {kilns.map((k, index) => (
+              <option key={k.resource_id || k.resource_code} value={k.resource_code}>
+                {kilnOptionLabel(k, index)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {selectableWorkOrders.length === 0 ? (
           <p className="text-xs" style={{ color: "#b45309" }}>
-            No kilns.{" "}
-            <Link to="/activated-carbon/masters?tab=plant-resources" className="underline">
-              Add in Masters
-            </Link>
+            {workOrders.length === 0 ? (
+              <>
+                No work orders.{" "}
+                <Link to="/activated-carbon/admin?tab=work-orders" className="underline">
+                  Create in Admin
+                </Link>
+              </>
+            ) : (
+              "Kiln output is complete for these work orders."
+            )}
           </p>
         ) : null}
       </div>
@@ -367,18 +448,39 @@ export default function AcExecutionKilnFeedPanel({
               {kilnTitle}
             </h3>
             <p className="text-sm tabular-nums mt-1" style={{ color: "#475569" }}>
-              {formatKgRange(cumulativeKg)}
+              {kilnBalance.loadedKg > 0 || kilnBalance.outputKg > 0
+                ? `In ${kilnBalance.loadedKg.toFixed(2)} kg · Out ${kilnBalance.outputKg.toFixed(2)} kg · Still in kiln ${kilnBalance.remainingKg.toFixed(2)} kg`
+                : formatKgRange(cumulativeKg)}
+              {pendingInwards.some((row) => row.bags.length)
+                ? ` · ${pendingInwards.reduce((sum, row) => sum + row.bags.length, 0)} bags ready to load`
+                : ""}
             </p>
           </div>
           <button
             type="button"
             onClick={() => setPicking(true)}
-            disabled={saving || !kilnCode}
+            disabled={saving || !kilnCode || !workOrderCode}
             className="shrink-0 rounded-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 text-white text-[11px] font-bold uppercase tracking-wide px-4 py-2"
           >
-            {saving ? "Loading…" : "Load bags"}
+            {saving ? "Loading…" : "Load bag"}
           </button>
         </div>
+
+        {loadedBags.length > 0 ? (
+          <div className="px-4 pb-3 flex flex-wrap gap-2">
+            {loadedBags.map((ev) => (
+              <span
+                key={`${ev.bagCode}-${ev.loadedAt || ""}-${ev.kg}`}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs"
+              >
+                <span className="font-mono">{ev.bagCode}</span>
+                <span style={{ color: "#475569" }}>
+                  {Number(ev.kg) > 0 ? `${Number(ev.kg).toFixed(2)} kg` : ""}
+                </span>
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         {showChart ? (
           <div className="px-4 pb-3">
@@ -390,6 +492,10 @@ export default function AcExecutionKilnFeedPanel({
           kilnCode={kilnCode}
           kilnTitle={kilnOptionLabel(kilns[selectedIndex] || { resource_name: "Kiln A" }, selectedIndex)}
           lotCode={loadedLotDetails[loadedLotDetails.length - 1]?.lotCode || lotCodeOf(lot) || null}
+          refreshToken={refreshTick}
+          liveTick={nowMs}
+          onBalance={setKilnBalance}
+          onFeed={setServerFeed}
         />
       </article>
 
@@ -427,16 +533,14 @@ export default function AcExecutionKilnFeedPanel({
                   <div>
                     <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>Load bag</div>
                     <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
-                      Expand an inward, then double-click one bag to load on {kilnTitle.replace(" — Loader", "")}.
+                      {selectedWorkOrder
+                        ? `Work order ${selectedWorkOrder.work_order_code}. Bags that can be loaded on this kiln.`
+                        : "Select a work order number first."}
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setPicking(false);
-                      setExpandedInward("");
-                      setSelectedBagKey("");
-                    }}
+                    onClick={() => setPicking(false)}
                     style={{
                       color: "#1d4ed8",
                       background: "transparent",
@@ -449,87 +553,65 @@ export default function AcExecutionKilnFeedPanel({
                     Close
                   </button>
                 </div>
-                {pendingInwards.length === 0 ? (
-                  <div style={{ fontSize: 14, color: "#475569" }}>All open inward bags are already in a kiln.</div>
+                {loadedBags.length > 0 ? (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>On this kiln</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {loadedBags.map((ev) => (
+                        <span
+                          key={`${ev.bagCode}-${ev.loadedAt || ""}-${ev.kg}`}
+                          style={{
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 999,
+                            padding: "4px 10px",
+                            fontSize: 12,
+                            fontFamily: "ui-monospace, Menlo, monospace"
+                          }}
+                        >
+                          {ev.bagCode}
+                          {Number(ev.kg) > 0 ? ` · ${Number(ev.kg).toFixed(2)} kg` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {pendingBags.length === 0 ? (
+                  <div style={{ fontSize: 14, color: "#475569" }}>
+                    {!workOrderCode
+                      ? "Select a work order number first. Create one in Admin with grade, CTC, and quantity."
+                      : "No released RO bags are left to load. After Release to production, they appear here. Unburnt and Stones stay off the kiln."}
+                  </div>
                 ) : (
                   <ul style={{ listStyle: "none", padding: 0, margin: 0, maxHeight: 360, overflowY: "auto" }}>
-                    {pendingInwards.map((group) => {
-                      const open = expandedInward === group.inward;
-                      return (
-                        <li key={group.inward} style={{ marginBottom: 8 }}>
-                          <button
-                            type="button"
-                            disabled={saving}
-                            onClick={() =>
-                              setExpandedInward((prev) => (prev === group.inward ? "" : group.inward))
-                            }
-                            style={{
-                              width: "100%",
-                              textAlign: "left",
-                              borderRadius: 10,
-                              border: "1px solid #cbd5e1",
-                              background: open ? "#f8fafc" : "#ffffff",
-                              color: "#0f172a",
-                              padding: "10px 12px",
-                              cursor: saving ? "wait" : "pointer"
-                            }}
-                          >
-                            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "ui-monospace, Menlo, monospace" }}>
-                              {group.inward}
-                            </div>
-                            <div style={{ fontSize: 12, color: "#334155", marginTop: 2 }}>
-                              {group.qty ? `${group.qty} KG` : "—"}
-                              {group.bags.length ? ` · ${group.bags.length} bag${group.bags.length === 1 ? "" : "s"}` : ""}
-                            </div>
-                          </button>
-                          {open ? (
-                            <ul style={{ listStyle: "none", padding: "8px 0 0 0", margin: 0 }}>
-                              {group.bags.length ? (
-                                group.bags.map((bag) => {
-                                  const bagCode = bag.bag_code || bag.bagCode;
-                                  const key = `${group.inward}::${bagCode}`;
-                                  const selected = selectedBagKey === key;
-                                  return (
-                                    <li key={key} style={{ marginBottom: 6 }}>
-        <button
-          type="button"
-                                        disabled={saving}
-                                        onClick={() => setSelectedBagKey(key)}
-                                        onDoubleClick={() => handleLoadBag(bag.lot, bag)}
-                                        style={{
-                                          width: "100%",
-                                          textAlign: "left",
-                                          borderRadius: 8,
-                                          border: selected ? "1px solid #2563eb" : "1px solid #e2e8f0",
-                                          background: selected ? "#eff6ff" : "#ffffff",
-                                          color: "#0f172a",
-                                          padding: "8px 10px",
-                                          cursor: saving ? "wait" : "pointer",
-                                          fontFamily: "ui-monospace, Menlo, monospace",
-                                          fontSize: 12
-                                        }}
-                                      >
-                                        {bagCode}
-                                        {bag.rotary ? ` · ${bag.rotary}` : ""}
-                                        {bag.grade_label || bag.grade ? ` · ${bag.grade_label || bag.grade}` : ""}
-                                        {bagWeight(bag) ? ` · ${bagWeight(bag)} KG` : ""}
-                                        <span style={{ display: "block", color: "#64748b", fontSize: 11, marginTop: 2 }}>
-                                          Double-click to load
-                                        </span>
-        </button>
-                                    </li>
-                                  );
-                                })
-                              ) : (
-                                <li style={{ fontSize: 12, color: "#64748b", padding: "6px 10px" }}>
-                                  No rotary bags left on this inward.
-                                </li>
-                              )}
-                            </ul>
-                          ) : null}
-                        </li>
-                      );
-                    })}
+                    {pendingBags.map((bag) => (
+                      <li key={`${bag.inward}::${bag.bagCode}`} style={{ marginBottom: 8 }}>
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={() => handleLoadBag(bag.lot, bag)}
+                          style={{
+                            width: "100%",
+                            textAlign: "left",
+                            borderRadius: 10,
+                            border: "1px solid #cbd5e1",
+                            background: "#ffffff",
+                            color: "#0f172a",
+                            padding: "10px 12px",
+                            cursor: saving ? "wait" : "pointer"
+                          }}
+                        >
+                          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "ui-monospace, Menlo, monospace" }}>
+                            {bag.bagCode}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#334155", marginTop: 2 }}>
+                            {bagWeight(bag) ? `${bagWeight(bag)} kg` : ""}
+                            {bag.inward ? ` · ${bag.inward}` : ""}
+                            {bag.rotary ? ` · ${bag.rotary}` : ""}
+                            {bag.grade_label || bag.grade ? ` · ${bag.grade_label || bag.grade}` : ""}
+                          </div>
+                        </button>
+                      </li>
+                    ))}
                   </ul>
                 )}
               </div>

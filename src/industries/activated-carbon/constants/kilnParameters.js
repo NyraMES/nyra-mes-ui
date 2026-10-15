@@ -1,3 +1,19 @@
+export function isScrapKilnParameter(definition) {
+  const blob = `${definition?.key || ""} ${definition?.label || ""}`;
+  return /scrap/i.test(blob);
+}
+
+export function formatKilnParameters(parameters) {
+  if (!parameters || typeof parameters !== "object") return "";
+  const labels = Object.fromEntries(
+    AC_KILN_PARAMETER_DEFINITIONS.map((row) => [row.key, row.label])
+  );
+  return Object.entries(parameters)
+    .filter(([key, value]) => value != null && value !== "" && !/scrap/i.test(key))
+    .map(([key, value]) => `${labels[key] || key}: ${value}`)
+    .join(" · ");
+}
+
 /** Fallback kiln parameter catalog when API is unreachable. */
 export const AC_KILN_PARAMETER_DEFINITIONS = [
   { key: "zone1_temp_c", label: "Zone 1 Temp (°C)", unit: "°C" },

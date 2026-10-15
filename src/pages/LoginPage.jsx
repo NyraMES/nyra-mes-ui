@@ -63,13 +63,19 @@ function LoginPage() {
     loginWithPassword,
     completeNewPassword,
     loginWithHostedUi,
-    resetLoginFlow
+    resetLoginFlow,
+    requestPasswordReset,
+    confirmPasswordReset
   } = useAuth();
   const { selectIndustryContext } = useAppContext();
   const hostBinding = resolveAppHostBinding();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [resetStep, setResetStep] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [resetNotice, setResetNotice] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [needsNewPassword, setNeedsNewPassword] = useState(false);
@@ -83,11 +89,16 @@ function LoginPage() {
     hostBinding?.industry_key || location.state?.industry;
   const fromLanding = Boolean(location.state?.fromLanding);
   const industrySelection = industry ? getIndustrySelection(industry) : null;
-  const redirectTo =
-    location.state?.from ||
-    hostBinding?.landing_path ||
-    industrySelection?.landing_path ||
-    "/workflow";
+  const activatedCarbonHome =
+    industry === "activated-carbon" ||
+    hostBinding?.industry_key === "activated-carbon" ||
+    String(location.state?.from || "").startsWith("/activated-carbon");
+  const redirectTo = activatedCarbonHome
+    ? "/activated-carbon/dashboard"
+    : location.state?.from ||
+      hostBinding?.landing_path ||
+      industrySelection?.landing_path ||
+      "/workflow";
   const loginTenantScope = industry
     ? resolvePlantScopeForIndustry(industry, isAuthenticated ? user : null)
     : resolvePlantScopeForIndustry(null, isAuthenticated ? user : null);
@@ -182,6 +193,52 @@ function LoginPage() {
     setProfileAttributes({ email: "", name: "" });
     setPassword("");
     setError("");
+  };
+
+  const onRequestReset = async () => {
+    if (!username.trim()) {
+      setError("Enter your username, then reset the password.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    setResetNotice("");
+    try {
+      await requestPasswordReset(username.trim());
+      setResetStep("code");
+      setResetNotice(`A reset code was emailed for ${username.trim()}. Enter that code and a new password.`);
+    } catch (err) {
+      setError(err?.message || "Could not send a reset code.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onConfirmReset = async (event) => {
+    event.preventDefault();
+    if (newPassword.length < 8) {
+      setError("New password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("New password and confirmation do not match.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      await confirmPasswordReset(username.trim(), resetCode, newPassword);
+      setResetStep("");
+      setResetCode("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPassword("");
+      setResetNotice("Password updated. Sign in with the new password.");
+    } catch (err) {
+      setError(err?.message || "Could not reset the password.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const onStartOver = async () => {
@@ -549,7 +606,7 @@ function LoginPage() {
                       <div className="login-form" style={{ marginBottom: 16 }}>
                         <div className="login-info">
                           Signed in as{" "}
-                          <strong>{user.email || user.username || "your account"}</strong>
+                          <strong>{user.displayName || user.username || user.email || "your account"}</strong>
                           {user.tenant_code ? ` (${user.tenant_code})` : ""}.
                         </div>
                         <button
@@ -586,14 +643,23 @@ function LoginPage() {
 
                     <div className="login-field">
                       <label htmlFor="login-password">Password</label>
-                      <input
-                        id="login-password"
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        autoComplete="current-password"
-                        required
-                      />
+                      <div className="login-password-row">
+                        <input
+                          id="login-password"
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          autoComplete="current-password"
+                          required
+                        />
+                        <button
+                          type="button"
+                          className="login-show-password"
+                          onClick={() => setShowPassword((current) => !current)}
+                        >
+                          {showPassword ? "Hide" : "Show"}
+                        </button>
+                      </div>
                     </div>
 
                     {error && <div className="login-error">{error}</div>}
@@ -616,13 +682,55 @@ function LoginPage() {
                       </button>
                     )}
 
+                    {resetNotice ? <div className="login-info">{resetNotice}</div> : null}
+                    {resetStep === "code" ? (
+                      <div className="login-form" style={{ marginTop: 8 }}>
+                        <div className="login-field">
+                          <label htmlFor="login-reset-code">Reset code</label>
+                          <input
+                            id="login-reset-code"
+                            value={resetCode}
+                            onChange={(e) => setResetCode(e.target.value)}
+                            autoComplete="one-time-code"
+                          />
+                        </div>
+                        <div className="login-field">
+                          <label htmlFor="login-reset-password">New password</label>
+                          <input
+                            id="login-reset-password"
+                            type={showPassword ? "text" : "password"}
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            autoComplete="new-password"
+                          />
+                        </div>
+                        <div className="login-field">
+                          <label htmlFor="login-reset-confirm">Confirm new password</label>
+                          <input
+                            id="login-reset-confirm"
+                            type={showPassword ? "text" : "password"}
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            autoComplete="new-password"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={submitting}
+                          className="login-btn login-btn-primary"
+                          onClick={(event) => void onConfirmReset(event)}
+                        >
+                          {submitting ? "Saving…" : "Set new password"}
+                        </button>
+                      </div>
+                    ) : null}
                     <button
                       type="button"
                       disabled={submitting}
-                      onClick={() => void onStartOver()}
+                      onClick={() => void onRequestReset()}
                       className="login-reset-link"
                     >
-                      Start over / reset password flow
+                      Reset password
                     </button>
                   </form>
                   </>

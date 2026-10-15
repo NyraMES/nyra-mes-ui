@@ -12,8 +12,18 @@ export const AC_PROCESS_STEP_OPTIONS = [
   { value: "PACKING", label: "Packing" }
 ];
 
-/** Admin-configurable steps between inward receipt and release. */
+/** Admin-configurable steps between inward receipt and release.
+
+Bag split keeps operation code IN-RMS-BAG and process step PACKING so existing
+packing triples stay on the same subject.
+*/
 export const AC_INBOUND_PROCESS_STEP_OPTIONS = [
+  {
+    value: "BAG_SPLIT",
+    label: "Bag split",
+    operationCode: "IN-RMS-BAG",
+    processStep: "PACKING"
+  },
   { value: "CRUSHING", label: "Crushing / Sizing" },
   { value: "DRYING", label: "Drying" },
   { value: "GRINDING", label: "Grinding / Milling" },
@@ -64,15 +74,23 @@ export function displayInboundStepLabel(stepOrName) {
   if (stepOrName && typeof stepOrName === "object") {
     const name = String(stepOrName.operation_name || "").trim();
     const code = String(stepOrName.operation_code || "").trim();
-    if (isRmsOutwardLabel(code, name)) return "RMS Outward — crusher output bags";
+    const rawCode = code.toUpperCase();
+    const lower = name.toLowerCase();
+    if (rawCode === "IN-CRUSHER" || lower.includes("crusher") || lower.includes("rms screen")) return "RMS Screen";
+    if (rawCode === "IN-LAB") return "Lab";
+    if (rawCode === "IN-RMS-BAG") return "Bag generation";
+    if (isRmsOutwardLabel(code, name)) return "RMS Outward";
     if (name) return name;
     stepOrName = stepOrName.process_step;
   }
   const raw = String(stepOrName || "").trim();
   if (!raw) return "Inbound step";
   const code = raw.toUpperCase().replace(/\s+/g, "_");
+  if (code === "IN-CRUSHER") return "RMS Screen";
+  if (code === "IN-LAB") return "Lab";
+  if (code === "IN-RMS-BAG") return "Bag generation";
   if (isRmsOutwardLabel(code, raw)) {
-    return "RMS Outward — crusher output bags";
+    return "RMS Outward";
   }
   const opt =
     AC_INBOUND_PROCESS_STEP_OPTIONS.find((o) => o.value === code) ||
@@ -80,11 +98,11 @@ export function displayInboundStepLabel(stepOrName) {
   return opt?.label || raw;
 }
 
-/** Lab capture — moisture, dust, AD, approve/deny. Do not inherit other SCREENING fields. */
+/** Lab capture — moisture, dust, volatility, approve/deny. Historical AD stays on old triples. */
 export const AC_LAB_INBOUND_PARAMETERS = [
   { key: "moisture_pct", label: "Moisture", unit: "%" },
   { key: "dust_pct", label: "Dust", unit: "%" },
-  { key: "ad_value", label: "AD value" },
+  { key: "volatility", label: "Volatility", unit: "%" },
   { key: "qc_decision", label: "Approve / deny" },
   { key: "qc_remarks", label: "Remarks" }
 ];
@@ -97,9 +115,14 @@ export const AC_RM_OUTWARD_GRADES = [
 ];
 
 export function isAcKilnFeedOutwardBag(bag) {
-  const grade = String(bag?.grade || bag?.grade_label || "").toLowerCase();
-  if (!grade.trim()) return false;
-  return !grade.includes("unburnt") && !grade.includes("stone");
+  const grade = String(bag?.grade || bag?.grade_label || "").trim();
+  const code = String(bag?.bag_code || bag?.bagCode || "").trim();
+  if (!grade) return Boolean(code);
+  const lower = grade.toLowerCase();
+  if (lower === "unburnt" || lower === "stones" || lower === "stone") return false;
+  if (lower.includes("unburnt")) return false;
+  if (/(^|[^a-z])stones?([^a-z]|$)/.test(lower)) return false;
+  return true;
 }
 
 /** Inward crusher performance mesh shares — % (keep grade / rotary / dust / moisture). */

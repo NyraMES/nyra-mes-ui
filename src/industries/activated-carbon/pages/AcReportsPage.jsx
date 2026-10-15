@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+
+import { useAuth } from "../../../auth/AuthContext";
 import { Link } from "react-router-dom";
 
 import {
@@ -26,6 +28,7 @@ import {
   AcRmsLossChart
 } from "../components/AcProductionStockCharts";
 import AcAlert from "../components/AcAlert";
+import { userCanSeeAcSupplier } from "../utils/acPrivileges";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
 
 const REPORT_SECTIONS = [
@@ -39,6 +42,11 @@ const REPORT_SECTIONS = [
 ];
 
 function AcReportsPage() {
+  const { user } = useAuth();
+  const showSupplier = userCanSeeAcSupplier(user?.roles || [], user);
+  const sections = REPORT_SECTIONS.filter(
+    (row) => showSupplier || (row.id !== "charcoal" && row.id !== "gcharcoal")
+  );
   const { config: ontologyConfig } = useAcOntologyConfig();
   const impurityFields = useMemo(
     () => getImpurityChartConfig(ontologyConfig),
@@ -114,7 +122,7 @@ function AcReportsPage() {
       {error ? <AcAlert variant="error">{error}</AcAlert> : null}
 
       <div className="flex flex-wrap gap-2">
-        {REPORT_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <button
             key={section.id}
             type="button"
@@ -135,8 +143,8 @@ function AcReportsPage() {
       ) : (
         <WfCard>
           <WfCardHeader
-            title={REPORT_SECTIONS.find((s) => s.id === activeSection)?.label || "Report"}
-            subtitle={`Testbed: ${REPORT_SECTIONS.find((s) => s.id === activeSection)?.testbedRef || ""}`}
+            title={sections.find((s) => s.id === activeSection)?.label || "Report"}
+            subtitle={`Testbed: ${sections.find((s) => s.id === activeSection)?.testbedRef || ""}`}
           />
           <WfCardBody>
             {activeSection === "stages" && <AcFlowStageBar stages={stockDetail?.stages || []} />}
@@ -145,10 +153,10 @@ function AcReportsPage() {
             {activeSection === "grade-stock" && (
               <AcGradeWiseStockChart grades={stockDetail?.grades || []} />
             )}
-            {activeSection === "charcoal" && (
+            {showSupplier && activeSection === "charcoal" && (
               <AcCharcoalStockChart chart={stockDetail?.charcoal} narrow={false} />
             )}
-            {activeSection === "gcharcoal" && (
+            {showSupplier && activeSection === "gcharcoal" && (
               <AcGcharcoalStockChart chart={stockDetail?.gcharcoal} narrow={false} />
             )}
             {activeSection === "impurities" && (

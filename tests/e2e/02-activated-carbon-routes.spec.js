@@ -14,7 +14,7 @@ const AC_ROUTES = [
   { path: "/activated-carbon/screening", heading: "Execution" },
   { path: "/activated-carbon/kiln-parameters", heading: "Execution" },
   { path: "/activated-carbon/quality-testing", heading: "Execution" },
-  { path: "/activated-carbon/customer-sales", heading: "Customer purchase order" },
+  { path: "/activated-carbon/admin?tab=work-orders", heading: "Admin" },
   { path: "/activated-carbon/dispatch", heading: "Dispatch" },
   { path: "/activated-carbon/reports", heading: "Production reports" },
   { path: "/activated-carbon/yield-analysis", heading: "Operational Intelligence Hub" },

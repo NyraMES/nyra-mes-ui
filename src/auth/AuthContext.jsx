@@ -7,9 +7,11 @@ import {
   useState
 } from "react";
 import {
+  confirmResetPassword,
   confirmSignIn,
   fetchAuthSession,
   getCurrentUser,
+  resetPassword,
   signIn,
   signInWithRedirect,
   signOut
@@ -92,7 +94,7 @@ async function loadDevUser() {
     email: data.email,
     tenant_code: resolveUserTenantCode(data),
     roles: data.roles || data.groups || [],
-    displayName: data.email || data.username,
+    displayName: data.display_name || data.username || data.email,
     roleLabel: primaryRoleLabel(data.roles || data.groups || [])
   };
 }
@@ -132,7 +134,7 @@ async function loadCognitoUser({ forceRefresh = true } = {}) {
       email: profile?.email,
       tenant_code: resolveUserTenantCode(profile),
       roles,
-      displayName: profile?.email || profile?.username,
+      displayName: profile?.display_name || profile?.username || profile?.email,
       roleLabel: primaryRoleLabel(roles)
     }
   };
@@ -366,6 +368,28 @@ export function AuthProvider({ children }) {
     setToken(null);
   }, [serverAuthEnabled]);
 
+  const requestPasswordReset = useCallback(async (username) => {
+    ensureAmplifyConfigured();
+    try {
+      await resetPassword({ username: String(username || "").trim() });
+    } catch (err) {
+      throw new Error(formatAuthError(err));
+    }
+  }, []);
+
+  const confirmPasswordReset = useCallback(async (username, confirmationCode, newPassword) => {
+    ensureAmplifyConfigured();
+    try {
+      await confirmResetPassword({
+        username: String(username || "").trim(),
+        confirmationCode: String(confirmationCode || "").trim(),
+        newPassword
+      });
+    } catch (err) {
+      throw new Error(formatAuthError(err));
+    }
+  }, []);
+
   const resetLoginFlow = useCallback(async () => {
     if (serverAuthEnabled && isAmplifyConfigured()) {
       await clearExistingSession();
@@ -389,7 +413,9 @@ export function AuthProvider({ children }) {
       completeNewPassword,
       loginWithHostedUi,
       logout,
-      resetLoginFlow
+      resetLoginFlow,
+      requestPasswordReset,
+      confirmPasswordReset
     }),
     [
       user,
@@ -402,7 +428,9 @@ export function AuthProvider({ children }) {
       completeNewPassword,
       loginWithHostedUi,
       logout,
-      resetLoginFlow
+      resetLoginFlow,
+      requestPasswordReset,
+      confirmPasswordReset
     ]
   );
 

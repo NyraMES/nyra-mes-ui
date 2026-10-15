@@ -1,4 +1,15 @@
-const DEFAULT_RESIDENCE_MIN = 60;
+/** Masters monthly capacity is the designed output at this residence. */
+export const KILN_REFERENCE_RESIDENCE_MIN = 60;
+
+const DEFAULT_RESIDENCE_MIN = KILN_REFERENCE_RESIDENCE_MIN;
+
+export function kilnDesignedMonthlyKg(monthlyCapacityKg, residenceMin, fallback = 15000) {
+  const base = Number(monthlyCapacityKg);
+  const capacity = Number.isFinite(base) && base > 0 ? base : fallback;
+  const residence = Number(residenceMin);
+  if (!Number.isFinite(residence) || residence <= 0) return capacity;
+  return Math.max(1, Math.round((capacity * KILN_REFERENCE_RESIDENCE_MIN) / residence));
+}
 
 function parseTime(value) {
   if (!value) return null;
@@ -50,7 +61,8 @@ export function buildAcKilnLoaderRows({
       parseTime(lot?.created_at) ||
       parseTime(kiln.last_reading_at);
 
-    const residenceMinutes = Number(lot?.residence_time_min) || residenceMin;
+    const residenceMinutes =
+      Number(kiln?.residence_time_min) || Number(lot?.residence_time_min) || residenceMin;
     const totalHours = residenceMinutes / 60;
     const elapsedHours = loadedAt ? (Date.now() - loadedAt.getTime()) / 3_600_000 : 0;
     const lastReadingAt = parseTime(kiln.last_reading_at);
@@ -119,6 +131,33 @@ function resolveCycleStatus({ kilnStatus, pendingHours, progress, hasLoad }) {
     return { text: "Activating", tone: "active" };
   }
   return { text: "Loaded — awaiting start", tone: "neutral" };
+}
+
+/** Kiln output has covered the work order quantity, so it leaves the kiln dropdown. */
+export function kilnOutputDone(row) {
+  if (String(row?.status || "").toUpperCase() === "FULFILLED") return true;
+  const qty = Number(row?.quantity_kg || 0);
+  const output = Number(row?.output_kg || 0);
+  return qty > 0 && output >= qty - 0.001;
+}
+
+/** Bag codes already charged to a kiln. They are not offered for another load. */
+export function loadedKilnBagCodes(lots = [], extraEvents = []) {
+  const codes = new Set();
+  const take = (row) => {
+    const code = String(row?.bag_code || row?.bagCode || "").trim();
+    if (code) codes.add(code);
+  };
+  for (const lot of lots || []) {
+    const meta = lot?.metadata || lot?.metadata_ || {};
+    const events = [
+      ...(Array.isArray(lot?.kiln_feed_events) ? lot.kiln_feed_events : []),
+      ...(Array.isArray(meta.kiln_feed_events) ? meta.kiln_feed_events : [])
+    ];
+    events.forEach(take);
+  }
+  (extraEvents || []).forEach(take);
+  return codes;
 }
 
 export function parseKilnFeedEvents(raw = []) {

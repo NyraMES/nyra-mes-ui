@@ -3,12 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   createAcKilnParameters,
   fetchAcKilnParameters,
+  fetchAcKilnSetpoints,
   formatAcApiError
 } from "../../../services/activatedCarbonApi";
 import AcAlert from "./AcAlert";
 import useAcMasters from "../hooks/useAcMasters";
 import useBusyGuard from "../hooks/useBusyGuard";
-import { AC_KILN_PARAMETER_DEFINITIONS } from "../constants/kilnParameters";
+import { AC_KILN_PARAMETER_DEFINITIONS, formatKilnParameters, isScrapKilnParameter } from "../constants/kilnParameters";
 
 function kilnLetter(kiln, index = 0) {
   const blob = `${kiln?.resource_name || ""} ${kiln?.resource_code || ""}`.toUpperCase();
@@ -39,6 +40,7 @@ export default function AcKilnParametersPanel() {
   const [kilnCode, setKilnCode] = useState("");
   const [values, setValues] = useState({});
   const [rows, setRows] = useState([]);
+  const [currentSettings, setCurrentSettings] = useState(null);
   const [error, setError] = useState("");
   const { busy: saving, run } = useBusyGuard();
 
@@ -46,10 +48,11 @@ export default function AcKilnParametersPanel() {
     () => [...(masters.kilns || [])].sort((a, b) => kilnLetter(a).localeCompare(kilnLetter(b))),
     [masters.kilns]
   );
-  const definitions =
+  const definitions = (
     masters.kiln_parameter_definitions?.length > 0
       ? masters.kiln_parameter_definitions
-      : AC_KILN_PARAMETER_DEFINITIONS;
+      : AC_KILN_PARAMETER_DEFINITIONS
+  ).filter((row) => !isScrapKilnParameter(row));
 
   useEffect(() => {
     if (!kilnCode && kilns[0]) setKilnCode(kilns[0].resource_code);
@@ -62,6 +65,9 @@ export default function AcKilnParametersPanel() {
 
   useEffect(() => {
     reload();
+    fetchAcKilnSetpoints()
+      .then((plan) => setCurrentSettings(plan))
+      .catch(() => setCurrentSettings(null));
   }, []);
 
   const handleAdd = () =>
@@ -124,6 +130,17 @@ export default function AcKilnParametersPanel() {
       </div>
 
       {error ? <AcAlert variant="error">{error}</AcAlert> : null}
+
+      {(() => {
+        const kiln = (currentSettings?.kilns || []).find((row) => row.resource_code === kilnCode);
+        const text = formatKilnParameters(kiln?.parameters);
+        if (!text) return null;
+        return (
+          <p className="text-sm text-slate-700 m-0">
+            Current settings{kiln?.updated_at ? ` (${formatStamp(kiln.updated_at)})` : ""}: {text}
+          </p>
+        );
+      })()}
 
       <div className="rounded-md border border-slate-200 bg-white px-3 py-3 space-y-3">
         <p className="text-sm font-semibold m-0">Kiln readings</p>

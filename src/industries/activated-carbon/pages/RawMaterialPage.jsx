@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import { useAuth } from "../../../auth/AuthContext";
 import { useAppContext } from "../../../context/AppContext";
 import { AC_CAPABILITIES } from "../menu/activatedCarbonMenu";
 import { resolveAcAppContext } from "../utils/acContextUtils";
+import { acRawMaterialTabsForRoles } from "../utils/acPrivileges";
 import { SectionHeader } from "../../../workflow/ui";
 import RawMaterialInwardPage from "./RawMaterialInwardPage";
 import RawMaterialInboundPrepPage from "./RawMaterialInboundPrepPage";
@@ -13,8 +15,8 @@ import AcSectionReportsPanel from "../components/AcSectionReportsPanel";
 import "../styles/acMasters.css";
 
 const TABS = [
-  { id: "inward", label: "1 · Gate receipt", hint: "Supplier inward" },
-  { id: "prep", label: "2 · Inbound prep", hint: "Lab · RMS inward · crusher · RMS outward" },
+  { id: "inward", label: "1 · Gate receipt", hint: "DC and weight" },
+  { id: "prep", label: "2 · Inbound prep", hint: "Bag generation · Lab · RMS outward" },
   { id: "release", label: "3 · Release to production", hint: "Release inward order" },
   { id: "reports", label: "4 · Reports", hint: "Summary · details · Excel" }
 ];
@@ -22,19 +24,22 @@ const TABS = [
 function RawMaterialPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { context } = useAppContext();
   const caps = new Set(resolveAcAppContext(context).enabled_capabilities || []);
+  const allowedTabs = useMemo(
+    () => new Set(acRawMaterialTabsForRoles(user?.roles || [], user)),
+    [user]
+  );
 
   const visibleTabs = useMemo(
-    () => TABS.filter((t) => !t.capability || caps.has(t.capability)),
-    [caps]
+    () => TABS.filter((t) => allowedTabs.has(t.id) && (!t.capability || caps.has(t.capability))),
+    [allowedTabs, caps]
   );
 
   const initialTab =
     new URLSearchParams(location.search).get("tab") || visibleTabs[0]?.id || "inward";
   const [tab, setTab] = useState(initialTab);
-  const [prepFocusOrderId, setPrepFocusOrderId] = useState(null);
-  const [prepRefresh, setPrepRefresh] = useState(0);
 
   useEffect(() => {
     const next = new URLSearchParams(location.search).get("tab");
@@ -61,7 +66,7 @@ function RawMaterialPage() {
       <SectionHeader
         eyebrow="Inbound"
         title="Raw Material"
-        subtitle="Gate receipt → Lab → RMS inward → crusher → RMS outward (crusher output bags) → Release to Production. Then Execution (kiln feed first)."
+        subtitle="Gate receipt, then Inbound prep. The RMS engineer generates bags there. Lab and RMS outward follow, then Release to production."
       />
 
       <div className="ac-masters-tabs flex flex-wrap gap-2 mb-6 border-b border-white/15">
@@ -82,19 +87,10 @@ function RawMaterialPage() {
       </div>
 
       {tab === "inward" && (
-        <RawMaterialInwardPage
-          embedded
-          onInwardCreated={(orderId) => {
-            setPrepFocusOrderId(orderId);
-            setPrepRefresh((n) => n + 1);
-            selectTab("prep");
-          }}
-        />
+        <RawMaterialInwardPage embedded />
       )}
       {tab === "prep" && (
         <RawMaterialInboundPrepPage
-          focusOrderId={prepFocusOrderId}
-          refreshToken={prepRefresh}
           onReadyForRelease={() => {
             selectTab("release");
           }}

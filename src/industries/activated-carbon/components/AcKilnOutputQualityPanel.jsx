@@ -262,7 +262,24 @@ export default function AcKilnOutputQualityPanel({
           Bag
           {renderReadOnly(preview ? "—" : bag?.bag_code)}
         </label>
+        <label className="text-xs font-medium text-slate-600">
+          Work order
+          {renderReadOnly(preview ? "—" : bag?.work_order_code)}
+        </label>
+        <label className="text-xs font-medium text-slate-600">
+          Work order CTC
+          {renderReadOnly(preview ? "—" : bag?.work_order_ctc)}
+        </label>
       </div>
+      {bag?.ctc_match === false ? (
+        <p className="text-xs text-amber-700">
+          Measured CTC does not match this work order. Destoning still uses the measured CTC. This
+          bag is not counted toward the work-order quantity.
+        </p>
+      ) : null}
+      {bag?.ctc_match === true ? (
+        <p className="text-xs text-emerald-700">Measured CTC matches the work order.</p>
+      ) : null}
       <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
         {meshParams.map((param) => (
           <label key={paramKey(param)} className="text-xs font-medium text-slate-600">

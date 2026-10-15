@@ -4,8 +4,10 @@ import {
   createAcUser,
   fetchAcAssignableUserRoles,
   fetchAcUsers,
-  formatAcApiError
+  formatAcApiError,
+  updateAcUserNickname
 } from "../../../services/activatedCarbonApi";
+import { invalidateAcPersonLabels } from "../hooks/useAcPersonLabel";
 import { useAuth } from "../../../auth/AuthContext";
 import { useAppContext } from "../../../context/AppContext";
 import AcAlert from "../components/AcAlert";
@@ -32,7 +34,10 @@ function AcUsersPage({ embedded = false }) {
   const [loginSuffix, setLoginSuffix] = useState("@grcarbons");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [nickname, setNickname] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [nicknameDrafts, setNicknameDrafts] = useState({});
   const [roleCode, setRoleCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -54,6 +59,9 @@ function AcUsersPage({ embedded = false }) {
         fetchAcAssignableUserRoles()
       ]);
       setUsers(list);
+      setNicknameDrafts(
+        Object.fromEntries((list || []).map((row) => [row.user_id, row.display_name || ""]))
+      );
       setRoles(rolePayload.items || []);
       if (rolePayload.login_suffix) {
         setLoginSuffix(rolePayload.login_suffix);
@@ -81,6 +89,10 @@ function AcUsersPage({ embedded = false }) {
       setError(`User ID must end with ${loginSuffix}.`);
       return;
     }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters and include upper and lower case, a number, and a symbol.");
+      return;
+    }
     setSaving(true);
     setError("");
     setSuccess("");
@@ -88,13 +100,16 @@ function AcUsersPage({ embedded = false }) {
       const result = await createAcUser({
         username,
         email,
-        display_name: displayName,
-        role_code: roleCode
+        display_name: nickname,
+        role_code: roleCode,
+        password
       });
       setUsername("");
       setEmail("");
-      setDisplayName("");
+      setNickname("");
+      setPassword("");
       setCreated(result);
+      invalidateAcPersonLabels();
       setSuccess(result.cognito_message || "User created.");
       await load();
     } catch (err) {
@@ -104,9 +119,29 @@ function AcUsersPage({ embedded = false }) {
     }
   };
 
+  const saveNickname = async (row) => {
+    if (!canManage || saving) return;
+    const next = String(nicknameDrafts[row.user_id] || "").trim();
+    if (!next || next === String(row.display_name || "").trim()) return;
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      await updateAcUserNickname(row.user_id, next);
+      invalidateAcPersonLabels();
+      setSuccess(`Nickname for ${row.username || row.email} saved.`);
+      await load();
+    } catch (err) {
+      setError(formatAcApiError(err, "Could not save nickname"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const createdItems = created
     ? [
         { label: "User ID", value: created.username },
+        { label: "Nickname", value: created.display_name },
         { label: "Email", value: created.email },
         { label: "Role", value: created.role_label || created.role_code },
         created.temporary_password
@@ -126,8 +161,8 @@ function AcUsersPage({ embedded = false }) {
 
       {!canManage ? (
         <AcPermissionNotice
-          title="Administrator access required"
-          message="Only an Administrator can create users for this plant."
+          title="Admin access required"
+          message="Open Admin to create plant users."
         />
       ) : null}
 
@@ -168,16 +203,43 @@ function AcUsersPage({ embedded = false }) {
                 />
               </label>
               <label className="text-sm block">
-                <span className="block mb-1 font-medium text-slate-700">Display name</span>
+                <span className="block mb-1 font-medium text-slate-700">Nickname</span>
                 <input
                   type="text"
                   className="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-900"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Optional"
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
+                  placeholder="Ramesh"
+                  maxLength={64}
                   disabled={saving}
                   autoComplete="off"
                 />
+                <span className="mt-1 block text-xs text-slate-600">
+                  Shown on screens. Must be unique in this plant. Sign-in still uses the user id.
+                </span>
+              </label>
+              <label className="text-sm block">
+                <span className="block mb-1 font-medium text-slate-700">Temporary password</span>
+                <div className="flex gap-2">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="new-password"
+                    disabled={saving}
+                  />
+                  <button
+                    type="button"
+                    className="rounded border border-slate-300 px-3 text-xs font-semibold text-slate-700"
+                    onClick={() => setShowPassword((current) => !current)}
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+                <span className="mt-1 block text-xs text-slate-600">
+                  Emailed to the user. They sign in with it once and then choose their own password.
+                </span>
               </label>
               <AcFormSelect
                 label="Role"
@@ -197,7 +259,7 @@ function AcUsersPage({ embedded = false }) {
                 onSave={onCreate}
                 saving={saving}
                 saveLabel="Create user"
-                disabled={!username.trim() || !email.trim() || !roleCode}
+                disabled={!username.trim() || !email.trim() || !nickname.trim() || !roleCode}
               />
             </div>
           </WfCardBody>
@@ -214,7 +276,7 @@ function AcUsersPage({ embedded = false }) {
               <thead>
                 <tr className="text-left text-slate-500 border-b">
                   <th className="py-2">User ID</th>
-                  <th className="py-2">Name</th>
+                  <th className="py-2">Nickname</th>
                   <th className="py-2">Email</th>
                   <th className="py-2">Role</th>
                   <th className="py-2">Status</th>
@@ -224,7 +286,39 @@ function AcUsersPage({ embedded = false }) {
                 {users.map((row) => (
                   <tr key={row.user_id} className="border-b border-slate-100">
                     <td className="py-2 font-mono text-slate-800">{row.username || "—"}</td>
-                    <td className="py-2 text-slate-900">{row.display_name || "—"}</td>
+                    <td className="py-2">
+                      {canManage ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            className="w-40 rounded border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                            value={nicknameDrafts[row.user_id] ?? ""}
+                            maxLength={64}
+                            disabled={saving}
+                            onChange={(e) =>
+                              setNicknameDrafts((prev) => ({
+                                ...prev,
+                                [row.user_id]: e.target.value
+                              }))
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="text-xs text-blue-700 underline disabled:text-slate-400"
+                            disabled={
+                              saving ||
+                              String(nicknameDrafts[row.user_id] || "").trim() ===
+                                String(row.display_name || "").trim()
+                            }
+                            onClick={() => saveNickname(row)}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      ) : (
+                        row.display_name || "—"
+                      )}
+                    </td>
                     <td className="py-2 text-slate-700">{row.email}</td>
                     <td className="py-2 text-slate-800">{row.role_label || row.role_code}</td>
                     <td className="py-2">{row.is_active ? "Active" : "Inactive"}</td>

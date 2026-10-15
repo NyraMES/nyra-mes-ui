@@ -29,7 +29,6 @@ export default function AcDispatchSummary({ dashboard, readOnly = false }) {
   const dispatchedKg = Number(dashboard?.dispatched_kg_total || 0);
   const inStockKg = Number(dashboard?.finished_goods_stock_kg || 0);
   const recent = dashboard?.recent_dispatches || [];
-  const openPos = dashboard?.open_customer_orders || [];
 
   return (
     <div className="wf-light-panel rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 space-y-3">
@@ -49,7 +48,7 @@ export default function AcDispatchSummary({ dashboard, readOnly = false }) {
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
         <div className="rounded-lg bg-white border border-sky-100 px-3 py-2">
           <p className="text-[11px] uppercase tracking-wide text-slate-600">Shipments</p>
           <p className="text-lg font-bold text-slate-900 tabular-nums">{dispatchCount}</p>
@@ -62,10 +61,6 @@ export default function AcDispatchSummary({ dashboard, readOnly = false }) {
           <p className="text-[11px] uppercase tracking-wide text-slate-600">In stock now</p>
           <p className="text-lg font-bold text-emerald-900 tabular-nums">{formatKg(inStockKg)}</p>
         </div>
-        <div className="rounded-lg bg-white border border-amber-100 px-3 py-2">
-          <p className="text-[11px] uppercase tracking-wide text-slate-600">Open POs</p>
-          <p className="text-lg font-bold text-amber-950 tabular-nums">{openPos.length}</p>
-        </div>
       </div>
 
       {recent.length > 0 ? (
@@ -74,7 +69,7 @@ export default function AcDispatchSummary({ dashboard, readOnly = false }) {
             <thead>
               <tr className="border-b border-sky-200 text-left text-slate-700">
                 <th className="py-1.5 pr-3 font-semibold">Dispatch</th>
-                <th className="py-1.5 pr-3 font-semibold">PO</th>
+                <th className="py-1.5 pr-3 font-semibold">Work order</th>
                 <th className="py-1.5 pr-3 font-semibold">Lot</th>
                 <th className="py-1.5 pr-3 font-semibold text-right">Qty</th>
                 <th className="py-1.5 font-semibold">When</th>
@@ -84,7 +79,7 @@ export default function AcDispatchSummary({ dashboard, readOnly = false }) {
               {recent.map((row) => (
                 <tr key={row.dispatch_id} className="border-b border-sky-100 text-slate-900">
                   <td className="py-1.5 pr-3 font-mono text-xs">{row.dispatch_id}</td>
-                  <td className="py-1.5 pr-3 font-mono">{row.order_code || "—"}</td>
+                  <td className="py-1.5 pr-3 font-mono">{row.work_order_code || "—"}</td>
                   <td className="py-1.5 pr-3 font-mono">{row.lot_code || "—"}</td>
                   <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
                     {formatKg(row.quantity_kg)}
@@ -97,8 +92,7 @@ export default function AcDispatchSummary({ dashboard, readOnly = false }) {
         </div>
       ) : (
         <p className="text-sm text-slate-900">
-          No shipments recorded yet. Confirm dispatch against a customer PO — stock is reduced and
-          the PO closes when fully shipped.
+          No shipments recorded yet. Dispatch from In Stock by work order number.
         </p>
       )}
     </div>

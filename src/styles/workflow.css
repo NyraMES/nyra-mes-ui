@@ -1793,6 +1793,39 @@ span.wf-btn.wf-btn--disabled {
   min-height: calc(100vh - 4rem);
 }
 
+.wf-ac-sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .wf-shell.wf-ac-shell .wf-sidebar {
+    position: fixed;
+    z-index: 60;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    height: 100dvh;
+    max-width: min(16.5rem, 88vw);
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+  }
+
+  .wf-shell.wf-ac-shell .wf-sidebar.wf-sidebar--open {
+    transform: translateX(0);
+  }
+
+  .wf-ac-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    border: 0;
+    padding: 0;
+    background: rgba(8, 20, 40, 0.45);
+    cursor: pointer;
+  }
+}
+
 .wf-shell.wf-ac-shell .wf-ac-page-frame .ac-masters-tabs button {
   color: rgba(203, 213, 225, 0.92) !important;
   border-bottom-color: transparent !important;
@@ -2165,6 +2198,26 @@ span.wf-btn.wf-btn--disabled {
   border-radius: 10px;
   padding: 14px;
   background: #fff;
+  color: #0f172a;
+}
+
+.wf-ac-routing-preview-title {
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.wf-ac-routing-preview-meta,
+.wf-ac-routing-preview-section {
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.wf-ac-routing-preview-section {
+  margin-top: 10px;
+  font-weight: 600;
 }
 
 .wf-ac-routing-preview-header {
@@ -2202,8 +2255,36 @@ span.wf-btn.wf-btn--disabled {
 }
 
 .wf-ac-routing-flow-label {
-  color: #334155;
-  font-weight: 500;
+  color: #1e293b;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+/* Gate receipt process card sits on a light panel inside the navy frame.
+   The frame sets white text, which made the material name unreadable. */
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-ac-gate-receipt-flow {
+  color: #0f172a !important;
+  background: #eff6ff !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-ac-gate-receipt-flow .text-slate-500 {
+  color: #475569 !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-ac-gate-receipt-flow .text-slate-900,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-ac-routing-preview,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-ac-routing-preview-title {
+  color: #0f172a !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-ac-routing-preview-meta,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-ac-routing-preview-section,
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-ac-routing-flow-label {
+  color: #1e293b !important;
+}
+
+.wf-shell.wf-ac-shell .wf-ac-page-frame .wf-ac-routing-flow-seq {
+  color: #ffffff !important;
 }
 
 .wf-ac-routing-flow-arrow {

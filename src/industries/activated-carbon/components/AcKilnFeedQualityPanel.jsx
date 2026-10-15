@@ -5,6 +5,7 @@ import { formatApiError } from "../../../services/api";
 import { fetchAcInwardBags, saveAcKilnFeedBagQc } from "../../../services/activatedCarbonApi";
 import { isAcKilnFeedOutwardBag } from "../constants/processSteps";
 import AcAlert from "./AcAlert";
+import useAcPersonLabel from "../hooks/useAcPersonLabel";
 
 const MESH_LABELS = ["+2", "2/3", "3/6", "6/8", "8/10", "10/12", "12/14", "-14"];
 
@@ -97,6 +98,7 @@ export default function AcKilnFeedQualityPanel({
   lot = null
 }) {
   const { user } = useAuth() || {};
+  const person = useAcPersonLabel();
   const fields = useMemo(() => {
     const incoming = parameters.length ? parameters : [];
     const byCode = new Map();
@@ -345,7 +347,7 @@ export default function AcKilnFeedQualityPanel({
                     <span className="text-sm font-mono">{bag.bag_code}</span>
                     <span className="text-sm font-mono">{formatWeight(bag.weight_kg)}</span>
                     <span className="text-sm">
-                      {bag.created_by || bag.kiln_feed_qc?.user_id || "—"}
+                      {person(bag.created_by || bag.kiln_feed_qc?.user_id) || "—"}
                     </span>
                   </button>
 

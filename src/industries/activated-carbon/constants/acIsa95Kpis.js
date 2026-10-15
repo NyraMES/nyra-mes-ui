@@ -315,6 +315,11 @@ function sumLotKg(lotLines, predicate) {
   }, 0);
 }
 
+/** Kilograms of this lot still on the floor, after shipment and In Stock bags. */
+function lotStillInProcessKg(row) {
+  return Math.max(0, num(row.lot_quantity) - num(row.dispatched_kg) - num(row.in_stock_kg));
+}
+
 function countLots(lotLines, predicate) {
   return (lotLines || []).filter(predicate).length;
 }
@@ -335,33 +340,42 @@ export function computeAcStockBuckets(dashboard) {
   const raw = dashboard?.raw_material || {};
 
   const lotStatus = (row) => String(row.status || "").toUpperCase();
-  const lotKg = (row) => num(row.lot_quantity);
 
   // Raw charcoal at dock — QC-passed inward not yet released to production.
   const charcoalStock = num(raw.pending_kg);
 
-  // Released lots awaiting kiln (CREATED) — not double-counted with raw.charged_kg.
-  const gcharcoalStock = sumLotKg(lotLines, (row) => lotStatus(row) === "CREATED");
+  // Released lots awaiting kiln (CREATED). Shipped or In Stock kg is not counted here.
+  const gcharcoalStock = (lotLines || []).reduce((sum, row) => {
+    if (lotStatus(row) !== "CREATED") return sum;
+    return sum + lotStillInProcessKg(row);
+  }, 0);
 
-  // On kiln / shop floor (activation, routing, execution in progress).
-  const exkilnWithStone = sumLotKg(lotLines, (row) => {
+  // On kiln / shop floor. Lot quantity minus what has shipped and what is already In Stock.
+  const exkilnWithStone = (lotLines || []).reduce((sum, row) => {
     const status = lotStatus(row);
-    if (status === "IN_PROGRESS") return true;
     const stage = lotStage(row);
-    return (
+    const inProcess =
+      status === "IN_PROGRESS" ||
       stage.includes("kiln feed") ||
       stage.includes("routing / execution") ||
-      (stage.includes("execution (") && !stage.includes("execution complete"))
-    );
-  });
+      (stage.includes("execution (") && !stage.includes("execution complete"));
+    if (!inProcess || status === "CREATED") return sum;
+    return sum + lotStillInProcessKg(row);
+  }, 0);
 
   // Shop-floor complete, not yet in finished-goods stock.
-  const exkilnWithoutStone = sumLotKg(lotLines, (row) => {
+  const exkilnWithoutStone = (lotLines || []).reduce((sum, row) => {
     const status = lotStatus(row);
-    if (status === "COMPLETED" || status === "QC_PENDING") return true;
     const stage = lotStage(row);
-    return stage.includes("execution complete") || stage.includes("shop-floor complete");
-  });
+    if (status === "CREATED" || status === "IN_PROGRESS") return sum;
+    const done =
+      status === "COMPLETED" ||
+      status === "QC_PENDING" ||
+      stage.includes("execution complete") ||
+      stage.includes("shop-floor complete");
+    if (!done) return sum;
+    return sum + lotStillInProcessKg(row);
+  }, 0);
 
   const stockedFromLots = sumLotKg(lotLines, (row) => lotStatus(row) === "STOCKED");
   const gradeFromApi = (dashboard?.grade_stock || []).reduce(

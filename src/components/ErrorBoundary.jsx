@@ -12,6 +12,17 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     console.error("Nyra MES UI error:", error, info);
+    const message = String(error?.message || "");
+    if (!/dynamically imported module|Importing a module script failed/i.test(message)) return;
+    try {
+      if (sessionStorage.getItem("nyra-mes-chunk-reload") === "1") return;
+      sessionStorage.setItem("nyra-mes-chunk-reload", "1");
+    } catch {
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("_", String(Date.now()));
+    window.location.replace(url.toString());
   }
 
   componentDidUpdate(prevProps) {
@@ -49,7 +60,16 @@ export default class ErrorBoundary extends Component {
             </p>
             <button
               type="button"
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                try {
+                  sessionStorage.removeItem("nyra-mes-chunk-reload");
+                } catch {
+                  /* ignore */
+                }
+                const url = new URL(window.location.href);
+                url.searchParams.set("_", String(Date.now()));
+                window.location.replace(url.toString());
+              }}
               style={{
                 background: "#2563eb",
                 color: "#fff",

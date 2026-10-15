@@ -6,25 +6,16 @@ import AcAlert from "./AcAlert";
 /**
  * Grade-wise in-stock summary for dashboard and dispatch readiness.
  */
-export default function AcGradeStockAlert({ gradeStock = [], openOrders = [], readOnly = false }) {
+export default function AcGradeStockAlert({ gradeStock = [], readOnly = false }) {
   const basePath = useIndustryBasePath();
   const rows = gradeStock.filter((g) => Number(g.quantity_kg) > 0);
-  const pendingDispatch = openOrders.filter((o) => Number(o.remaining_kg) > 0);
   const totalKg = rows.reduce((sum, row) => sum + Number(row.quantity_kg || 0), 0);
 
-  if (!rows.length && !pendingDispatch.length) {
+  if (!rows.length) {
     return (
       <AcAlert variant="warning">
-        No finished-goods stock by grade yet. Complete execution, screening, and quality testing on a
-        lot, then raise a{" "}
-        {readOnly ? (
-          <span className="underline font-medium text-amber-900/60">Customer PO</span>
-        ) : (
-          <Link to={`${basePath}/customer-sales`} className="underline font-medium text-amber-900">
-            Customer PO
-          </Link>
-        )}{" "}
-        before dispatch.
+        No finished-goods stock by grade yet. Complete execution, screening, and quality testing,
+        then dispatch from In Stock.
       </AcAlert>
     );
   }
@@ -71,42 +62,6 @@ export default function AcGradeStockAlert({ gradeStock = [], openOrders = [], re
               className="inline-block mt-2 text-xs font-semibold text-emerald-900 underline"
             >
               View stocked lots & dispatch →
-            </Link>
-          )}
-        </div>
-      ) : null}
-
-      {pendingDispatch.length > 0 ? (
-        <div className="wf-light-panel rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 mb-2">
-            Customer POs awaiting dispatch
-          </p>
-          <ul className="text-sm space-y-2">
-            {pendingDispatch.map((order) => (
-              <li key={order.customer_order_id} className="text-amber-950">
-                <div className="flex justify-between gap-3">
-                  <span className="font-mono font-medium">{order.order_code}</span>
-                  <span className="font-mono tabular-nums">
-                    {Number(order.remaining_kg).toLocaleString()} KG due
-                  </span>
-                </div>
-                <p className="text-xs text-amber-800 mt-0.5">
-                  {order.product_code} · stock {Number(order.stock_on_hand_kg).toLocaleString()} KG
-                  {order.can_dispatch_from_stock ? " · ready to ship" : " · short — see Customer PO"}
-                </p>
-              </li>
-            ))}
-          </ul>
-          {readOnly ? (
-            <span className="inline-block mt-2 text-xs font-semibold text-amber-900/50">
-              Open Dispatch →
-            </span>
-          ) : (
-            <Link
-              to={`${basePath}/dispatch`}
-              className="inline-block mt-2 text-xs font-semibold text-amber-900 underline"
-            >
-              Open Dispatch →
             </Link>
           )}
         </div>

@@ -21,6 +21,13 @@ const EMPTY_PROCESS = {
   parameters: []
 };
 
+function lockedInboundChoice(stepOptions, stepChoice, operationCode) {
+  const byChoice = stepOptions.find((opt) => opt.value === stepChoice && opt.operationCode);
+  if (byChoice) return byChoice;
+  const code = String(operationCode || "").toUpperCase();
+  return stepOptions.find((opt) => opt.operationCode && opt.operationCode === code) || null;
+}
+
 function AcProcessEntryScreen({
   mode = "add",
   phase = "shop",
@@ -46,10 +53,12 @@ function AcProcessEntryScreen({
       const execParams = (initial.parameters || []).filter(
         (p) => (p.used_at || usedAt) !== "feasibility"
       );
+      const locked = lockedInboundChoice(stepOptions, "", initial.operation_code);
       setForm({
         operation_name: initial.operation_name || "",
-        operation_code: initial.operation_code || "",
-        process_step: initial.process_step || defaultStep,
+        operation_code: locked?.operationCode || initial.operation_code || "",
+        process_step: locked?.processStep || initial.process_step || defaultStep,
+        step_choice: locked?.value || initial.process_step || defaultStep,
         is_mandatory: initial.is_mandatory !== false,
         parameters: execParams.length
           ? execParams.map((p) =>
@@ -59,9 +68,10 @@ function AcProcessEntryScreen({
                 used_at: usedAt
               })
             )
-          : defaultExecutionParametersForStep(initial.process_step).map((p) => ({
+          : defaultExecutionParametersForStep(locked?.value || initial.process_step).map((p) => ({
               ...p,
-              used_at: usedAt
+              used_at: usedAt,
+              process_step: locked?.processStep || initial.process_step
             }))
       });
       setInsertAt(stepNumber);
@@ -71,6 +81,7 @@ function AcProcessEntryScreen({
       setForm({
         ...EMPTY_PROCESS,
         process_step: step,
+        step_choice: step,
         parameters: defaultExecutionParametersForStep(step).map((p) => ({
           ...p,
           used_at: usedAt
@@ -88,20 +99,28 @@ function AcProcessEntryScreen({
       if (field === "process_step") {
         const step = String(value || "").toUpperCase();
         const opt = stepOptions.find((o) => o.value === step);
+        next.step_choice = step;
         if (opt && !prev.operation_name.trim()) {
           next.operation_name = opt.label;
         }
-        if (
-          !prev.operation_code.trim() ||
-          prev.operation_code.startsWith("OP-") ||
-          prev.operation_code.startsWith("IN-")
-        ) {
-          next.operation_code = `${codePrefix}${step.replace(/[^A-Z0-9]+/g, "-")}`;
+        if (opt?.operationCode) {
+          next.operation_code = opt.operationCode;
+          next.process_step = opt.processStep || step;
+        } else {
+          next.process_step = step;
+          if (
+            !prev.operation_code.trim() ||
+            prev.operation_code.startsWith("OP-") ||
+            prev.operation_code.startsWith("IN-")
+          ) {
+            next.operation_code = `${codePrefix}${step.replace(/[^A-Z0-9]+/g, "-")}`;
+          }
         }
-        if (mode === "add" && (seededDefaults || !prev.parameters?.length)) {
+        if (mode === "add" && (seededDefaults || !prev.parameters?.length || opt?.operationCode)) {
           next.parameters = defaultExecutionParametersForStep(step).map((p) => ({
             ...p,
-            used_at: usedAt
+            used_at: usedAt,
+            process_step: opt?.processStep || step
           }));
           setSeededDefaults(true);
         }
@@ -118,7 +137,13 @@ function AcProcessEntryScreen({
       return;
     }
 
-    const processStep = (form.process_step || "").trim().toUpperCase();
+    const locked = lockedInboundChoice(stepOptions, form.step_choice, form.operation_code);
+    const processStep = (locked?.processStep || form.process_step || "").trim().toUpperCase();
+    const operationCode = (
+      locked?.operationCode ||
+      form.operation_code ||
+      suggestOperationCode(processStep, insertAt)
+    ).trim();
     const executionParams = (form.parameters || []).filter((p) => p.key?.trim() && p.label?.trim());
 
     if (!executionParams.length) {
@@ -139,7 +164,7 @@ function AcProcessEntryScreen({
 
     onSave?.({
       operation_name: form.operation_name.trim(),
-      operation_code: (form.operation_code || suggestOperationCode(processStep, insertAt)).trim(),
+      operation_code: operationCode,
       process_step: processStep,
       is_mandatory: form.is_mandatory !== false,
       insertAt: Number(insertAt) || 1,
@@ -204,7 +229,7 @@ function AcProcessEntryScreen({
             <span className="block mb-1 font-medium text-slate-700">Type of work</span>
             <select
               className="w-full rounded-lg border border-slate-300 px-3 py-2"
-              value={form.process_step}
+              value={form.step_choice || form.process_step}
               onChange={(e) => updateField("process_step", e.target.value)}
             >
               {stepOptions.map((opt) => (

@@ -45,12 +45,12 @@ import {
   acExecutionStageOf,
   unlockAcAnyOrderStart
 } from "../../industries/activated-carbon/utils/acExecutionOperations";
-import AcKilnFeedQualityPanel from "../../industries/activated-carbon/components/AcKilnFeedQualityPanel";
 import AcKilnOutputQualityPanel from "../../industries/activated-carbon/components/AcKilnOutputQualityPanel";
 import AcDestoningPanel from "../../industries/activated-carbon/components/AcDestoningPanel";
 import AcDestoningQualityPanel from "../../industries/activated-carbon/components/AcDestoningQualityPanel";
 import AcPostActivationLivePanel from "../../industries/activated-carbon/components/AcPostActivationLivePanel";
 import AcPostActivationQualityPanel from "../../industries/activated-carbon/components/AcPostActivationQualityPanel";
+import AcActivationFlow from "../../industries/activated-carbon/components/AcActivationFlow";
 import AcSectionReportsPanel from "../../industries/activated-carbon/components/AcSectionReportsPanel";
 import AcKilnParametersPanel from "../../industries/activated-carbon/components/AcKilnParametersPanel";
 import {
@@ -772,15 +772,18 @@ function ExecutionScreen({ variant = "default" }) {
   return (
     <div className="space-y-6">
       {isAcUnified ? (
+      <>
       <SectionHeader
         eyebrow={execStage === "post_activation" ? "Post-activation" : "Activation"}
         title="Execution"
         subtitle={
           execStage === "post_activation"
-            ? "Screening through finished goods. Choose a step from the process map on the right."
-            : "Kiln feed first, then output, destoning, and kiln parameters. Choose a step from the process map on the right."
+            ? "Screening through blending, then In Stock. Choose a step from the process map."
+            : ""
         }
       />
+      {execStage === "post_activation" ? null : <AcActivationFlow />}
+      </>
       ) : (
       <SectionHeader
         eyebrow="Stage 07 · Work Order Execution"
@@ -1073,13 +1076,6 @@ function ExecutionScreen({ variant = "default" }) {
                     return found ? next : [...next, updated];
                   });
                 }}
-              />
-            )}
-
-            {isAcUnified && !acReportsOpen && !acKilnParamsOpen && isAcKilnFeedQualityStep(selectedOp) && (
-              <AcKilnFeedQualityPanel
-                parameters={selectedOp.parameters || []}
-                lot={selectedLot}
               />
             )}
 

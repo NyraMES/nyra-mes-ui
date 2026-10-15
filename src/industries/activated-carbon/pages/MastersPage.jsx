@@ -4,6 +4,7 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthContext";
 import { userCanAccessAcMasters } from "../utils/acPrivileges";
 import {
+  createAcDestoner,
   createAcKiln,
   createAcKilnParameter,
   createAcRawMaterialType,
@@ -15,7 +16,11 @@ import {
   updateAcRawMaterialType,
   updateAcResource,
   fetchAcUtilizationRag,
-  saveAcUtilizationRag
+  saveAcUtilizationRag,
+  fetchAcProcessRules,
+  saveAcProcessRules,
+  fetchAcMeshGradeMap,
+  saveAcMeshGradeMap
 } from "../../../services/activatedCarbonApi";
 import { AC_KILN_PARAMETER_DEFINITIONS } from "../constants/kilnParameters";
 import { AC_KILN_UOM_OPTIONS } from "../constants/uomOptions";
@@ -34,12 +39,12 @@ import "../styles/acMasters.css";
 
 const STATION_LABELS = {
   destoning: "Destoning",
+  screening_after_destoning: "Screening after Destoning",
   screening: "Screening",
   dedusting: "De-dusting",
   crushing: "Crushing",
   demagnetisation: "De-magnetisation",
-  blending: "Blending",
-  fg_qc: "Finished Goods"
+  blending: "Blending"
 };
 
 function CapacityCell({ row, canEdit, onSave }) {
@@ -174,10 +179,22 @@ function MastersPage() {
   const { user } = useAuth();
   const canManageMasters = userCanAccessAcMasters(user?.roles || [], user);
   const canConfigureProcess = canManageMasters;
-
   const location = useLocation();
   const navigate = useNavigate();
   const defaultTab = "raw-material-types";
+  const tabs = useMemo(
+    () => [
+      { id: "raw-material-types", label: "Materials & steps", hint: "Super Admin only" },
+      { id: "plant-resources", label: "Machines & kilns", hint: "Plant equipment" },
+      { id: "routing", label: "Routing reference", hint: "Read-only summary" },
+      { id: "kiln-parameters", label: "Kiln readings", hint: "Shift data fields" },
+      { id: "inbound-settings", label: "Inbound settings", hint: "Rotaries & RMS outward" },
+      { id: "process-rules", label: "Process rules", hint: "Bags, moisture, CTC" },
+      { id: "mesh-grades", label: "Mesh configuration", hint: "A–E destoning grades" },
+      { id: "ontology-ui", label: "Advanced settings", hint: "Super Admin" }
+    ],
+    []
+  );
   const initialTab =
     new URLSearchParams(location.search).get("tab") || defaultTab;
   const [tab, setTab] = useState(initialTab);
@@ -186,11 +203,15 @@ function MastersPage() {
   const [rawMaterialTypes, setRawMaterialTypes] = useState([]);
   const [plantResources, setPlantResources] = useState({
     kilns: [],
+    destoners: [],
     machines: [],
     tools: [],
     labor_pools: [],
     equipment: []
   });
+  const [destonerName, setDestonerName] = useState("");
+  const [destonerSlots, setDestonerSlots] = useState("6");
+  const [destonerMonthlyCapacity, setDestonerMonthlyCapacity] = useState("15000");
   const [kilnName, setKilnName] = useState("");
   const [resourceName, setResourceName] = useState("");
   const [resourceType, setResourceType] = useState("TOOL");
@@ -202,6 +223,22 @@ function MastersPage() {
   const [ragGreen, setRagGreen] = useState("90");
   const [ragAmber, setRagAmber] = useState("70");
   const [ragRed, setRagRed] = useState("70");
+  const [processRules, setProcessRules] = useState({
+    source_bag_kg: 25,
+    repack_bag_kg: 500,
+    moisture_dry_threshold_pct: 20,
+    ctc_decimals: 1,
+    post_activation_output_minutes: {
+      screening: 20,
+      dedusting: 10,
+      destoning: 15,
+      demagnetisation: 5,
+      material_handling: 10,
+      crushing: "",
+      blending: ""
+    }
+  });
+  const [meshGrade, setMeshGrade] = useState({ rows: [], configurations: [], notes: "" });
   const [paramKey, setParamKey] = useState("");
   const [paramLabel, setParamLabel] = useState("");
   const [paramUnit, setParamUnit] = useState("");
@@ -233,7 +270,12 @@ function MastersPage() {
     setRoutingMaster(masters.routing_master || null);
     setPlantResources({
       kilns: masters.kilns || [],
-      machines: masters.machines || [],
+      destoners: masters.destoners || [],
+      machines: (masters.machines || []).filter((row) => {
+        const station = String(row.station || "").toLowerCase();
+        const name = String(row.resource_name || "").toLowerCase();
+        return station !== "fg_qc" && !name.includes("finished goods");
+      }),
       tools: masters.tools || [],
       labor_pools: masters.labor_pools || [],
       equipment: masters.equipment || []
@@ -249,12 +291,31 @@ function MastersPage() {
     } catch {
       /* dashboard still uses ISA-95 defaults */
     }
+    try {
+      const rules = await fetchAcProcessRules();
+      if (rules) setProcessRules(rules);
+    } catch {
+      /* defaults */
+    }
+    try {
+      const mesh = await fetchAcMeshGradeMap();
+      if (mesh) setMeshGrade(mesh);
+    } catch {
+      /* empty mapping until GR supplies it */
+    }
   };
 
   useEffect(() => {
     const nextTab = new URLSearchParams(location.search).get("tab");
-    if (nextTab) setTab(nextTab);
-  }, [location.search]);
+    const allowed = new Set(tabs.map((row) => row.id));
+    if (nextTab && allowed.has(nextTab)) {
+      setTab(nextTab);
+      return;
+    }
+    if (!allowed.has(tab)) {
+      setTab(defaultTab);
+    }
+  }, [location.search, tabs, tab, defaultTab]);
 
   useEffect(() => {
     (async () => {
@@ -402,6 +463,41 @@ function MastersPage() {
     }
   };
 
+  const handleSaveDestoner = async () => {
+    if (!destonerName.trim()) {
+      setError("Enter a destoning machine name.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      const row = await createAcDestoner({
+        destoner_name: destonerName.trim(),
+        unit_count: parseInt(destonerSlots, 10) || 6,
+        monthly_capacity_kg: parseInt(destonerMonthlyCapacity, 10) || 15000
+      });
+      showCreatedIds(
+        "Destoning machine registered",
+        "Code assigned automatically (RES-DESTON-*). The plant supervisor sets today's CTC under Admin — Destoner CTC allocation.",
+        [
+          { label: "Destoner", value: row.resource_code },
+          { label: "Name", value: row.resource_name || destonerName.trim() },
+          { label: "Loader slots", value: String(row.unit_count ?? 6) },
+          { label: "Monthly capacity", value: `${row.monthly_capacity_kg ?? 15000} kg` }
+        ]
+      );
+      setDestonerName("");
+      setDestonerSlots("6");
+      setDestonerMonthlyCapacity("15000");
+      await reloadKilnParams();
+    } catch (e) {
+      setError(formatAcApiError(e, "Save failed"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSaveResource = async () => {
     if (!resourceName.trim()) {
       setError("Enter a resource name.");
@@ -537,24 +633,23 @@ function MastersPage() {
     }
   };
 
-  const tabs = useMemo(
-    () => [
-      { id: "raw-material-types", label: "Materials & steps", hint: "Super Admin only" },
-      { id: "plant-resources", label: "Machines & kilns", hint: "Plant equipment" },
-      { id: "routing", label: "Routing reference", hint: "Read-only summary" },
-      { id: "kiln-parameters", label: "Kiln readings", hint: "Shift data fields" },
-      { id: "inbound-settings", label: "Inbound settings", hint: "Rotaries & RMS outward" },
-      { id: "ontology-ui", label: "Advanced settings", hint: "Super Admin" }
-    ],
-    []
-  );
-
   const selectTab = (id) => {
     setTab(id);
     navigate({ pathname: location.pathname, search: `?tab=${id}` }, { replace: true });
   };
 
-  if (tab === "customers" || tab === "suppliers") {
+  if (tab === "customers") {
+    return <Navigate to="/activated-carbon/admin?tab=users" replace />;
+  }
+  if (tab === "kiln-ctc") {
+    return <Navigate to="/activated-carbon/admin?tab=work-orders" replace />;
+  }
+  if (
+    tab === "suppliers" ||
+    tab === "destoning-ctc" ||
+    tab === "work-orders" ||
+    tab === "users"
+  ) {
     return <Navigate to={`/activated-carbon/admin?tab=${tab}`} replace />;
   }
 
@@ -572,10 +667,10 @@ function MastersPage() {
       <SectionHeader
         eyebrow="Setup"
         title="Plant setup"
-        subtitle="Raw materials, machines, routing, and kiln readings. Customers and suppliers are under Admin."
+        subtitle="Raw materials, machines, routing, and kiln readings. Destoner CTC allocation is under Admin."
       />
 
-      {!canManageMasters && !canConfigureProcess ? (
+      {!canManageMasters ? (
         <AcPermissionNotice
           title="You can view setup data"
           message="Your account can look up materials and plant equipment. Ask a Super Administrator if something needs to be added or changed."
@@ -681,6 +776,52 @@ function MastersPage() {
 
               <WfCard className="mb-6">
                 <WfCardHeader
+                  title="Add destoning machine"
+                  subtitle="Four destoners are created for the plant. Add more only if a new machine is installed."
+                />
+                <WfCardBody>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+                    <label className="text-sm block">
+                      <span className="block mb-1 font-medium text-slate-700">Destoner name</span>
+                      <input
+                        className="w-full rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
+                        value={destonerName}
+                        onChange={(e) => setDestonerName(e.target.value)}
+                        placeholder="e.g. Destoner 05"
+                      />
+                    </label>
+                    <label className="text-sm block">
+                      <span className="block mb-1 font-medium text-slate-700">Loader slots</span>
+                      <input
+                        type="number"
+                        min="1"
+                        className="w-full max-w-[8rem] rounded border border-slate-300 px-3 py-2"
+                        value={destonerSlots}
+                        onChange={(e) => setDestonerSlots(e.target.value)}
+                      />
+                    </label>
+                    <label className="text-sm block">
+                      <span className="block mb-1 font-medium text-slate-700">Monthly designed capacity (kg)</span>
+                      <input
+                        type="number"
+                        min="1"
+                        className="w-full max-w-[10rem] rounded border border-slate-300 px-3 py-2"
+                        value={destonerMonthlyCapacity}
+                        onChange={(e) => setDestonerMonthlyCapacity(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                  <AcSaveBar
+                    onSave={handleSaveDestoner}
+                    saving={saving}
+                    saveLabel="Add destoner"
+                    disabled={!destonerName.trim()}
+                  />
+                </WfCardBody>
+              </WfCard>
+
+              <WfCard className="mb-6">
+                <WfCardHeader
                   title="Register plant resource"
                   subtitle="Name and type only — the system assigns codes for you."
                 />
@@ -771,11 +912,29 @@ function MastersPage() {
             </>
           ) : (
             <AcPermissionNotice
-              title="View only"
-              message="Only a Plant Administrator can register kilns and other equipment."
+              title="View destoning machines"
+              message="nyraservices registers destoners. The plant supervisor sets today's CTC under Admin — Destoner CTC allocation."
             />
           )}
 
+          <WfCard className="mb-6">
+            <WfCardHeader
+              title="Destoning machines"
+              subtitle="Four destoners on the plant floor. Supervisor assigns today's CTC under Admin — Destoner CTC allocation before load."
+            />
+            <WfCardBody>
+              <ResourceTable
+                rows={plantResources.destoners}
+                emptyLabel="No destoning machines registered yet."
+                showStation
+                canEdit={canManageMasters}
+                onSaveCapacity={handleSaveMonthlyCapacity}
+              />
+            </WfCardBody>
+          </WfCard>
+
+          {canManageMasters ? (
+          <>
           <WfCard className="mb-6">
             <WfCardHeader
               title="Utilization range (red / amber / green)"
@@ -886,6 +1045,8 @@ function MastersPage() {
               />
             </WfCardBody>
           </WfCard>
+          </>
+          ) : null}
         </>
       )}
 
@@ -1093,6 +1254,243 @@ function MastersPage() {
             message="Rotary inventory and RM outward splits can be changed by a Plant Administrator or Super Administrator."
           />
         ))}
+
+      {tab === "process-rules" &&
+        (canConfigureProcess ? (
+          <WfCard>
+            <WfCardHeader
+              title="Process rules"
+              subtitle="Bag sizes, moisture drying gate, and destoning CTC compare. Screens read these masters — they are not hardcoded."
+            />
+            <WfCardBody>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+                <label className="text-sm block">
+                  <span className="block mb-1 font-medium">Source bag (kg)</span>
+                  <input
+                    type="number"
+                    className="w-full rounded border border-slate-300 px-3 py-2"
+                    value={processRules.source_bag_kg}
+                    onChange={(e) =>
+                      setProcessRules((prev) => ({ ...prev, source_bag_kg: e.target.value }))
+                    }
+                  />
+                </label>
+                <label className="text-sm block">
+                  <span className="block mb-1 font-medium">Repack bag (kg)</span>
+                  <input
+                    type="number"
+                    className="w-full rounded border border-slate-300 px-3 py-2"
+                    value={processRules.repack_bag_kg}
+                    onChange={(e) =>
+                      setProcessRules((prev) => ({ ...prev, repack_bag_kg: e.target.value }))
+                    }
+                  />
+                </label>
+                <label className="text-sm block">
+                  <span className="block mb-1 font-medium">Dry if moisture above (%)</span>
+                  <input
+                    type="number"
+                    className="w-full rounded border border-slate-300 px-3 py-2"
+                    value={processRules.moisture_dry_threshold_pct}
+                    onChange={(e) =>
+                      setProcessRules((prev) => ({
+                        ...prev,
+                        moisture_dry_threshold_pct: e.target.value
+                      }))
+                    }
+                  />
+                </label>
+                <label className="text-sm block">
+                  <span className="block mb-1 font-medium">CTC decimals (exact match)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="4"
+                    className="w-full rounded border border-slate-300 px-3 py-2"
+                    value={processRules.ctc_decimals}
+                    onChange={(e) =>
+                      setProcessRules((prev) => ({ ...prev, ctc_decimals: e.target.value }))
+                    }
+                  />
+                </label>
+              </div>
+              <p className="text-sm font-medium text-slate-800 mt-4 mb-2">
+                Minutes from load to output
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+                {[
+                  ["screening", "Screening (10–20 min)"],
+                  ["dedusting", "De-dusting (5–10 min)"],
+                  ["destoning", "Destoning (10–15 min)"],
+                  ["demagnetisation", "De-magnetisation (3–5 min)"],
+                  ["material_handling", "Material handling (5–10 min)"],
+                  ["crushing", "Crushing"],
+                  ["blending", "Blending"]
+                ].map(([key, label]) => (
+                  <label key={key} className="text-sm block">
+                    <span className="block mb-1 font-medium">{label}</span>
+                    <input
+                      type="number"
+                      min="1"
+                      className="w-full rounded border border-slate-300 px-3 py-2"
+                      value={processRules.post_activation_output_minutes?.[key] ?? ""}
+                      onChange={(e) =>
+                        setProcessRules((prev) => ({
+                          ...prev,
+                          post_activation_output_minutes: {
+                            ...(prev.post_activation_output_minutes || {}),
+                            [key]: e.target.value
+                          }
+                        }))
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500 mt-3">
+                Estimated time for a 500 kg bag. The saved minute is the top of each range, so a
+                bag still inside the estimate stays in process. Crushing and blending are blank
+                because the estimate does not list them. Material handling is recorded here and
+                is not a machine loss line.
+              </p>
+              <p className="text-xs text-slate-500 mt-3">
+                Destoning quality checks for stones: Yes returns the bag to destoning, No
+                sends it to Screening. In Stock is set later in post-activation. Kiln output
+                QC is required before destoning load.
+              </p>
+              <AcSaveBar
+                onSave={async () => {
+                  setSaving(true);
+                  setError("");
+                  try {
+                    const saved = await saveAcProcessRules({
+                      ...processRules,
+                      source_bag_kg: Number(processRules.source_bag_kg),
+                      repack_bag_kg: Number(processRules.repack_bag_kg),
+                      moisture_dry_threshold_pct: Number(processRules.moisture_dry_threshold_pct),
+                      ctc_decimals: Number(processRules.ctc_decimals),
+                      post_activation_output_minutes: Object.fromEntries(
+                        [
+                          "screening",
+                          "dedusting",
+                          "destoning",
+                          "demagnetisation",
+                          "material_handling",
+                          "crushing",
+                          "blending"
+                        ].map(
+                          (key) => {
+                            const raw = processRules.post_activation_output_minutes?.[key];
+                            const number = Number(raw);
+                            return [
+                              key,
+                              raw === "" || raw == null || !Number.isFinite(number) || number <= 0
+                                ? null
+                                : number
+                            ];
+                          }
+                        )
+                      )
+                    });
+                    setProcessRules(saved);
+                    setSuccess("Process rules saved.");
+                  } catch (e) {
+                    setError(formatAcApiError(e, "Could not save process rules"));
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                saving={saving}
+                saveLabel="Save process rules"
+              />
+            </WfCardBody>
+          </WfCard>
+        ) : (
+          <AcPermissionNotice
+            title="Process rules"
+            message="Bag, moisture, and CTC rules can only be changed by a Super Administrator."
+          />
+        ))}
+
+      {tab === "mesh-grades" && (
+        <WfCard>
+          <WfCardHeader
+            title="Mesh configuration"
+            subtitle="Grade labels for mesh configurations A–E. Daily destoning in Admin is CTC only."
+          />
+          <WfCardBody>
+            <p className="text-sm text-slate-600 mb-3">
+              {meshGrade.notes ||
+                "Grade labels below are used when a mesh configuration is selected on destoning quality."}
+            </p>
+            {(meshGrade.configurations || []).length === 0 ? (
+              <p className="text-sm text-slate-500">No mesh configurations yet.</p>
+            ) : (
+              <table className="w-full text-sm max-w-3xl">
+                <thead>
+                  <tr className="text-left text-slate-500 border-b">
+                    <th className="py-2">Mesh type selected</th>
+                    <th className="py-2">Output grades displayed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(meshGrade.configurations || []).map((row) => (
+                    <tr key={row.code} className="border-b border-slate-100">
+                      <td className="py-2 text-slate-900">{row.label || `Mesh configuration ${row.code}`}</td>
+                      <td className="py-2">
+                        {canConfigureProcess ? (
+                          <input
+                            className="w-full rounded border border-slate-300 px-3 py-2"
+                            value={(row.grades || []).join(", ")}
+                            onChange={(e) =>
+                              setMeshGrade((prev) => ({
+                                ...prev,
+                                configurations: (prev.configurations || []).map((item) =>
+                                  item.code === row.code
+                                    ? {
+                                        ...item,
+                                        grades: e.target.value
+                                          .split(",")
+                                          .map((part) => part.trim())
+                                          .filter(Boolean)
+                                      }
+                                    : item
+                                )
+                              }))
+                            }
+                            placeholder="+3, 3/4, -4"
+                          />
+                        ) : (
+                          <span>{(row.grades || []).join(", ") || "—"}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {canConfigureProcess ? (
+              <AcSaveBar
+                onSave={async () => {
+                  setSaving(true);
+                  setError("");
+                  try {
+                    const saved = await saveAcMeshGradeMap(meshGrade);
+                    setMeshGrade(saved);
+                    setSuccess("Mesh configurations saved.");
+                  } catch (e) {
+                    setError(formatAcApiError(e, "Could not save mesh configuration"));
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                saving={saving}
+                saveLabel="Save mesh configurations"
+              />
+            ) : null}
+          </WfCardBody>
+        </WfCard>
+      )}
 
       {tab === "ontology-ui" &&
         (canConfigureProcess ? (

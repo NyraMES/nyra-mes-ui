@@ -504,7 +504,7 @@ function RawMaterialProcessFlowEditor({
           Every raw material requires <strong>Inward</strong> and <strong>Incoming QC</strong> on
           the Raw Material page. Below, configure which shop-floor processes apply to{" "}
           <strong>{draft.product_name || "this material"}</strong> after release — kiln feed,
-          screening, destoning, finished-goods QC (→ in stock), and their tracking fields.
+          screening, destoning, and In Stock, and their tracking fields.
         </p>
       ) : null}
 
@@ -529,7 +529,7 @@ function RawMaterialProcessFlowEditor({
           Plant story: <strong>Gate receipt</strong> (Raw Material Inward tab) →{" "}
           <strong>inbound prep</strong> (Lab / RMS bags / crusher / RM outward) →{" "}
           <strong>Release to Production</strong> → <strong>Activation</strong> (pre-kiln + kiln shop
-          steps) → <strong>Post-activation</strong> → <strong>Finished goods QC</strong> → in stock.
+          steps) → <strong>Post-activation</strong> → <strong>In Stock</strong>.
         </p>
       ) : null}
 

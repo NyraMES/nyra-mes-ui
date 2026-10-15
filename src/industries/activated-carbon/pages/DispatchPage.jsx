@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
 
 import { useAppContext } from "../../../context/AppContext";
-import useIndustryBasePath from "../../../hooks/useIndustryBasePath";
 import useAcPageRefresh from "../hooks/useAcPageRefresh";
 import {
-  bagMatchesDispatchOrder,
+  bagMatchesWorkOrder,
   createAcDispatchFromOrder,
   fetchAcDispatches,
   fetchAcInStockBags,
-  fetchAcOpenCustomerOrders,
+  fetchAcWorkOrders,
   formatAcApiError
 } from "../../../services/activatedCarbonApi";
 import { isAcContextReady } from "../utils/acContextUtils";
@@ -25,7 +23,7 @@ const SOURCE_LABELS = {
   dedusting: "De-dusting",
   demagnetisation: "De-magnetisation",
   blending: "Blending",
-  fg_qc: "Finished Goods"
+  fg_qc: "In Stock"
 };
 
 function formatKg(value) {
@@ -38,7 +36,7 @@ function sourceLabel(source) {
   return SOURCE_LABELS[source] || source || "In Stock";
 }
 
-function StockSummary({ bags, loading }) {
+function StockSummary({ bags, loading, workOrderCode = "" }) {
   const [openSource, setOpenSource] = useState("");
 
   const groups = useMemo(() => {
@@ -63,8 +61,8 @@ function StockSummary({ bags, loading }) {
   if (!bags.length) {
     return (
       <p className="text-sm text-slate-600">
-        No bags in stock yet. Set destination to In Stock on destoning, crushing, or
-        de-magnetisation quality.
+        No bags in stock{workOrderCode ? ` for ${workOrderCode}` : ""} yet. Set destination to
+        In Stock on a post-activation quality step.
       </p>
     );
   }
@@ -73,7 +71,9 @@ function StockSummary({ bags, loading }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Available stock</p>
+          <p className="text-xs uppercase tracking-wide text-slate-500">
+            Available stock{workOrderCode ? ` · ${workOrderCode}` : ""}
+          </p>
           <p className="text-lg font-semibold text-slate-900 tabular-nums">{formatKg(totalKg)}</p>
         </div>
         <p className="text-sm text-slate-600">{bags.length} bag{bags.length === 1 ? "" : "s"}</p>
@@ -101,6 +101,7 @@ function StockSummary({ bags, loading }) {
                   <thead>
                     <tr className="text-left text-slate-500">
                       <th className="px-4 py-2 font-semibold">Bag</th>
+                      <th className="px-4 py-2 font-semibold">Work order</th>
                       <th className="px-4 py-2 font-semibold">Grade</th>
                       <th className="px-4 py-2 font-semibold text-right">Quantity</th>
                     </tr>
@@ -109,6 +110,7 @@ function StockSummary({ bags, loading }) {
                     {group.bags.map((bag) => (
                       <tr key={bag.bag_code} className="border-t border-slate-50 text-slate-900">
                         <td className="px-4 py-2 font-mono">{bag.bag_code}</td>
+                        <td className="px-4 py-2 font-mono">{bag.work_order_code || "—"}</td>
                         <td className="px-4 py-2">{bag.grade || "In Stock"}</td>
                         <td className="px-4 py-2 text-right font-mono tabular-nums">
                           {formatKg(bag.remaining_kg)}
@@ -128,11 +130,9 @@ function StockSummary({ bags, loading }) {
 
 function DispatchPage() {
   const { context, loading: contextLoading } = useAppContext();
-  const basePath = useIndustryBasePath();
   const { focusTick } = useAcPageRefresh();
-  const [searchParams] = useSearchParams();
 
-  const [openOrders, setOpenOrders] = useState([]);
+  const [workOrders, setWorkOrders] = useState([]);
   const [inStockBags, setInStockBags] = useState([]);
   const [dispatches, setDispatches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -140,22 +140,21 @@ function DispatchPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const [customerOrderId, setCustomerOrderId] = useState("");
-  const [bagCode, setBagCode] = useState("");
+  const [workOrderCode, setWorkOrderCode] = useState("");
+  const [selectedBags, setSelectedBags] = useState([]);
   const [dispatchQty, setDispatchQty] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
   const [transporterName, setTransporterName] = useState("");
 
   const reload = useCallback(async () => {
-    const [orders, bags, history] = await Promise.all([
-      fetchAcOpenCustomerOrders(),
+    const [bags, history, woData] = await Promise.all([
       fetchAcInStockBags(),
-      fetchAcDispatches()
+      fetchAcDispatches(),
+      fetchAcWorkOrders()
     ]);
-    setOpenOrders(orders || []);
     setInStockBags(bags || []);
     setDispatches(history || []);
-    return orders || [];
+    setWorkOrders(woData?.work_orders || []);
   }, []);
 
   useEffect(() => {
@@ -167,55 +166,70 @@ function DispatchPage() {
       .finally(() => setLoading(false));
   }, [context, contextLoading, context.tenant_code, context.workspace_code, focusTick, reload]);
 
-  useEffect(() => {
-    const preselect = searchParams.get("order");
-    if (!preselect || !openOrders.length) return;
-    const match = openOrders.find((o) => o.order_code === preselect);
-    if (match) setCustomerOrderId(String(match.customer_order_id));
-  }, [searchParams, openOrders]);
-
-  const selectedOrder = useMemo(
-    () => openOrders.find((o) => String(o.customer_order_id) === String(customerOrderId)),
-    [openOrders, customerOrderId]
+  const selectedWorkOrder = useMemo(
+    () => workOrders.find((row) => row.work_order_code === workOrderCode) || null,
+    [workOrders, workOrderCode]
   );
 
   const eligibleBags = useMemo(() => {
-    if (!selectedOrder) return inStockBags;
-    return inStockBags.filter((bag) => bagMatchesDispatchOrder(bag, selectedOrder));
-  }, [inStockBags, selectedOrder]);
+    if (!workOrderCode) return [];
+    return inStockBags.filter((bag) => bagMatchesWorkOrder(bag, workOrderCode));
+  }, [inStockBags, workOrderCode]);
+
+  const workOrderStockKg = eligibleBags.reduce((sum, bag) => sum + Number(bag.remaining_kg || 0), 0);
+  const selectedBagRows = eligibleBags.filter((bag) => selectedBags.includes(bag.bag_code));
+  const selectedKg = selectedBagRows.reduce((sum, bag) => sum + Number(bag.remaining_kg || 0), 0);
+  const allSelected = eligibleBags.length > 0 && selectedBagRows.length === eligibleBags.length;
+  const dispatchedKg = Number(selectedWorkOrder?.dispatched_kg || 0);
+  const pendingKg = selectedWorkOrder
+    ? Number(selectedWorkOrder.pending_kg ?? selectedWorkOrder.quantity_kg ?? 0)
+    : 0;
+  const shipCapKg = Math.min(selectedKg, pendingKg);
 
   useEffect(() => {
-    if (!selectedOrder) return;
-    setDispatchQty(String(selectedOrder.remaining_kg || ""));
-    setBagCode(eligibleBags[0]?.bag_code || "");
-  }, [selectedOrder, eligibleBags]);
+    if (!workOrderCode) {
+      setSelectedBags([]);
+      setDispatchQty("");
+      return;
+    }
+    const codes = eligibleBags.map((bag) => bag.bag_code).filter(Boolean);
+    const kg = eligibleBags.reduce((sum, bag) => sum + Number(bag.remaining_kg || 0), 0);
+    const cap = Math.min(kg, pendingKg);
+    setSelectedBags(codes);
+    setDispatchQty(cap > 0 ? String(cap) : "");
+  }, [workOrderCode, eligibleBags, pendingKg]);
+
+  const applySelection = (codes) => {
+    const rows = eligibleBags.filter((bag) => codes.includes(bag.bag_code));
+    const kg = rows.reduce((sum, bag) => sum + Number(bag.remaining_kg || 0), 0);
+    const cap = Math.min(kg, pendingKg);
+    setSelectedBags(codes);
+    setDispatchQty(cap > 0 ? String(cap) : "");
+  };
 
   const canDispatch =
-    selectedOrder &&
-    Number(selectedOrder.remaining_kg) > 0 &&
-    Number(selectedOrder.stock_on_hand_kg) >= Number(dispatchQty || 0) &&
+    Boolean(workOrderCode) &&
+    pendingKg > 0 &&
+    selectedBagRows.length > 0 &&
     Number(dispatchQty) > 0 &&
-    Number(dispatchQty) <= Number(selectedOrder.remaining_kg);
+    Number(dispatchQty) <= shipCapKg + 0.001;
 
   const handleSave = async () => {
-    if (!customerOrderId || !dispatchQty) return;
+    if (!workOrderCode || !dispatchQty) return;
     setSaving(true);
     setError("");
     setSuccess("");
     try {
       const result = await createAcDispatchFromOrder({
-        customer_order_id: customerOrderId,
+        work_order_code: workOrderCode,
         quantity_kg: dispatchQty,
-        bag_code: bagCode || undefined,
+        bag_codes: selectedBags,
         vehicle_number: vehicleNumber || undefined,
         transporter_name: transporterName || undefined
       });
       setSuccess(
-        `Dispatch ${result.dispatch_id} · ${formatKg(result.quantity_kg)} of ${result.grade_code || "FG"} shipped against ${result.order_code}.` +
-          ` Stock now ${formatKg(result.stock_on_hand_after_kg)}.` +
-          (Number(result.remaining_on_order_kg) > 0
-            ? ` ${formatKg(result.remaining_on_order_kg)} still open on PO (status ${result.order_status}).`
-            : " Customer PO closed.")
+        `Dispatch ${result.dispatch_id} · ${formatKg(result.quantity_kg)} shipped against ${result.work_order_code || workOrderCode}.` +
+          ` Pending to dispatch ${formatKg(result.remaining_on_order_kg)}.`
       );
       setVehicleNumber("");
       setTransporterName("");
@@ -232,121 +246,139 @@ function DispatchPage() {
       <SectionHeader
         eyebrow="Outbound"
         title="Dispatch"
-        subtitle="Ship against a customer PO from In Stock bags (destoning, crushing, de-magnetisation, and other post-activation)."
+        subtitle="Ship from post-activation In Stock bags by work order number."
       />
 
       {error && <AcAlert variant="error">{error}</AcAlert>}
       {success && <AcAlert variant="success">{success}</AcAlert>}
 
-      {!loading && openOrders.length === 0 ? (
+      {!loading && workOrders.length === 0 ? (
         <AcAlert variant="warning">
-          No open customer POs. Create one on{" "}
-          <Link to={`${basePath}/customer-sales`} className="underline font-medium text-amber-900">
-            Customer PO
-          </Link>{" "}
-          before shipping.
+          No work orders yet. Create a work order in Admin, then move bags to In Stock.
         </AcAlert>
       ) : null}
 
       <WfCard>
-        <WfCardHeader title="Ship against customer PO" subtitle="Select PO · pick in-stock bag · confirm qty" />
+        <WfCardHeader title="Ship from stock" subtitle="Select the bags, then confirm the quantity." />
         <WfCardBody>
           <div className="wf-light-panel rounded-xl p-4 space-y-4">
             <AcFormSelect
-              label="Customer PO"
-              value={customerOrderId}
+              label="Work order number"
+              value={workOrderCode}
               loading={loading}
               onChange={(e) => {
-                setCustomerOrderId(e.target.value);
-                setBagCode("");
+                setWorkOrderCode(e.target.value);
+                setSelectedBags([]);
                 setDispatchQty("");
               }}
             >
-              <option value="">Select customer PO…</option>
-              {openOrders.map((o) => (
-                <option key={o.customer_order_id} value={String(o.customer_order_id)}>
-                  {o.order_code} · {o.customer_name || o.customer_code} · {o.product_code} ·{" "}
-                  {Number(o.remaining_kg).toLocaleString()} KG due · stock{" "}
-                  {Number(o.stock_on_hand_kg).toLocaleString()} KG
+              <option value="">Select work order…</option>
+              {workOrders.map((row) => (
+                <option key={row.work_order_code} value={row.work_order_code}>
+                  {row.work_order_code} · {row.grade || "—"} · CTC {row.ctc || "—"} ·{" "}
+                  {Number(row.pending_kg ?? row.quantity_kg ?? 0).toLocaleString()} KG pending
                 </option>
               ))}
             </AcFormSelect>
 
-            {selectedOrder ? (
+            {selectedWorkOrder ? (
               <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Customer</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Work order</p>
+                  <p className="font-mono font-medium">{selectedWorkOrder.work_order_code}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Grade / CTC</p>
                   <p className="font-medium">
-                    {selectedOrder.customer_name || selectedOrder.customer_code || "—"}
+                    {selectedWorkOrder.grade || "—"}
+                    {selectedWorkOrder.ctc ? ` · CTC ${selectedWorkOrder.ctc}` : ""}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Grade / product</p>
-                  <p className="font-mono font-medium">{selectedOrder.product_code}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Work-order qty</p>
+                  <p className="font-mono">{formatKg(selectedWorkOrder.quantity_kg)}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">PO quantity</p>
-                  <p className="font-mono">{formatKg(selectedOrder.ordered_kg)}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Dispatched</p>
+                  <p className="font-mono font-semibold text-slate-900">{formatKg(dispatchedKg)}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Remaining to ship</p>
-                  <p className="font-mono font-semibold text-blue-800">
-                    {formatKg(selectedOrder.remaining_kg)}
-                  </p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Pending to dispatch</p>
+                  <p className="font-mono font-semibold text-blue-800">{formatKg(pendingKg)}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Stock on hand</p>
-                  <p className="font-mono">{formatKg(selectedOrder.stock_on_hand_kg)}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Matching in-stock bags</p>
-                  <p className="font-mono">{eligibleBags.length}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">In stock for this WO</p>
+                  <p className="font-mono">{formatKg(workOrderStockKg)}</p>
                 </div>
                 <div className="md:col-span-2">
-                  {selectedOrder.can_dispatch_from_stock ? (
-                    <p className="text-emerald-800 font-medium">Stock covers this PO — ready to dispatch.</p>
+                  {pendingKg <= 0 ? (
+                    <p className="text-emerald-800 font-medium">
+                      This work order is fully dispatched.
+                    </p>
+                  ) : workOrderStockKg > 0 ? (
+                    <p className="text-emerald-800 font-medium">
+                      {eligibleBags.length} bag{eligibleBags.length === 1 ? "" : "s"} ready to ship.
+                    </p>
                   ) : (
                     <p className="text-amber-900">
-                      Short by{" "}
-                      {formatKg(
-                        Math.max(
-                          Number(selectedOrder.remaining_kg) - Number(selectedOrder.stock_on_hand_kg),
-                          0
-                        )
-                      )}{" "}
-                      — complete production or check tentative date on Customer PO.
+                      No In Stock bags for this work order yet. Set Quality destination to In Stock
+                      first.
                     </p>
                   )}
                 </div>
               </div>
             ) : null}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
-              <AcFormSelect
-                label="In-stock bag"
-                value={bagCode}
-                loading={loading}
-                onChange={(e) => setBagCode(e.target.value)}
-              >
-                <option value="">
-                  {eligibleBags.length
-                    ? "Auto-select oldest in-stock bag"
-                    : "No matching in-stock bags"}
-                </option>
-                {eligibleBags.map((bag) => (
-                  <option key={bag.bag_code} value={bag.bag_code}>
-                    {bag.bag_code} · {sourceLabel(bag.source)} · {bag.grade || "In Stock"} ·{" "}
-                    {formatKg(bag.remaining_kg)}
-                  </option>
-                ))}
-              </AcFormSelect>
+            {workOrderCode && eligibleBags.length > 0 ? (
+              <div className="rounded-lg border border-slate-200 bg-white">
+                <label className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 text-sm">
+                  <span className="inline-flex items-center gap-2 font-medium text-slate-900">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={() =>
+                        applySelection(
+                          allSelected ? [] : eligibleBags.map((bag) => bag.bag_code).filter(Boolean)
+                        )
+                      }
+                    />
+                    Select all
+                  </span>
+                  <span className="font-mono text-slate-700">{formatKg(selectedKg)} selected</span>
+                </label>
+                <ul className="divide-y divide-slate-100">
+                  {eligibleBags.map((bag) => (
+                    <li key={bag.bag_code}>
+                      <label className="flex items-center justify-between gap-3 px-4 py-2 text-sm text-slate-900">
+                        <span className="inline-flex items-center gap-2 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={selectedBags.includes(bag.bag_code)}
+                            onChange={() => {
+                              const next = selectedBags.includes(bag.bag_code)
+                                ? selectedBags.filter((code) => code !== bag.bag_code)
+                                : [...selectedBags, bag.bag_code];
+                              applySelection(next);
+                            }}
+                          />
+                          <span className="font-mono truncate">{bag.bag_code}</span>
+                          <span className="text-slate-500">{sourceLabel(bag.source)}</span>
+                        </span>
+                        <span className="font-mono shrink-0">{formatKg(bag.remaining_kg)}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
               <label className="text-sm">
                 <span className="block mb-1 font-medium text-slate-700">Dispatch qty</span>
                 <input
                   type="number"
                   min="1"
-                  max={selectedOrder ? Number(selectedOrder.remaining_kg) : undefined}
+                  max={shipCapKg || undefined}
                   className="w-full rounded border border-slate-300 px-3 py-2 text-slate-900 bg-white"
                   value={dispatchQty}
                   onChange={(e) => setDispatchQty(e.target.value)}
@@ -372,18 +404,11 @@ function DispatchPage() {
               </label>
             </div>
 
-            {selectedOrder && Number(selectedOrder.stock_on_hand_kg) <= 0 ? (
-              <AcAlert variant="warning">
-                No In Stock bags are available for <strong>{selectedOrder.product_code}</strong>.
-                Set destoning, crushing, or de-magnetisation destination to In Stock first.
-              </AcAlert>
-            ) : null}
-
             <AcSaveBar
               onSave={handleSave}
               saving={saving}
               saveLabel="Confirm dispatch"
-              disabled={loading || !customerOrderId || !canDispatch}
+              disabled={loading || !workOrderCode || !canDispatch}
             />
           </div>
         </WfCardBody>
@@ -392,11 +417,15 @@ function DispatchPage() {
       <WfCard>
         <WfCardHeader
           title="Available stock"
-          subtitle="In Stock bags from destoning, crushing, de-magnetisation, and other post-activation steps"
+          subtitle="In Stock bags from post-activation, grouped by process. Select a work order to filter."
         />
         <WfCardBody>
           <div className="wf-light-panel rounded-xl p-4">
-            <StockSummary bags={inStockBags} loading={loading} />
+            <StockSummary
+              bags={workOrderCode ? eligibleBags : inStockBags}
+              loading={loading}
+              workOrderCode={workOrderCode}
+            />
           </div>
         </WfCardBody>
       </WfCard>
@@ -412,7 +441,8 @@ function DispatchPage() {
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-slate-600">
                     <th className="py-2 font-semibold">Dispatch ID</th>
-                    <th className="py-2 font-semibold">PO</th>
+                    <th className="py-2 font-semibold">Work order</th>
+                    <th className="py-2 font-semibold">Quantity</th>
                     <th className="py-2 font-semibold">Status</th>
                     <th className="py-2 font-semibold">Vehicle</th>
                   </tr>
@@ -421,7 +451,8 @@ function DispatchPage() {
                   {dispatches.map((d) => (
                     <tr key={d.dispatch_id} className="border-b border-slate-100 text-slate-900">
                       <td className="py-2 font-mono">{d.dispatch_id}</td>
-                      <td className="py-2 font-mono">{d.order_id || "—"}</td>
+                      <td className="py-2 font-mono">{d.work_order_code || "—"}</td>
+                      <td className="py-2 font-mono">{formatKg(d.quantity_kg)}</td>
                       <td className="py-2">{d.dispatch_status || "Shipped"}</td>
                       <td className="py-2">{d.vehicle_number || "—"}</td>
                     </tr>

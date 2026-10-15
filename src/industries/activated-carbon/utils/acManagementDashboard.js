@@ -1,12 +1,16 @@
 import { computeAcStockBuckets, utilizationRagBand, AC_ISA95_DEFAULT_UTILIZATION_RAG } from "../constants/acIsa95Kpis";
+import { buildProcessTracking } from "./acProcessTracking";
 import { buildCharcoalSimpleBars, buildSupplierPerformance } from "./acStockAnalytics";
+import { buildAcKilnLoaderRows, kilnDesignedMonthlyKg } from "./acKilnLoaderUtils";
 
 export const AC_MGMT_TABS = [
   { id: "overview", label: "Overview" },
   { id: "raw-material", label: "Raw Material" },
   { id: "activation", label: "Activation" },
   { id: "post-activation", label: "Post activation" },
-  { id: "machine-utilization", label: "Machine utilization" }
+  { id: "process-tracking", label: "Process Tracking" },
+  { id: "machine-utilization", label: "Machine utilization" },
+  { id: "traceability", label: "Traceability" }
 ];
 
 export const AC_POST_ACTIVATION_MACHINES = [
@@ -14,8 +18,7 @@ export const AC_POST_ACTIVATION_MACHINES = [
   { id: "dedusting", label: "De-dusting" },
   { id: "crushing", label: "Crushing" },
   { id: "demagnetisation", label: "De-magnetisation" },
-  { id: "blending", label: "Blending" },
-  { id: "fg_qc", label: "Finished Goods" }
+  { id: "blending", label: "Blending" }
 ];
 
 /** Temporary plant standard — monthly designed output per machine (kg). */
@@ -88,6 +91,59 @@ function monthToDateOutputKg(bags = []) {
   }, 0);
 }
 
+const DEBIT_REASON_LABELS = {
+  weight_short: "Short weight",
+  moisture_high: "High moisture"
+};
+
+function debitReasonLabel(reasons) {
+  const labels = (reasons || []).map((code) => DEBIT_REASON_LABELS[code] || code).filter(Boolean);
+  return labels.length ? labels.join(", ") : "—";
+}
+
+function formatInr(value) {
+  const n = num(value);
+  if (!n) return "₹ 0";
+  return `₹ ${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function buildDebitNotes(inwardOrders) {
+  const raised = (inwardOrders || []).filter((order) => order?.debit_note?.raised);
+  const bySupplier = new Map();
+  for (const order of raised) {
+    const note = order.debit_note || {};
+    const name = note.supplier_name || order.supplier_name || order.supplier_code || "Supplier";
+    const current = bySupplier.get(name) || { name, value: 0, count: 0 };
+    current.value += num(note.debit_note_value);
+    current.count += 1;
+    bySupplier.set(name, current);
+  }
+  const bars = [...bySupplier.values()]
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8)
+    .map((row) => ({ name: row.name, value: row.value, fill: "#b45309" }));
+  const total = raised.reduce((sum, order) => sum + num(order.debit_note?.debit_note_value), 0);
+  const rows = [...raised]
+    .sort((a, b) => String(b.debit_note?.raised_at || "").localeCompare(String(a.debit_note?.raised_at || "")))
+    .slice(0, 8)
+    .map((order) => {
+      const note = order.debit_note || {};
+      return {
+        code: note.debit_note_code || "—",
+        inward: order.order_code || "—",
+        supplier: note.supplier_name || order.supplier_name || order.supplier_code || "—",
+        reason: debitReasonLabel(note.reasons),
+        value: formatInr(note.debit_note_value)
+      };
+    });
+  return {
+    count: raised.length,
+    valueLabel: formatInr(total),
+    bars,
+    rows
+  };
+}
+
 function bagsFromKilnOutput(payload) {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.bags)) return payload.bags;
@@ -98,7 +154,15 @@ export function buildAcManagementModel({
   dashboard,
   inwardOrders = [],
   stations = {},
-  kilnOutputs = {}
+  kilnOutputs = {},
+  screeningBags = [],
+  meshCatalog = {},
+  destoners = [],
+  ctcDecimals = 1,
+  kilnQc = [],
+  inwardBags = [],
+  moistureLimit = 20,
+  outputMinutes = {}
 } = {}) {
   const raw = dashboard?.raw_material || {};
   const buckets = computeAcStockBuckets(dashboard);
@@ -112,8 +176,8 @@ export function buildAcManagementModel({
   const openPoKg = openPos.reduce((sum, row) => sum + num(row.remaining_kg), 0);
 
   const plant = [
-    { label: "Plant yield", value: formatPct(yieldPct), hint: "In Stock + dispatched ÷ raw charged (max 100%)", raw: yieldPct },
-    { label: "Material in plant", value: formatKg(buckets.wipTotal), hint: "Charcoal through finished stock", raw: buckets.wipTotal },
+    { label: "Plant yield", value: formatPct(yieldPct), hint: "Finished kilograms ÷ raw material charged × 100", raw: yieldPct },
+    { label: "Material in plant", value: formatKg(buckets.wipTotal), hint: "Charcoal + awaiting kiln + in process + in stock", raw: buckets.wipTotal },
     { label: "FG in stock", value: formatKg(buckets.finalGradeStock), hint: "Ready for customer PO", raw: buckets.finalGradeStock },
     {
       label: "Dispatched",
@@ -127,17 +191,16 @@ export function buildAcManagementModel({
   ];
 
   const flowStages = [
-    { name: "Charcoal", kg: buckets.charcoalStock, fill: "#0D3A6E" },
-    { name: "GC", kg: buckets.gcharcoalStock, fill: "#0284c7" },
-    { name: "Exklin + stone", kg: buckets.exkilnWithStone, fill: "#f59e0b" },
-    { name: "Exklin − stone", kg: buckets.exkilnWithoutStone, fill: "#10b981" },
-    { name: "FG stock", kg: buckets.finalGradeStock, fill: "#6366f1" }
+    { name: "Charcoal", kg: buckets.charcoalStock, fill: "#0D3A6E", tab: "raw-material" },
+    { name: "Awaiting kiln", kg: buckets.gcharcoalStock, fill: "#0284c7", tab: "activation" },
+    { name: "In process", kg: buckets.exkilnWithStone + buckets.exkilnWithoutStone, fill: "#f59e0b", tab: "activation" },
+    { name: "In stock", kg: buckets.finalGradeStock, fill: "#6366f1", tab: "post-activation" }
   ];
 
   const rawMaterial = {
     tiles: [
       { label: "Charcoal stock", value: formatKg(buckets.charcoalStock), hint: "Received, not released" },
-      { label: "Released to production", value: formatKg(raw.charged_kg), hint: "Allocated to kiln / lots" },
+      { label: "Released to production", value: formatKg(raw.charged_kg), hint: "Already inside awaiting kiln and in process" },
       { label: "GC awaiting kiln", value: formatKg(buckets.gcharcoalStock), hint: "Released lots not yet loaded" },
       {
         label: "Inwards",
@@ -149,10 +212,12 @@ export function buildAcManagementModel({
     charcoalBars: buildCharcoalSimpleBars(inwardOrders),
     supplierPerformance: buildSupplierPerformance(inwardOrders),
     mix: [
-      { name: "Charcoal", kg: buckets.charcoalStock, fill: "#0D3A6E" },
-      { name: "Released", kg: num(raw.charged_kg), fill: "#0284c7" },
-      { name: "GC", kg: buckets.gcharcoalStock, fill: "#f59e0b" }
-    ]
+      { name: "Charcoal", kg: buckets.charcoalStock, fill: "#0D3A6E", tab: "raw-material" },
+      { name: "Awaiting kiln", kg: buckets.gcharcoalStock, fill: "#0284c7", tab: "activation" },
+      { name: "In process", kg: buckets.exkilnWithStone + buckets.exkilnWithoutStone, fill: "#f59e0b", tab: "activation" },
+      { name: "In stock", kg: buckets.finalGradeStock, fill: "#6366f1", tab: "post-activation" }
+    ],
+    debitNotes: buildDebitNotes(inwardOrders)
   };
 
   const activation = {
@@ -172,15 +237,7 @@ export function buildAcManagementModel({
       { name: "With stone", kg: buckets.exkilnWithStone, fill: "#f59e0b" },
       { name: "Without stone", kg: buckets.exkilnWithoutStone, fill: "#10b981" }
     ],
-    kilns: kilns.map((kiln) => ({
-      code: kiln.resource_code,
-      name: kiln.resource_name || kiln.resource_code,
-      status: String(kiln.status || "IDLE").toUpperCase(),
-      loadedKg: num(kiln.loaded_kg ?? kiln.active_lot_kg),
-      lastAt: kiln.last_reading_at,
-      nowPct: kilnNowPct(kiln.status),
-      designedKg: num(kiln.monthly_capacity_kg, AC_MACHINE_MONTHLY_CAPACITY_KG) || AC_MACHINE_MONTHLY_CAPACITY_KG
-    }))
+    kilns: []
   };
 
   const postActivation = {
@@ -211,6 +268,36 @@ export function buildAcManagementModel({
 
   const monthName = currentMonthLabel();
   const rag = dashboard?.utilization_rag || AC_ISA95_DEFAULT_UTILIZATION_RAG;
+  const kilnLive = buildAcKilnLoaderRows({ kilns });
+  const kilnLiveByCode = new Map(kilnLive.map((row) => [row.resourceCode, row]));
+
+  const activationKilns = kilns.map((kiln) => {
+    const live = kilnLiveByCode.get(kiln.resource_code);
+    const residenceMin = num(kiln.residence_time_min);
+    const designedFromApi = num(kiln.designed_monthly_kg);
+    const designedKg =
+      designedFromApi > 0
+        ? designedFromApi
+        : kilnDesignedMonthlyKg(
+            kiln.monthly_capacity_kg,
+            residenceMin,
+            AC_MACHINE_MONTHLY_CAPACITY_KG
+          );
+    const cyclePct =
+      live?.isActive && residenceMin > 0 ? Math.round(Math.min(1, live.progress) * 100) : null;
+    return {
+      code: kiln.resource_code,
+      name: kiln.resource_name || kiln.resource_code,
+      status: String(kiln.status || "IDLE").toUpperCase(),
+      loadedKg: num(kiln.loaded_kg ?? kiln.active_lot_kg),
+      lastAt: kiln.last_reading_at,
+      nowPct: cyclePct != null ? cyclePct : kilnNowPct(kiln.status),
+      residenceMin: residenceMin > 0 ? residenceMin : null,
+      cycleText: live?.cycleStatus?.text && live.cycleStatus.text !== "—" ? live.cycleStatus.text : "",
+      designedKg
+    };
+  });
+  activation.kilns = activationKilns;
 
   const postMachines = AC_POST_ACTIVATION_MACHINES.map((spec) => {
     const state = stations[spec.id] || null;
@@ -256,7 +343,9 @@ export function buildAcManagementModel({
         designedKg,
         loadCaption: `Output ${monthName}`,
         utilLabel: "Month vs designed",
-        detail: `of ${formatKg(designedKg)} designed · loaded ${formatKg(kiln.loadedKg)}`
+        detail: kiln.residenceMin
+          ? `of ${formatKg(designedKg)} designed at ${kiln.residenceMin} min residence · loaded ${formatKg(kiln.loadedKg)}`
+          : `of ${formatKg(designedKg)} designed · loaded ${formatKg(kiln.loadedKg)}`
       };
     }),
     ...postMachines
@@ -267,10 +356,26 @@ export function buildAcManagementModel({
   const vsDesigned = pct(outputMonthKg, designedTotalKg);
   const currentlyLoadedKg = machines.reduce((sum, row) => sum + num(row.loadKg), 0);
 
+  const processTracking = buildProcessTracking({
+    screeningBags,
+    meshCatalog,
+    destoners,
+    ctcDecimals,
+    kilnQc,
+    inwardOrders,
+    inwardBags,
+    moistureLimit,
+    kilns,
+    kilnOutputs,
+    stations,
+    outputMinutes
+  });
+
   return {
     plant,
     flowStages,
     yieldPct,
+    processTracking,
     rawMaterial,
     activation,
     postActivation,
@@ -280,7 +385,7 @@ export function buildAcManagementModel({
       {
         label: `Designed ${monthName}`,
         value: formatKg(designedTotalKg),
-        hint: "From Masters · Machines & kilns"
+        hint: "Kilns scale with residence time. Other machines use Masters capacity."
       },
       {
         label: "Output this month",

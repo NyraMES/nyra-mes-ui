@@ -114,7 +114,7 @@ function CustomerSalesPage() {
       <SectionHeader
         eyebrow="Sales"
         title="Customer purchase order"
-        subtitle="Stock available is bags marked In Stock on destoning and post-activation quality. If short, a tentative delivery date is estimated from raw material and routing lead time."
+        subtitle="Stock available is Screening-after-Destoning In Stock bags plus historical destoning In Stock. If short, a tentative delivery date is estimated from raw material and routing lead time."
       />
 
       {(error || loading) && error && <AcAlert variant="error">{error}</AcAlert>}

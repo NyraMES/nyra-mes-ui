@@ -36,6 +36,9 @@ export function acInwardBagObjectUri(bagCode) {
   return `urn:nyra:ac:inwardBag:${bagCode}`;
 }
 
+export const AC_VOLATILITY_PARAMETER = "urn:nyra:ac:parameter:VOLATILITY";
+export const AC_AD_VALUE_PARAMETER = "urn:nyra:ac:parameter:AD_VALUE";
+
 export const AC_INWARD_RECEIPT_PARAMETERS = {
   DC_NUMBER: "urn:nyra:ac:parameter:DC_NUMBER",
   SUPPLIER_WEIGHT_KG: "urn:nyra:ac:parameter:SUPPLIER_WEIGHT_KG",
@@ -84,11 +87,25 @@ export const AC_ONTOLOGY_TRACE_STEPS = [
     screen: "Bag split",
     subject: (code) => acInwardBagObjectUri(code),
     object: (code) => acInwardSubjectUri(code),
-    predicates: ["containedIn"],
+    predicates: ["containedIn", "generatedFrom"],
     api: "POST /api/activated-carbon/inward-bags"
   },
   {
-    screen: "Crusher output",
+    screen: "Lab (volatility on inward)",
+    subject: (code) => acInwardBagObjectUri(code),
+    object: () => AC_VOLATILITY_PARAMETER,
+    predicates: ["testedBy", "captures"],
+    api: "POST /api/activated-carbon/raw-material-inbound-execution (IN-LAB)"
+  },
+  {
+    screen: "Drying",
+    subject: (code) => acInwardSubjectUri(code),
+    object: (code) => `urn:nyra:ac:drying:${code}`,
+    predicates: ["captures", "generatedFrom"],
+    api: "POST /api/activated-carbon/raw-material-inbound-execution (IN-DRYING)"
+  },
+  {
+    screen: "RMS Outward",
     subject: (code) => acInwardSubjectUri(code),
     object: (code) => `urn:nyra:ac:crusherOutput:${code}`,
     predicates: ["captures"],
@@ -154,8 +171,15 @@ export const AC_ONTOLOGY_TRACE_STEPS = [
     screen: "Execution — Destoning",
     subject: (code) => `urn:nyra:ac:destonBag:${code}`,
     object: (code) => `urn:nyra:ac:kilnOutBag:${code}`,
-    predicates: ["generatedFrom", "containedIn", "captures"],
+    predicates: ["generatedFrom", "containedIn", "captures", "usedEquipment"],
     api: "POST /api/activated-carbon/destoning/output"
+  },
+  {
+    screen: "Screening after Destoning",
+    subject: (code) => `urn:nyra:ac:sadBag:${code}`,
+    object: (code) => `urn:nyra:ac:destonBag:${code}`,
+    predicates: ["generatedFrom", "containedIn", "captures"],
+    api: "POST /api/activated-carbon/post-activation/screening_after_destoning/output"
   },
   {
     screen: "Execution — Destoning quality",

@@ -7,8 +7,10 @@ import {
   fetchAcRawMaterialInward,
   formatAcApiError
 } from "../../../services/activatedCarbonApi";
+import { useAuth } from "../../../auth/AuthContext";
 import { useAppContext } from "../../../context/AppContext";
 import { isAcContextReady } from "../utils/acContextUtils";
+import { userCanSeeAcSupplier } from "../utils/acPrivileges";
 import AcAlert from "../components/AcAlert";
 import AcFormSelect from "../components/AcFormSelect";
 import AcSaveBar from "../components/AcSaveBar";
@@ -21,6 +23,8 @@ function formatKg(value) {
 }
 
 function BagTraceabilityPage() {
+  const { user } = useAuth();
+  const showSupplier = userCanSeeAcSupplier(user?.roles || [], user);
   const { context, loading: contextLoading } = useAppContext();
   const [orders, setOrders] = useState([]);
   const [bags, setBags] = useState([]);
@@ -142,8 +146,11 @@ function BagTraceabilityPage() {
                 >
                   {orders.map((order) => (
                     <option key={order.customer_order_id} value={String(order.customer_order_id)}>
-                      {order.order_code} · {order.supplier_name || order.supplier_code} ·{" "}
-                      {formatKg(order.inward_quantity_kg ?? order.quantity)}
+                      {order.order_code}
+                      {showSupplier && (order.supplier_name || order.supplier_code)
+                        ? ` · ${order.supplier_name || order.supplier_code}`
+                        : ""}{" "}
+                      · {formatKg(order.inward_quantity_kg ?? order.quantity)}
                     </option>
                   ))}
                 </AcFormSelect>

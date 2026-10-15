@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
+import { useAuth } from "../../../auth/AuthContext";
 import { useAppContext } from "../../../context/AppContext";
 import useAcPageRefresh from "../hooks/useAcPageRefresh";
 
@@ -9,7 +10,6 @@ import {
   fetchAcRawMaterialInward,
   formatAcApiError
 } from "../../../services/activatedCarbonApi";
-import AcCreatedIdsDialog from "../components/AcCreatedIdsDialog";
 import AcAlert from "../components/AcAlert";
 import AcFormSelect from "../components/AcFormSelect";
 import AcSaveBar from "../components/AcSaveBar";
@@ -21,11 +21,14 @@ import {
 } from "../utils/acProductUtils";
 import useAcMasters from "../hooks/useAcMasters";
 import { isAcContextReady } from "../utils/acContextUtils";
+import { userCanSeeAcSupplier } from "../utils/acPrivileges";
 import AcInwardRecordsTable from "../components/AcInwardRecordsTable";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
 
-function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
+function RawMaterialInwardPage({ embedded = false }) {
   const { context, loading: contextLoading } = useAppContext();
+  const { user } = useAuth();
+  const showSupplier = userCanSeeAcSupplier(user?.roles || [], user);
   const location = useLocation();
   const { focusTick } = useAcPageRefresh();
   const { masters, loading: mastersLoading, error: mastersError, reload: reloadMasters, ready } =
@@ -35,23 +38,18 @@ function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [saving, setSaving] = useState(false);
-  const [idsDialog, setIdsDialog] = useState({ open: false, items: [] });
+  const [created, setCreated] = useState(null);
+  const savingRef = useRef(false);
 
   const [supplierId, setSupplierId] = useState("");
   const [productId, setProductId] = useState("");
   const [dcNumber, setDcNumber] = useState("");
   const [supplierWeight, setSupplierWeight] = useState("");
-  const [ourWeight, setOurWeight] = useState("1000");
+  const [ourWeight, setOurWeight] = useState("0");
 
   const suppliers = masters.suppliers || [];
   const rawProducts = masters.raw_products || [];
 
-  useEffect(() => {
-    if (!ready) return;
-    if (!productId && rawProducts[0]) {
-      setProductId(rawProductOptionValue(rawProducts[0]));
-    }
-  }, [ready, rawProducts, productId]);
 
   const selectedSupplier = suppliers.find(
     (s) => String(s.supplier_id) === String(supplierId)
@@ -78,11 +76,31 @@ function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
   }, [context, contextLoading, context.tenant_code, context.workspace_code, location.key, focusTick, reloadOrders]);
 
   const handleSave = async () => {
-    if (!supplierId || !productId || !dcNumber.trim() || !supplierWeight || !ourWeight) return;
-    if (!selectedSupplier) {
+    if (savingRef.current) return;
+    const supplierKg = Number(supplierWeight);
+    const ourKg = Number(ourWeight);
+    if (!productId || !dcNumber.trim() || !supplierWeight) return;
+    if (showSupplier && !selectedSupplier) {
       setError("Select a supplier before recording inward.");
       return;
     }
+    if (!showSupplier) {
+      setError("A supervisor records the supplier on a new gate receipt.");
+      return;
+    }
+    if (!(ourKg > 0)) {
+      setError("Our weight must be greater than zero.");
+      return;
+    }
+    if (!(supplierKg > 0)) {
+      setError("Supplier weight must be greater than zero.");
+      return;
+    }
+    if (ourKg > supplierKg) {
+      setError("Our weight cannot be greater than the supplier weight.");
+      return;
+    }
+    savingRef.current = true;
     setSaving(true);
     setError("");
     setSuccess("");
@@ -99,28 +117,21 @@ function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
         our_weight_kg: ourWeight,
         uom: "KG"
       });
-      const items = [
-        { label: "Inward order", value: result.order.order_code },
-        {
-          label: "Supplier",
-          value:
-            result.order.supplier_name ||
-            selectedSupplier.supplier_name ||
-            result.order.supplier_code
-        },
-        { label: "Order line", value: result.line.line_code },
-        { label: "DC number", value: dcNumber.trim() },
-        { label: "Supplier weight", value: `${supplierWeight} KG` },
-        { label: "Our weight", value: `${ourWeight} KG` }
-      ];
-      setSuccess(`Inward order ${result.order.order_code} recorded.`);
-      setIdsDialog({ open: true, items });
-      onInwardCreated?.(result.order.customer_order_id);
+      const orderId = result.order.customer_order_id;
+      setCreated({
+        orderId,
+        orderCode: result.order.order_code,
+        bags: result.bags || []
+      });
+      setSuccess(
+        `Inward ${result.order.order_code} saved. The RMS engineer generates bags on Inbound prep.`
+      );
       await reloadOrders();
       await reloadMasters();
     } catch (e) {
       setError(formatAcApiError(e, "Save failed"));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -136,23 +147,11 @@ function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
 
   return (
     <div className="max-w-6xl">
-      <AcCreatedIdsDialog
-        open={idsDialog.open}
-        title="Inward order created"
-        subtitle="IDs assigned from PostgreSQL sequences — use these on the shop floor."
-        items={idsDialog.items}
-        continueLabel="Done"
-        onContinue={() => {
-          setIdsDialog({ open: false, items: [] });
-          setSuccess("");
-        }}
-        onClose={() => setIdsDialog({ open: false, items: [] })}
-      />
       {!embedded && (
         <SectionHeader
           eyebrow="Inbound"
           title="Raw Material Inward"
-          subtitle="Supplier receipt only — not linked to a customer PO. After inbound prep, release to production."
+          subtitle="Gate receipt — not linked to a customer PO. After inbound prep, release to production."
         />
       )}
 
@@ -167,10 +166,12 @@ function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
         <WfCardBody>
           <div className="wf-ac-gate-receipt-grid">
             <div className="wf-light-panel rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {showSupplier ? (
             <AcFormSelect
               label="Supplier"
               value={supplierId}
               loading={mastersLoading}
+              disabled={Boolean(created)}
               onChange={(e) => setSupplierId(e.target.value)}
             >
               <option value="">Select supplier…</option>
@@ -180,7 +181,12 @@ function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
                 </option>
               ))}
             </AcFormSelect>
-            {noSuppliers && (
+            ) : (
+              <p className="text-sm text-slate-600 md:col-span-2">
+                A supervisor records the supplier on a new gate receipt.
+              </p>
+            )}
+            {showSupplier && noSuppliers && (
               <p className="text-xs text-amber-700 md:col-span-2">
                 No suppliers yet.{" "}
                 <Link to="/activated-carbon/admin?tab=suppliers" className="text-blue-700 underline font-medium">
@@ -194,8 +200,10 @@ function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
               label="Raw material"
               value={productId}
               loading={mastersLoading}
+              disabled={Boolean(created)}
               onChange={(e) => setProductId(e.target.value)}
             >
+              <option value="">Select raw material…</option>
               {rawProducts.map((p) => (
                 <option key={p.product_code} value={rawProductOptionValue(p)}>
                   {p.product_code} — {p.product_name}
@@ -216,20 +224,22 @@ function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
               <span className="block mb-1 font-medium text-slate-700">DC number *</span>
               <input
                 type="text"
-                className="w-full rounded border border-slate-300 px-3 py-2"
+                className="w-full rounded border border-slate-300 px-3 py-2 disabled:bg-slate-100"
                 value={dcNumber}
+                disabled={Boolean(created)}
                 onChange={(e) => setDcNumber(e.target.value)}
-                placeholder="Supplier delivery challan"
+                placeholder={showSupplier ? "Supplier delivery challan" : "Delivery challan"}
               />
             </label>
             <label className="text-sm">
-              <span className="block mb-1 font-medium text-slate-700">Supplier weight (KG) *</span>
+              <span className="block mb-1 font-medium text-slate-700">{showSupplier ? "Supplier weight (KG) *" : "Challan weight (KG) *"}</span>
               <input
                 type="number"
                 min="0.01"
                 step="0.01"
-                className="w-full rounded border border-slate-300 px-3 py-2"
+                className="w-full rounded border border-slate-300 px-3 py-2 disabled:bg-slate-100"
                 value={supplierWeight}
+                disabled={Boolean(created)}
                 onChange={(e) => setSupplierWeight(e.target.value)}
               />
             </label>
@@ -239,36 +249,53 @@ function RawMaterialInwardPage({ embedded = false, onInwardCreated = null }) {
                 type="number"
                 min="0.01"
                 step="0.01"
-                className="w-full max-w-xs rounded border border-slate-300 px-3 py-2"
+                className="w-full max-w-xs rounded border border-slate-300 px-3 py-2 disabled:bg-slate-100"
                 value={ourWeight}
+                disabled={Boolean(created)}
                 onChange={(e) => setOurWeight(e.target.value)}
               />
             </label>
 
-            <p className="text-xs text-slate-500 md:col-span-2">
-              Next: open <strong>2 · Inbound prep</strong> for Lab → RMS bags → crusher → RM outward,
-              then <strong>Release</strong>.
-            </p>
-            <div className="md:col-span-2">
-              <AcSaveBar
-                onSave={handleSave}
-                saving={saving}
-                saveLabel="Record inward"
-                disabled={
-                  noSuppliers ||
-                  noProducts ||
-                  !supplierId ||
-                  !dcNumber.trim() ||
-                  !supplierWeight ||
-                  !ourWeight
-                }
-              />
-            </div>
+            {created ? (
+              <div className="md:col-span-2">
+                <p className="text-sm text-slate-700 m-0">
+                  {created.orderCode} is saved. Bag generation is on Inbound prep for the RMS engineer.
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-slate-500 md:col-span-2">
+                  Save the gate receipt. The RMS engineer generates bags on Inbound prep.
+                </p>
+                <div className="md:col-span-2">
+                  <AcSaveBar
+                    onSave={handleSave}
+                    saving={saving}
+                    saveLabel="Save inward"
+                    disabled={
+                      noSuppliers ||
+                      noProducts ||
+                      !supplierId ||
+                      !productId ||
+                      !dcNumber.trim() ||
+                      !supplierWeight ||
+                      !(Number(ourWeight) > 0) ||
+                      Number(ourWeight) > Number(supplierWeight)
+                    }
+                  />
+                </div>
+              </>
+            )}
             </div>
             <aside className="wf-ac-gate-receipt-flow rounded-lg border border-blue-200 bg-blue-50/40 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
                 Process flow
               </p>
+              {created?.orderCode ? (
+                <p className="text-sm font-semibold text-slate-900 mb-2">
+                  Inward {created.orderCode}
+                </p>
+              ) : null}
               {selectedMaterialType ? (
                 <RawMaterialRoutingPreview
                   materialType={selectedMaterialType}

@@ -73,6 +73,7 @@ export function normalizeAcMastersRecord(data = {}) {
     production_orders: asMasterList(data.production_orders),
     production_lots: asMasterList(data.production_lots),
     kilns: asMasterList(data.kilns),
+    destoners: asMasterList(data.destoners),
     machines: asMasterList(data.machines),
     tools: asMasterList(data.tools),
     labor_pools: asMasterList(data.labor_pools),
@@ -317,6 +318,15 @@ export async function fetchAcMasters() {
     ? base.raw_material_types
     : await fetchAcRawMaterialTypes().catch(() => []);
   const types = keepGrCoconutShellTypes(mergeRawMaterialTypes(typeSource));
+  const plantCodes = new Set(
+    types
+      .filter((row) => !row.is_obsolete && String(row.status || "").toUpperCase() !== "OBSOLETE")
+      .map((row) => normalizeProductCode(row.product_code))
+      .filter(Boolean)
+  );
+  const plantRawProducts = plantCodes.size
+    ? (base.raw_products || []).filter((row) => plantCodes.has(normalizeProductCode(row.product_code)))
+    : base.raw_products;
 
   const [catalogProducts, suppliers, customers] = await Promise.all([
     fetchMesCoreProducts().catch(() => []),
@@ -335,7 +345,7 @@ export async function fetchAcMasters() {
     suppliers,
     raw_material_types: types,
     raw_products: mergeRawProductsFromMaterialTypes(
-      base.raw_products,
+      plantRawProducts,
       types,
       catalogProducts
     ),
@@ -582,12 +592,79 @@ export async function saveAcUtilizationRag(payload) {
   return res.data;
 }
 
+export async function fetchAcProcessRules() {
+  const res = await api.get("/api/activated-carbon/masters/process-rules");
+  return res.data;
+}
+
+export async function saveAcProcessRules(payload) {
+  const res = await api.put("/api/activated-carbon/masters/process-rules", payload);
+  return res.data;
+}
+
+export async function fetchAcMeshGradeMap() {
+  const res = await api.get("/api/activated-carbon/masters/mesh-grade-map");
+  return res.data;
+}
+
+export async function saveAcMeshGradeMap(payload) {
+  const res = await api.put("/api/activated-carbon/masters/mesh-grade-map", payload);
+  return res.data;
+}
+
 export async function createAcKiln(payload) {
   const res = await api.post("/api/activated-carbon/masters/kilns", {
     kiln_name: payload.kiln_name,
     monthly_capacity_kg: payload.monthly_capacity_kg,
     status: payload.status ?? "ACTIVE"
   });
+  return res.data;
+}
+
+export async function createAcDestoner(payload) {
+  const res = await api.post("/api/activated-carbon/masters/destoners", {
+    destoner_name: payload.destoner_name,
+    unit_count: payload.unit_count,
+    monthly_capacity_kg: payload.monthly_capacity_kg,
+    status: payload.status ?? "ACTIVE"
+  });
+  return res.data;
+}
+
+export async function fetchAcDestonerDailyCtc() {
+  const res = await api.get("/api/activated-carbon/destoning/daily-ctc");
+  return res.data;
+}
+
+export async function saveAcDestonerDailyCtc(payload) {
+  const res = await api.put("/api/activated-carbon/destoning/daily-ctc", payload);
+  return res.data;
+}
+
+export async function fetchAcKilnSetpoints() {
+  const res = await api.get("/api/activated-carbon/kiln/setpoints");
+  return res.data;
+}
+
+export async function saveAcKilnSetpoints(payload) {
+  const res = await api.put("/api/activated-carbon/kiln/setpoints", payload);
+  return res.data;
+}
+
+export async function fetchAcWorkOrders() {
+  const res = await api.get("/api/activated-carbon/work-orders");
+  return res.data;
+}
+
+export async function createAcWorkOrder(payload) {
+  const res = await api.post("/api/activated-carbon/work-orders", payload);
+  return res.data;
+}
+
+export async function deleteAcWorkOrder(workOrderCode) {
+  const res = await api.delete(
+    `/api/activated-carbon/work-orders/${encodeURIComponent(workOrderCode)}`
+  );
   return res.data;
 }
 
@@ -825,6 +902,9 @@ function mapInwardOrderToQcRow(order) {
     quantity: enriched.inward_quantity_kg ?? rawLine?.quantity,
     available_quantity_kg: enriched.available_quantity_kg,
     allocated_to_production_kg: enriched.allocated_to_production_kg,
+    released_to_production_status: enriched.released_to_production_status,
+    released_to_production_at: enriched.released_to_production_at,
+    production_order_code: enriched.production_order_code,
     uom: rawLine?.uom || "KG",
     moisture_pct: meta.moisture_pct ?? null,
     ash_pct: meta.ash_pct ?? null,
@@ -876,6 +956,13 @@ export async function fetchAcInwardBags(orderCode) {
   }
 }
 
+export async function autoCreateAcRmsBags(customerOrderId) {
+  const res = await api.post("/api/activated-carbon/inward-bags/auto-rms", {
+    customer_order_id: String(customerOrderId)
+  });
+  return normalizeList(res.data);
+}
+
 export async function createAcInwardBag(payload) {
   try {
     const body = {
@@ -888,6 +975,12 @@ export async function createAcInwardBag(payload) {
     }
     if (payload.rotary) {
       body.rotary = payload.rotary;
+    }
+    if (payload.bag_kind) {
+      body.bag_kind = payload.bag_kind;
+    }
+    if (payload.parent_bag_codes?.length) {
+      body.parent_bag_codes = payload.parent_bag_codes;
     }
     const res = await api.post("/api/activated-carbon/inward-bags", body);
     return res.data;
@@ -1060,6 +1153,14 @@ export async function completeAcInboundExecutionStep(payload) {
   return res.data;
 }
 
+export async function raiseAcInwardDebitNote(customerOrderId, payload) {
+  const res = await api.post(
+    `/api/activated-carbon/raw-material-inbound-execution/${encodeURIComponent(customerOrderId)}/debit-note`,
+    payload
+  );
+  return res.data;
+}
+
 export async function fetchAcRawMaterialCrushing() {
   try {
     const res = await api.get("/api/activated-carbon/raw-material-crushing");
@@ -1079,7 +1180,7 @@ export async function createAcRawMaterialCrush(payload) {
 
 export async function fetchAcKilnFeedLots() {
   const res = await api.get("/api/activated-carbon/kiln-feed");
-  return normalizeList(res.data);
+  return sortAcLotsByCodeSuffix(normalizeList(res.data).map(mapAcOpenLotRow));
 }
 
 export async function createAcKilnFeedLot(payload) {
@@ -1133,13 +1234,19 @@ export async function fetchAcDestoningState() {
   return res.data;
 }
 
-export async function loadAcDestoningBag(bagCode) {
-  const res = await api.post("/api/activated-carbon/destoning/load", { bag_code: bagCode });
+export async function loadAcDestoningBag(bagCode, destonerResourceCode) {
+  const res = await api.post("/api/activated-carbon/destoning/load", {
+    bag_code: bagCode,
+    destoner_resource_code: destonerResourceCode || undefined
+  });
   return res.data;
 }
 
-export async function unloadAcDestoningBag(bagCode) {
-  const res = await api.post("/api/activated-carbon/destoning/unload", { bag_code: bagCode });
+export async function unloadAcDestoningBag(bagCode, destonerResourceCode) {
+  const res = await api.post("/api/activated-carbon/destoning/unload", {
+    bag_code: bagCode,
+    destoner_resource_code: destonerResourceCode || undefined
+  });
   return res.data;
 }
 
@@ -1147,7 +1254,8 @@ export async function createAcDestoningOutputBag(payload) {
   const res = await api.post("/api/activated-carbon/destoning/output", {
     quantity_kg: Number(payload.quantity_kg),
     lot_code: payload.lot_code || undefined,
-    bag_code: payload.bag_code || undefined
+    bag_code: payload.bag_code || undefined,
+    destoner_resource_code: payload.destoner_resource_code || undefined
   });
   return res.data;
 }
@@ -1167,14 +1275,17 @@ export async function saveAcDestoningBagQc(payload) {
   return res.data;
 }
 
-export async function fetchAcPostActivationState(process) {
-  const res = await api.get(`/api/activated-carbon/post-activation/${process}`);
+export async function fetchAcPostActivationState(process, scope = "today") {
+  const res = await api.get(`/api/activated-carbon/post-activation/${process}`, {
+    params: scope && scope !== "today" ? { scope } : undefined
+  });
   return res.data;
 }
 
-export async function loadAcPostActivationBag(process, bagCode) {
+export async function loadAcPostActivationBag(process, bagCode, mesh) {
   const res = await api.post(`/api/activated-carbon/post-activation/${process}/load`, {
-    bag_code: bagCode
+    bag_code: bagCode,
+    mesh: mesh || undefined
   });
   return res.data;
 }
@@ -1186,8 +1297,10 @@ export async function unloadAcPostActivationBag(process, bagCode) {
   return res.data;
 }
 
-export async function fetchAcPostActivationQuality() {
-  const res = await api.get("/api/activated-carbon/post-activation/quality");
+export async function fetchAcPostActivationQuality(scope = "today") {
+  const res = await api.get("/api/activated-carbon/post-activation/quality", {
+    params: scope && scope !== "today" ? { scope } : undefined
+  });
   return res.data;
 }
 
@@ -1205,6 +1318,7 @@ export async function createAcPostActivationOutputBag(process, payload) {
   const res = await api.post(`/api/activated-carbon/post-activation/${process}/output`, {
     quantity_kg: Number(payload.quantity_kg),
     grade: payload.grade,
+    mesh: payload.mesh || undefined,
     lot_code: payload.lot_code || undefined
   });
   return res.data;
@@ -1312,13 +1426,35 @@ export async function fetchAcGradeStock() {
 }
 
 export async function createAcDispatchFromOrder(payload) {
-  const res = await api.post("/api/activated-carbon/dispatch-from-order", payload);
+  const res = await api.post("/api/activated-carbon/dispatch-from-order", {
+    work_order_code: payload.work_order_code || undefined,
+    customer_order_id: payload.customer_order_id || undefined,
+    quantity_kg: payload.quantity_kg,
+    bag_code: payload.bag_code || undefined,
+    bag_codes: payload.bag_codes || undefined,
+    vehicle_number: payload.vehicle_number || undefined,
+    transporter_name: payload.transporter_name || undefined
+  });
   return res.data;
 }
 
 export async function fetchAcInStockBags() {
   const res = await api.get("/api/activated-carbon/in-stock-bags");
   return normalizeList(res.data);
+}
+
+export async function reassignAcInStockWorkOrder(payload) {
+  const res = await api.post("/api/activated-carbon/in-stock/reassign-work-order", {
+    bag_code: payload.bag_code,
+    work_order_code: payload.work_order_code
+  });
+  return res.data;
+}
+
+export function bagMatchesWorkOrder(bag, workOrderCode) {
+  const wanted = String(workOrderCode || "").trim();
+  if (!wanted) return true;
+  return String(bag?.work_order_code || "").trim() === wanted;
 }
 
 export function bagMatchesDispatchOrder(bag, order) {
@@ -1397,6 +1533,20 @@ export async function fetchAcTraceability(lotCode) {
   return res.data;
 }
 
+export async function fetchAcMaterialTrace(query) {
+  const res = await api.get("/api/activated-carbon/material-trace", {
+    params: { q: query }
+  });
+  return res.data;
+}
+
+export async function fetchAcMaterialTraceOptions(kind, month) {
+  const res = await api.get("/api/activated-carbon/material-trace/options", {
+    params: { kind, ...(month ? { month } : {}) }
+  });
+  return res.data;
+}
+
 export async function fetchAcUsers() {
   const res = await api.get("/api/activated-carbon/users");
   return normalizeList(res.data);
@@ -1414,8 +1564,21 @@ export async function createAcUser(payload) {
   const res = await api.post("/api/activated-carbon/users", {
     username: payload.username,
     email: payload.email,
-    display_name: payload.display_name || null,
-    role_code: payload.role_code
+    display_name: payload.display_name,
+    role_code: payload.role_code,
+    password: payload.password
+  });
+  return res.data;
+}
+
+export async function fetchAcUserNicknames() {
+  const res = await api.get("/api/activated-carbon/users/nicknames");
+  return normalizeList(res.data);
+}
+
+export async function updateAcUserNickname(userId, displayName) {
+  const res = await api.put(`/api/activated-carbon/users/${userId}/nickname`, {
+    display_name: displayName
   });
   return res.data;
 }

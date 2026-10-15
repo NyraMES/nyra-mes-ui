@@ -101,6 +101,29 @@
   margin-bottom: 8px;
 }
 
+.login-password-row {
+  position: relative;
+}
+
+.login-password-row input {
+  padding-right: 72px;
+}
+
+.login-show-password {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
 .login-field input {
   width: 100%;
   box-sizing: border-box;

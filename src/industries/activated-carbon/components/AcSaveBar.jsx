@@ -1,3 +1,5 @@
+import { useRef, useState } from "react";
+
 import { useAppContext } from "../../../context/AppContext";
 import { isDemoReadOnly } from "../../../config/demoMode";
 
@@ -11,22 +13,40 @@ function AcSaveBar({
 }) {
   const { context } = useAppContext();
   const readOnly = isDemoReadOnly(context);
+  const lock = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const blocked = readOnly || saving || disabled || busy;
+
+  const handleSaveClick = async () => {
+    if (lock.current || blocked) return;
+    lock.current = true;
+    setBusy(true);
+    try {
+      await Promise.resolve(onSave?.());
+    } catch {
+      // Caller surfaces the error.
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="mt-4 flex items-center gap-3">
       <button
         type="button"
         className="wf-btn wf-btn-primary"
-        disabled={readOnly || saving || disabled}
-        onClick={onSave}
+        disabled={blocked}
+        onClick={handleSaveClick}
+        onDoubleClick={(e) => e.preventDefault()}
       >
-        {saving ? "Saving…" : saveLabel}
+        {saving || busy ? "Saving…" : saveLabel}
       </button>
       {onCancel ? (
         <button
           type="button"
           className="wf-btn wf-btn-ghost"
-          disabled={saving}
+          disabled={saving || busy}
           onClick={onCancel}
         >
           {cancelLabel}

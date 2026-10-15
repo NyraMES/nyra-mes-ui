@@ -45,12 +45,6 @@ export const ACTIVATED_CARBON_MENU = [
     capability: null
   },
   {
-    id: "customer-sales",
-    to: `${BASE}/customer-sales`,
-    label: "Customer PO",
-    capability: null
-  },
-  {
     id: "dispatch",
     to: `${BASE}/dispatch`,
     label: "Dispatch",

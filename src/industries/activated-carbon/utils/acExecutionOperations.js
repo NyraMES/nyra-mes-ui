@@ -318,12 +318,21 @@ export const AC_POST_QUALITY_TAB = {
   status: "Ready"
 };
 
+export const AC_SAD_TAB = {
+  operation_code: "OP-POST-SAD",
+  operation_name: "Screening after Destoning",
+  process_step: "SCREENING_AFTER_DESTONING",
+  seq: 0.4,
+  status: "Ready"
+};
+
 export function postActivationProcessKey(operation) {
   if (!operation || isAcPostActivationQualityStep(operation)) return "";
-  if (isAcPostScreeningStep(operation)) return "screening";
-  if (isAcFgQcStep(operation)) return "fg_qc";
   const code = normalizeCode(operation.operation_code || operation.operation_id);
   const name = String(operation.operation_name || "").toLowerCase();
+  if (code.includes("SAD") || name.includes("screening after deston")) return "screening_after_destoning";
+  if (isAcPostScreeningStep(operation)) return "screening";
+  if (isAcFgQcStep(operation)) return "";
   if (code.includes("CRUSH") || name.includes("crush")) return "crushing";
   if (code.includes("DEDUST") || name.includes("de-dust") || name.includes("dedust")) return "dedusting";
   if (code.includes("DEMAG") || name.includes("magnet")) return "demagnetisation";
@@ -339,6 +348,9 @@ export function acProcessTabLabel(operation) {
   if (isAcPostActivationQualityStep(operation)) return "Quality";
   if (isAcKilnTempStep(operation)) return "Kiln Parameters";
   const code = normalizeCode(operation?.operation_code || operation?.operation_id);
+  if (code.includes("SAD") || String(operation?.operation_name || "").toLowerCase().includes("screening after deston")) {
+    return "Screening after Destoning";
+  }
   if (code.includes("POST") && code.includes("SCREEN")) return "Screening";
   if (isAcFgQcStep(operation)) return "Finished Goods";
   const name = String(operation?.operation_name || "").trim();
@@ -393,11 +405,24 @@ export function processMapParamsForOperation(operation, processParameters = []) 
 export function isAcKilnFeedQualityStep(operation) {
   if (!operation) return false;
   const code = normalizeCode(operation.operation_code || operation.operation_id);
-  if (code.includes("KILN") && code.includes("FEED") && (code.includes("QC") || code.includes("QUALITY"))) {
+  if (
+    code.includes("KILN") &&
+    code.includes("FEED") &&
+    (code.includes("QC") ||
+      code.includes("QUALITY") ||
+      code.includes("BAG_QTY") ||
+      code.includes("BAG_QUANTITY"))
+  ) {
     return true;
   }
   const name = String(operation.operation_name || "").toLowerCase();
-  return name.includes("kiln feed") && (name.includes("quality") || name.includes("qc"));
+  if (!name.includes("kiln feed")) return false;
+  return (
+    name.includes("quality") ||
+    name.includes("qc") ||
+    name.includes("bag quantity") ||
+    name.includes("bag qty")
+  );
 }
 
 export function isAcDestoningQualityStep(operation) {
@@ -475,6 +500,9 @@ export function isAcPostScreeningStep(operation) {
   ) {
     return false;
   }
+  const sadCode = normalizeCode(operation.operation_code || operation.operation_id);
+  const sadName = String(operation.operation_name || "").toLowerCase();
+  if (sadCode.includes("SAD") || sadName.includes("screening after deston")) return false;
   const code = normalizeCode(operation.operation_code || operation.operation_id);
   if (
     code.includes("DEDUST") ||
@@ -500,9 +528,10 @@ export function isAcPostScreeningStep(operation) {
 }
 
 function postActivationTabRank(operation) {
-  if (isAcPostScreeningStep(operation)) return 1;
   const code = normalizeCode(operation.operation_code || operation.operation_id);
   const name = String(operation.operation_name || "").toLowerCase();
+  if (code.includes("SAD") || name.includes("screening after deston")) return 0;
+  if (isAcPostScreeningStep(operation)) return 1;
   if (code.includes("DEDUST") || name.includes("de-dust") || name.includes("dedust")) return 2;
   if (code.includes("CRUSH") || name.includes("crush")) return 3;
   if (code.includes("DEMAG") || name.includes("magnet")) return 4;
@@ -516,10 +545,12 @@ export function acProcessTabsForStage(operations = [], stage = "activation") {
   const rows = acProcessMapTabs(operations).filter((op) => acExecutionStageOf(op) === stage);
   if (stage === "activation") {
     return [...rows]
-      .filter((op) => !isAcKilnTempStep(op))
+      .filter((op) => !isAcKilnTempStep(op) && !isAcKilnFeedQualityStep(op))
       .sort((a, b) => activationTabRank(a) - activationTabRank(b));
   }
-  const next = [...rows];
+  const next = [...rows].filter(
+    (op) => postActivationProcessKey(op) !== "screening_after_destoning" && !isAcFgQcStep(op)
+  );
   if (next.length && !next.some(isAcPostActivationQualityStep)) {
     next.push(AC_POST_QUALITY_TAB);
   }

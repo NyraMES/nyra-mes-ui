@@ -16,8 +16,7 @@ const MESH_FIELDS = [
   { key: "post_qc_12x30_kg", label: "12x30" },
   { key: "post_qc_minus_30_kg", label: "-30" },
   { key: "post_qc_mbd", label: "MBD" },
-  { key: "post_qc_cbd", label: "CBD" },
-  { key: "post_qc_ctc", label: "CTC" }
+  { key: "post_qc_cbd", label: "CBD" }
 ];
 
 const DESTINATIONS = [
@@ -26,8 +25,7 @@ const DESTINATIONS = [
   "De-Dusting",
   "Crushing",
   "De-Magnetize",
-  "Blending",
-  "Finished Goods"
+  "Blending"
 ];
 
 function emptyValues() {
@@ -36,13 +34,25 @@ function emptyValues() {
   return values;
 }
 
+function asInStockDestination(value) {
+  const text = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  if (!text || text === "in stock" || text === "instock" || text === "fg" || text === "fg qc" || text.includes("finished good")) {
+    return "In Stock";
+  }
+  return value;
+}
+
 function valuesFromBag(bag) {
   const next = emptyValues();
   const saved = bag?.values || {};
   for (const key of Object.keys(next)) {
     if (saved[key] != null && saved[key] !== "") next[key] = String(saved[key]);
   }
-  if (!next.post_qc_destination) next.post_qc_destination = "In Stock";
+  next.post_qc_destination = asInStockDestination(next.post_qc_destination);
   return next;
 }
 
@@ -67,6 +77,7 @@ export default function AcPostActivationQualityPanel() {
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
   const [savedBag, setSavedBag] = useState("");
+  const [savedDestination, setSavedDestination] = useState("");
 
   const load = async () => {
     const data = await fetchAcPostActivationQuality();
@@ -105,13 +116,16 @@ export default function AcPostActivationQualityPanel() {
     setSaving(id);
     setError("");
     try {
+      const values = { ...(drafts[id] || emptyValues()) };
+      if (bag.work_order_ctc) values.post_qc_ctc = bag.work_order_ctc;
       const saved = await saveAcPostActivationQuality({
         process,
         bag_code: bag.bag_code,
-        values: drafts[id] || emptyValues(),
-        user_id: user?.sub || user?.username || undefined
+        values,
+        user_id: user?.username || user?.email || user?.sub || undefined
       });
       setSavedBag(saved.bag_code);
+      setSavedDestination(saved?.values?.post_qc_destination || values.post_qc_destination || "");
       await load();
     } catch (e) {
       setError(formatApiError(e, "Could not save quality"));
@@ -126,10 +140,16 @@ export default function AcPostActivationQualityPanel() {
       style={{ color: "#0f172a", background: "#ffffff" }}
     >
       <div className="text-sm font-semibold">Quality</div>
+      <p className="text-xs text-slate-500">
+        Tags saved today on each process. After you set Next Destination, load that bag on
+        the destination process. Quality for the next process appears after its output bag is tagged.
+      </p>
       {error ? <AcAlert variant="error">{error}</AcAlert> : null}
       {savedBag ? (
         <p className="text-xs text-emerald-700">
-          Saved {savedBag}. That bag now appears on the destination process loader.
+          {savedDestination && savedDestination !== "In Stock"
+            ? `Saved ${savedBag}. Load it on ${savedDestination} — it is waiting on that process loader.`
+            : `Saved ${savedBag}. That bag is in In Stock.`}
         </p>
       ) : null}
       {loading ? <p className="text-sm text-slate-500">Loading quality bags…</p> : null}
@@ -152,7 +172,7 @@ export default function AcPostActivationQualityPanel() {
               {open ? (
                 <div className="px-4 pb-4">
                   {section.bags.length === 0 ? (
-                    <p className="text-sm text-slate-500">No output bags yet for this process.</p>
+                    <p className="text-sm text-slate-500">No tags saved today for this process.</p>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
@@ -181,17 +201,40 @@ export default function AcPostActivationQualityPanel() {
                                     <span className="font-mono font-semibold">
                                       {expanded ? "▾ " : "▸ "}
                                       {bag.bag_code}
+                                      {bag.work_order_code ? ` · ${bag.work_order_code}` : ""}
+                                      {bag.work_order_ctc ? ` · CTC ${bag.work_order_ctc}` : ""}
                                     </span>
                                     <span className="tabular-nums">{Number(bag.quantity_kg || 0).toFixed(2)}</span>
-                                    <span>{bag.grade || "—"}</span>
+                                    <span>
+                                      {bag.mesh ? `Mesh ${bag.mesh} / ` : ""}
+                                      {bag.grade || "—"}
+                                    </span>
                                     <span className="text-slate-500">{formatWhen(bag.created_at)}</span>
                                   </button>
                                   {expanded ? (
                                     <div className="mt-3 rounded-lg border border-slate-200 p-3 space-y-3 bg-slate-50">
                                       <p className="text-[11px] text-slate-500">
-                                        Enter quality metrics and choose next destination
+                                        Enter quality metrics and choose next destination. Work-order CTC is shown and is not re-entered.
                                       </p>
-                                      <div className="grid grid-cols-3 md:grid-cols-9 gap-2">
+                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                        <div>
+                                          <span className="block text-[10px] uppercase tracking-wide text-slate-500 mb-1">
+                                            Work order
+                                          </span>
+                                          <p className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1.5 text-sm">
+                                            {bag.work_order_code || "—"}
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <span className="block text-[10px] uppercase tracking-wide text-slate-500 mb-1">
+                                            CTC
+                                          </span>
+                                          <p className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1.5 text-sm">
+                                            {bag.work_order_ctc || "—"}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="grid grid-cols-3 md:grid-cols-8 gap-2">
                                         {MESH_FIELDS.map((field) => (
                                           <label key={field.key} className="block">
                                             <span className="block text-[10px] uppercase tracking-wide text-slate-500 mb-1">

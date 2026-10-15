@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { useAuth } from "../../../auth/AuthContext";
 import { useAppContext } from "../../../context/AppContext";
 import {
   acGradeLotSplitsForRelease,
@@ -14,8 +15,10 @@ import { isAcKilnFeedOutwardBag } from "../constants/processSteps";
 import useIndustryBasePath from "../../../hooks/useIndustryBasePath";
 import useAcPageRefresh from "../hooks/useAcPageRefresh";
 import { isAcContextReady } from "../utils/acContextUtils";
+import { userCanSeeAcSupplier } from "../utils/acPrivileges";
 import AcAlert from "./AcAlert";
 import AcFormSelect from "./AcFormSelect";
+import AcInwardRecordsTable from "./AcInwardRecordsTable";
 import AcSaveBar from "./AcSaveBar";
 import { WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
 
@@ -24,6 +27,8 @@ import { WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
  */
 export default function AcReleaseToProductionPanel({ onReleased }) {
   const { context, loading: contextLoading } = useAppContext();
+  const { user } = useAuth();
+  const showSupplier = userCanSeeAcSupplier(user?.roles || [], user);
   const basePath = useIndustryBasePath();
   const { focusTick } = useAcPageRefresh();
   const [inwardOrders, setInwardOrders] = useState([]);
@@ -64,11 +69,21 @@ export default function AcReleaseToProductionPanel({ onReleased }) {
     reloadInwardOrders
   ]);
 
-  const qcPassedInward = inwardOrders.filter(
-    (o) => Number(o.available_quantity_kg ?? 0) > 0
-  );
+  const orderAlreadyReleased = (o) => {
+    const released = Number(o.allocated_to_production_kg ?? 0);
+    const status = String(o.released_to_production_status || "").toUpperCase();
+    const lots = Array.isArray(o.released_lots) ? o.released_lots : [];
+    return released > 0 || status === "RELEASED" || lots.length > 0 || Boolean(o.production_order_code);
+  };
+  const outwardReady = (o) =>
+    Boolean(o.separation_complete) ||
+    String(o.rm_outward_status || "").toUpperCase() === "COMPLETED";
+  const qcPassedInward = inwardOrders.filter((o) => {
+    const available = Number(o.available_quantity_kg ?? o.quantity ?? o.our_weight_kg ?? 0);
+    return available > 0 && !orderAlreadyReleased(o) && outwardReady(o);
+  });
   const fullyReleasedCount = inwardOrders.filter(
-    (o) => isAcInwardQcPassed(o) && Number(o.available_quantity_kg ?? 0) <= 0
+    (o) => isAcInwardQcPassed(o) && orderAlreadyReleased(o)
   ).length;
 
   const selectedInward = qcPassedInward.find(
@@ -77,8 +92,11 @@ export default function AcReleaseToProductionPanel({ onReleased }) {
   const kilnFeedKg = outwardBags
     .filter(isAcKilnFeedOutwardBag)
     .reduce((sum, bag) => sum + Number(bag.weight_kg || 0), 0);
+  const remainingKg = Number(selectedInward?.available_quantity_kg ?? 0);
   const inwardAvailableKg =
-    kilnFeedKg > 0 ? kilnFeedKg : Number(selectedInward?.available_quantity_kg ?? 0);
+    remainingKg > 0 && kilnFeedKg > 0
+      ? Math.min(kilnFeedKg, remainingKg)
+      : remainingKg;
   const releaseQtyNum = Number(releaseQty || 0);
 
   useEffect(() => {
@@ -146,6 +164,7 @@ export default function AcReleaseToProductionPanel({ onReleased }) {
     contextReady && !ordersLoading && qcPassedInward.length === 0;
 
   return (
+    <div className="space-y-4">
     <WfCard className="mb-6">
       <WfCardHeader
         title="Release to production"
@@ -175,7 +194,7 @@ export default function AcReleaseToProductionPanel({ onReleased }) {
               <option key={o.customer_order_id} value={String(o.customer_order_id)}>
                 {o.order_code}
                 {o.raw_product_code ? ` · ${o.raw_product_code}` : ""}
-                {o.supplier_name ? ` · ${o.supplier_name}` : ""}
+                {showSupplier && o.supplier_name ? ` · ${o.supplier_name}` : ""}
               </option>
             ))}
           </AcFormSelect>
@@ -214,6 +233,8 @@ export default function AcReleaseToProductionPanel({ onReleased }) {
               !contextReady ||
               ordersLoading ||
               !releaseInwardId ||
+              !selectedInward ||
+              orderAlreadyReleased(selectedInward) ||
               !releaseQty ||
               inwardAvailableKg <= 0
             }
@@ -221,5 +242,7 @@ export default function AcReleaseToProductionPanel({ onReleased }) {
         </div>
       </WfCardBody>
     </WfCard>
+    <AcInwardRecordsTable className="" />
+    </div>
   );
 }

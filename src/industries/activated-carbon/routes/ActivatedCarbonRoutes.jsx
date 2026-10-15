@@ -11,7 +11,6 @@ import { lazy, Suspense } from "react";
 const RawMaterialPage = lazy(() => import("../pages/RawMaterialPage"));
 const MastersPage = lazy(() => import("../pages/MastersPage"));
 const DispatchPage = lazy(() => import("../pages/DispatchPage"));
-const CustomerSalesPage = lazy(() => import("../pages/CustomerSalesPage"));
 const AcExecutionPage = lazy(() => import("../pages/AcExecutionPage"));
 const ActivatedCarbonRoutingBuilderPage = lazy(
   () => import("../pages/ActivatedCarbonRoutingBuilderPage")
@@ -181,16 +180,7 @@ export default function ActivatedCarbonRoutes() {
             </RoleRoute>
           }
         />
-        <Route
-          path="customer-sales"
-          element={
-            <RoleRoute menuId="customer-sales">
-            <LazyPage>
-              <CustomerSalesPage />
-            </LazyPage>
-            </RoleRoute>
-          }
-        />
+        <Route path="customer-sales" element={<Navigate to="/activated-carbon/admin?tab=work-orders" replace />} />
         <Route
           path="dispatch"
           element={

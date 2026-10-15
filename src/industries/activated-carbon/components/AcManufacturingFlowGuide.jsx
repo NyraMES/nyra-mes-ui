@@ -15,9 +15,9 @@ const FLOW_STEPS = [
   },
   {
     n: 3,
-    title: "Customer PO",
-    desc: "Check stock or tentative delivery from raw + lead time",
-    to: "/activated-carbon/customer-sales"
+    title: "Work order",
+    desc: "Grade, CTC, and quantity in Admin — kiln feed uses that work order",
+    to: "/activated-carbon/admin?tab=work-orders"
   },
   {
     n: 4,
@@ -36,12 +36,9 @@ function AcManufacturingFlowGuide({ highlightStep = null, className = "" }) {
       <p className="wf-ac-flow-guide-intro">
         <strong>Suppliers</strong> deliver raw material; that inward is not a customer order.
         After inbound prep you <strong>release to production</strong> on the Raw Material page,
-        then open <strong>Execution</strong> — kiln feed is first, then activation, screening,
-        and quality. The route is created automatically after Load. Finished goods move to{" "}
-        <strong>stock</strong>. A{" "}
-        <strong>customer PO</strong> checks stock first — dispatch immediately if enough is on
-        hand, otherwise the system suggests a <strong>tentative delivery date</strong> from raw
-        material on hand and routing duration.
+        then create a <strong>work order</strong> in Admin (grade, CTC, KG). Execution kiln feed
+        starts from that work order number; any kiln can be loaded. Completed bags move to{" "}
+        <strong>In Stock</strong> for dispatch. Customer POs are not recorded.
       </p>
       <ol className="wf-ac-flow-guide-steps">
         {FLOW_STEPS.map((step) => (
