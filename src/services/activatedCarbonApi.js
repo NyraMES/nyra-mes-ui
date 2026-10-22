@@ -1483,6 +1483,18 @@ export async function createAcKilnParameters(payload) {
   return res.data;
 }
 
+export async function fetchAcKilnReadingBoard(kilnResourceCode) {
+  const res = await api.get("/api/activated-carbon/kiln-parameters/board", {
+    params: { kiln_resource_code: kilnResourceCode }
+  });
+  return res.data;
+}
+
+export async function approveAcKilnReading(payload) {
+  const res = await api.post("/api/activated-carbon/kiln-parameters/approve", payload);
+  return res.data;
+}
+
 export async function fetchAcScreening() {
   const res = await api.get("/api/activated-carbon/screening");
   return normalizeList(res.data);
@@ -1566,7 +1578,18 @@ export async function createAcUser(payload) {
     email: payload.email,
     display_name: payload.display_name,
     role_code: payload.role_code,
+    role_codes: payload.role_codes || [],
     password: payload.password
+  });
+  return res.data;
+}
+
+export async function updateAcUser(userId, payload) {
+  const res = await api.put(`/api/activated-carbon/users/${userId}`, {
+    email: payload.email,
+    display_name: payload.display_name,
+    role_codes: payload.role_codes || [],
+    is_active: payload.is_active !== false
   });
   return res.data;
 }

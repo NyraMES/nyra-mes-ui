@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  approveAcKilnReading,
   createAcKilnParameters,
-  fetchAcKilnParameters,
+  fetchAcKilnReadingBoard,
   fetchAcKilnSetpoints,
   formatAcApiError
 } from "../../../services/activatedCarbonApi";
+import { useAuth } from "../../../auth/AuthContext";
 import AcAlert from "./AcAlert";
 import useAcMasters from "../hooks/useAcMasters";
 import useBusyGuard from "../hooks/useBusyGuard";
-import { AC_KILN_PARAMETER_DEFINITIONS, formatKilnParameters, isScrapKilnParameter } from "../constants/kilnParameters";
+import { formatKilnParameters } from "../constants/kilnParameters";
+import { userIsAcAdmin, userIsAcManager, userIsNyraServices } from "../utils/acPrivileges";
 
 function kilnLetter(kiln, index = 0) {
   const blob = `${kiln?.resource_name || ""} ${kiln?.resource_code || ""}`.toUpperCase();
@@ -25,21 +28,55 @@ function formatStamp(value) {
   return dt.toLocaleString();
 }
 
-function readingSummary(readings = {}) {
+function readingSummary(readings = {}, fields = []) {
+  const labels = Object.fromEntries(fields.map((row) => [row.key, row]));
   return Object.entries(readings)
     .filter(([, value]) => value !== "" && value != null)
     .map(([key, value]) => {
-      const def = AC_KILN_PARAMETER_DEFINITIONS.find((row) => row.key === key);
+      const def = labels[key];
       return `${def?.label || key}: ${value}${def?.unit ? ` ${def.unit}` : ""}`;
     })
     .join(" · ");
 }
 
+function emptyValues(fields) {
+  return Object.fromEntries(fields.map((row) => [row.key, ""]));
+}
+
+function ReadingFields({ fields, values, onChange, disabled }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {fields.map((def) => (
+        <label key={def.key} className="block text-sm">
+          <span className="block mb-1 text-slate-700">
+            {def.label}
+            {def.unit ? <span className="text-slate-500 text-xs ml-1">({def.unit})</span> : null}
+          </span>
+          <input
+            type="number"
+            step="any"
+            min="0"
+            max={def.unit === "%" ? "100" : undefined}
+            value={values[def.key] ?? ""}
+            disabled={disabled}
+            onChange={(e) => onChange(def.key, e.target.value)}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+          />
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export default function AcKilnParametersPanel() {
+  const { user } = useAuth();
+  const roles = user?.roles || [];
+  const canApprove = userIsAcManager(roles) || userIsAcAdmin(roles) || userIsNyraServices(user);
   const { masters, loading: mastersLoading, ready } = useAcMasters();
   const [kilnCode, setKilnCode] = useState("");
+  const [board, setBoard] = useState(null);
   const [values, setValues] = useState({});
-  const [rows, setRows] = useState([]);
+  const [lateValues, setLateValues] = useState({});
   const [currentSettings, setCurrentSettings] = useState(null);
   const [error, setError] = useState("");
   const { busy: saving, run } = useBusyGuard();
@@ -48,57 +85,68 @@ export default function AcKilnParametersPanel() {
     () => [...(masters.kilns || [])].sort((a, b) => kilnLetter(a).localeCompare(kilnLetter(b))),
     [masters.kilns]
   );
-  const definitions = (
-    masters.kiln_parameter_definitions?.length > 0
-      ? masters.kiln_parameter_definitions
-      : AC_KILN_PARAMETER_DEFINITIONS
-  ).filter((row) => !isScrapKilnParameter(row));
+  const fields = board?.fields || [];
 
   useEffect(() => {
     if (!kilnCode && kilns[0]) setKilnCode(kilns[0].resource_code);
   }, [kilns, kilnCode]);
 
-  const reload = () =>
-    fetchAcKilnParameters()
-      .then((data) => setRows(Array.isArray(data) ? data : []))
-      .catch(() => setRows([]));
+  const reload = () => {
+    if (!kilnCode) return Promise.resolve();
+    return fetchAcKilnReadingBoard(kilnCode)
+      .then((data) => {
+        setBoard(data);
+        setValues(emptyValues(data?.fields || []));
+      })
+      .catch((err) => {
+        setBoard(null);
+        setError(formatAcApiError(err, "Could not load kiln readings"));
+      });
+  };
 
   useEffect(() => {
     reload();
     fetchAcKilnSetpoints()
       .then((plan) => setCurrentSettings(plan))
       .catch(() => setCurrentSettings(null));
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kilnCode]);
 
-  const handleAdd = () =>
+  const saveReading = (slotStart) =>
     run(async () => {
+      const source = slotStart ? lateValues[slotStart] || {} : values;
       const payload = { kiln_resource_code: kilnCode };
-      let filled = 0;
-      for (const def of definitions) {
-        const raw = values[def.key];
+      if (slotStart) payload.slot_start = slotStart;
+      for (const def of fields) {
+        const raw = source[def.key];
         if (raw === "" || raw == null) continue;
         payload[def.key] = Number(raw);
-        filled += 1;
       }
       if (!kilnCode) {
         setError("Select a kiln.");
         return;
       }
-      if (!filled) {
-        setError("Enter at least one reading.");
-        return;
-      }
       setError("");
       await createAcKilnParameters(payload);
-      setValues({});
+      if (slotStart) {
+        setLateValues((prev) => ({ ...prev, [slotStart]: emptyValues(fields) }));
+      }
       await reload();
     }).catch((e) => {
       setError(formatAcApiError(e, "Could not save kiln reading"));
     });
 
-  const visibleRows = kilnCode
-    ? rows.filter((row) => !row.kiln_resource_code || row.kiln_resource_code === kilnCode)
-    : rows;
+  const approveSlot = (slotStart) =>
+    run(async () => {
+      setError("");
+      const data = await approveAcKilnReading({
+        kiln_resource_code: kilnCode,
+        slot_start: slotStart
+      });
+      setBoard(data);
+    }).catch((e) => {
+      setError(formatAcApiError(e, "Could not approve the reading"));
+    });
 
   return (
     <section
@@ -129,6 +177,11 @@ export default function AcKilnParametersPanel() {
         ) : null}
       </div>
 
+      <p className="text-sm text-slate-700 m-0">
+        Enter T1, T2, T3, Main Damper (MD %), Boiler Damper (BD %), Induced Draft (ID %), and Boiler
+        Pressure every 30 minutes. A missed interval stays locked until a plant manager approves it.
+      </p>
+
       {error ? <AcAlert variant="error">{error}</AcAlert> : null}
 
       {(() => {
@@ -137,54 +190,93 @@ export default function AcKilnParametersPanel() {
         if (!text) return null;
         return (
           <p className="text-sm text-slate-700 m-0">
-            Current settings{kiln?.updated_at ? ` (${formatStamp(kiln.updated_at)})` : ""}: {text}
+            Standing settings{kiln?.updated_at ? ` (${formatStamp(kiln.updated_at)})` : ""}: {text}
           </p>
         );
       })()}
 
       <div className="rounded-md border border-slate-200 bg-white px-3 py-3 space-y-3">
-        <p className="text-sm font-semibold m-0">Kiln readings</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {definitions.map((def) => (
-            <label key={def.key} className="block text-sm">
-              <span className="block mb-1 text-slate-700">
-                {def.label}
-                {def.unit ? <span className="text-slate-500 text-xs ml-1">({def.unit})</span> : null}
-              </span>
-              <input
-                type="number"
-                step="any"
-                value={values[def.key] ?? ""}
-                disabled={saving}
-                onChange={(e) => setValues((prev) => ({ ...prev, [def.key]: e.target.value }))}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-              />
-            </label>
-          ))}
-        </div>
+        <p className="text-sm font-semibold m-0">
+          This interval{board?.current_label ? `: ${board.current_label}` : ""}
+        </p>
+        <ReadingFields
+          fields={fields}
+          values={values}
+          disabled={saving}
+          onChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
+        />
         <button
           type="button"
-          onClick={handleAdd}
+          onClick={() => saveReading(null)}
           disabled={saving || !kilnCode}
           className="rounded-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 text-white text-[11px] font-bold uppercase tracking-wide px-4 py-2"
         >
-          {saving ? "Adding…" : "Add"}
+          {saving ? "Saving…" : "Save reading"}
         </button>
       </div>
 
+      {(board?.locked_slots || []).length ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-3 space-y-3">
+          <p className="text-sm font-semibold m-0">Missed intervals</p>
+          {board.locked_slots.map((slot) => (
+            <div key={slot.slot_start} className="rounded-md border border-amber-200 bg-white px-3 py-2 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">{slot.label}</span>
+                {slot.status === "locked" && canApprove ? (
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-blue-700 underline"
+                    disabled={saving}
+                    onClick={() => approveSlot(slot.slot_start)}
+                  >
+                    Approve
+                  </button>
+                ) : null}
+                {slot.status === "locked" && !canApprove ? (
+                  <span className="text-xs text-amber-800">Locked until a plant manager approves it</span>
+                ) : null}
+              </div>
+              {slot.status === "approved" ? (
+                <>
+                  <ReadingFields
+                    fields={fields}
+                    values={lateValues[slot.slot_start] || {}}
+                    disabled={saving}
+                    onChange={(key, value) =>
+                      setLateValues((prev) => ({
+                        ...prev,
+                        [slot.slot_start]: { ...(prev[slot.slot_start] || {}), [key]: value }
+                      }))
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => saveReading(slot.slot_start)}
+                    disabled={saving}
+                    className="rounded-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 text-white text-[11px] font-bold uppercase tracking-wide px-4 py-2"
+                  >
+                    Save approved reading
+                  </button>
+                </>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="rounded-md border border-slate-200 bg-white px-3 py-3">
-        <p className="text-sm font-semibold mb-2">Recent readings</p>
-        {visibleRows.length === 0 ? (
-          <p className="text-xs text-slate-500 m-0">No readings yet. Enter values and click Add.</p>
+        <p className="text-sm font-semibold mb-2">Saved readings</p>
+        {(board?.readings || []).length === 0 ? (
+          <p className="text-xs text-slate-500 m-0">No readings yet.</p>
         ) : (
           <ul className="space-y-2 m-0 p-0 list-none">
-            {visibleRows.slice(0, 12).map((row) => (
-              <li
-                key={row.reading_id}
-                className="rounded-md border border-slate-200 px-3 py-2 text-xs"
-              >
-                <div className="font-semibold">{formatStamp(row.recorded_at)}</div>
-                <div className="text-slate-600 mt-1">{readingSummary(row.readings) || "—"}</div>
+            {board.readings.slice(0, 12).map((row) => (
+              <li key={row.reading_id} className="rounded-md border border-slate-200 px-3 py-2 text-xs">
+                <div className="font-semibold">
+                  {formatStamp(row.slot_start || row.recorded_at)}
+                  {row.late ? " · late" : ""}
+                </div>
+                <div className="text-slate-600 mt-1">{readingSummary(row.readings, fields) || "—"}</div>
               </li>
             ))}
           </ul>

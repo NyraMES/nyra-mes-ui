@@ -6,7 +6,7 @@ import { StatusPill } from "../../../workflow/ui";
 const PREVIEW_STEPS = [
   { operation_code: "IN-RMS-BAG", operation_name: "RMS Inward", process_step: "IN-RMS-BAG" },
   { operation_code: "IN-LAB", operation_name: "Lab", process_step: "IN-LAB" },
-  { operation_code: "IN-RM-OUT", operation_name: "RMS Outward", process_step: "IN-RM-OUT" }
+  { operation_code: "IN-RM-OUT", operation_name: "GRN", process_step: "IN-RM-OUT" }
 ];
 
 function formatReceivedQty(quantity, uom = "KG") {
@@ -143,7 +143,7 @@ export default function AcInboundProcessMap({
                       Open Release
                     </Link>
                   ) : (
-                    "Complete RMS Inward, Lab, and RMS Outward first."
+                    "Complete bag generation, Lab, and GRN first."
                   )}
               </div>
             </div>

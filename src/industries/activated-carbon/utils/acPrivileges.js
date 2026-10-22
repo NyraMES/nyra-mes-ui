@@ -40,7 +40,7 @@ export function userCanEnterAcInboundBags(roles = [], user = null) {
   return userIsNyraPlantOperator(roles, user) || roles.includes(MES_ROLES.RMS);
 }
 
-/** RMS outward after Lab: the RMS engineer records rotary grade bags. */
+/** GRN after Lab: the RMS engineer records rotary grade bags. */
 export function userCanRecordAcRmsOutward(roles = [], user = null) {
   return userIsNyraPlantOperator(roles, user) || roles.includes(MES_ROLES.RMS);
 }
@@ -154,6 +154,20 @@ export function acRawMaterialTabsForRoles(roles = [], user = null) {
   if (userCanAccessAcGateReceipt(roles, user)) tabs.push("inward");
   tabs.push("prep", "release", "reports");
   return tabs;
+}
+
+/**
+ * Week-chart lines for a shop login. Plant Manager and Admin stay on the plant dashboard.
+ * One line per role. An operator covers Activation and Post Activation.
+ */
+export function acPerformanceAreas(roles = []) {
+  const areas = [];
+  if (roles.includes(MES_ROLES.RMS)) areas.push("rms");
+  if (roles.includes(MES_ROLES.SECURITY)) areas.push("entry");
+  if (roles.includes(MES_ROLES.ACTIVATION) || roles.includes(MES_ROLES.OPERATOR)) areas.push("activation");
+  if (roles.includes(MES_ROLES.POST_ACTIVATION) || roles.includes(MES_ROLES.OPERATOR)) areas.push("post");
+  if (roles.includes(MES_ROLES.QUALITY)) areas.push("quality");
+  return areas;
 }
 
 /** RMS engineer with no activation, post-activation, or quality role. */

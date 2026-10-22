@@ -18,6 +18,7 @@ import {
   fetchAcInStockBags,
   fetchAcKilnFeedLots,
   fetchAcKilnOutputBagQc,
+  fetchAcKilnParameters,
   fetchAcPostActivationQuality,
   fetchAcPostActivationState,
   fetchAcInwardBags,
@@ -26,6 +27,7 @@ import {
 } from "../../../services/activatedCarbonApi";
 import { useAuth } from "../../../auth/AuthContext";
 import { downloadAcExcel } from "../utils/acExcelExport";
+import { buildKilnDailyAverages } from "../utils/acKilnDailyReport";
 import useAcPersonLabel from "../hooks/useAcPersonLabel";
 import { MES_ROLES } from "../../../auth/roles";
 import { userCanAccessAcDestoningCtc, userCanSeeAcSupplier, userIsAcEngineer } from "../utils/acPrivileges";
@@ -38,7 +40,7 @@ const RM_PROCESSES = [
   { id: "lab", label: "Lab" },
   { id: "debit_note", label: "Debit note" },
   { id: "rms_in", label: "RMS inward" },
-  { id: "rms_out", label: "RMS outward" },
+  { id: "rms_out", label: "GRN" },
   { id: "released", label: "Release to production" }
 ];
 
@@ -46,6 +48,7 @@ const CHART_COLORS = ["#0ea5e9", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#6
 
 const ACT_PROCESSES = [
   { id: "all", label: "All processes" },
+  { id: "daily", label: "Daily averages" },
   { id: "kiln_feed", label: "Kiln feed" },
   { id: "kiln_output", label: "Kiln output" },
   { id: "destoning", label: "Destoning" },
@@ -311,7 +314,7 @@ function rmPerformanceRows(data, filters) {
       },
       bag.created_by,
       at,
-      bag.grade ? "RMS outward" : "Bag generation"
+      bag.grade ? "GRN" : "Bag generation"
     );
   }
   return rows;
@@ -436,17 +439,19 @@ async function loadSectionData(section) {
     return { inward: inward || [], bags: bags || [] };
   }
   if (section === "activation") {
-    const [lots, kilnQc, destoning, destonQc] = await Promise.all([
+    const [lots, kilnQc, destoning, destonQc, readings] = await Promise.all([
       fetchAcKilnFeedLots().catch(() => []),
       fetchAcKilnOutputBagQc().catch(() => []),
       fetchAcDestoningState().catch(() => ({})),
-      fetchAcDestoningBagQc().catch(() => [])
+      fetchAcDestoningBagQc().catch(() => []),
+      fetchAcKilnParameters().catch(() => [])
     ]);
     return {
       lots: lots || [],
       kilnBags: kilnQc || [],
       destoningBags: destoning?.output_bags || [],
-      destonQc: destonQc || []
+      destonQc: destonQc || [],
+      readings: readings || []
     };
   }
   const [quality, inStock, ...states] = await Promise.all([
@@ -650,7 +655,7 @@ function buildRmDetails(process, data, filters) {
       }));
     });
     return {
-      title: "RMS outward bags",
+      title: "GRN bags",
       columns: [
         { key: "order_code", label: "Inward" },
         { key: "bag_code", label: "Bag" },
@@ -776,7 +781,7 @@ function buildRmChart(process, data, filters) {
         { name: "Lab", value: rows.filter((row) => doneStatus(row.lab_status) === "Completed").length },
         { name: "Debit note", value: rows.filter((row) => row.debit_note?.raised).length },
         { name: "RMS inward", value: rows.filter((row) => doneStatus(row.rms_inward_status) === "Completed").length },
-        { name: "RMS outward", value: rows.filter((row) => doneStatus(row.rm_outward_status) === "Completed").length },
+        { name: "GRN", value: rows.filter((row) => doneStatus(row.rm_outward_status) === "Completed").length },
         { name: "Released", value: rows.filter((row) => doneStatus(row.released_to_production_status) === "Completed").length }
       ],
       "Completed counts by process"
@@ -841,6 +846,19 @@ function buildActDetails(process, data, filters) {
       rows: [...lots, ...kilnBags, ...deston]
     };
   }
+  if (process === "daily") {
+    return {
+      title: "Daily kiln averages",
+      columns: [
+        { key: "day", label: "Date" },
+        { key: "kiln", label: "Kiln" },
+        { key: "avg_temp", label: "Average temp (°C)" },
+        { key: "avg_ctc", label: "Average CTC" },
+        { key: "yield_avg", label: "Yield average (%)" }
+      ],
+      rows: buildKilnDailyAverages(data, filters)
+    };
+  }
   if (process === "kiln_feed") {
     return { title: "Kiln feed", columns, rows: lots };
   }
@@ -867,6 +885,16 @@ function buildActChart(process, data, filters) {
         { name: "In Stock", value: stock.length }
       ],
       "Counts by process"
+    );
+  }
+  if (process === "daily") {
+    const rows = buildKilnDailyAverages(data, filters);
+    return barChart(
+      rows.map((row) => ({
+        name: `${row.day} ${row.kiln}`,
+        value: Number(row.yield_avg) || 0
+      })),
+      "Yield average (%)"
     );
   }
   if (process === "kiln_feed") {

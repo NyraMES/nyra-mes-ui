@@ -19,11 +19,11 @@ import useBusyGuard from "../hooks/useBusyGuard";
 import { isValidUuid } from "../utils/acProductUtils";
 import {
   collectKilnFeedEvents,
-  formatLoaderTime,
-  kilnOutputDone,
+  filterKilnFeedDayRows,
   KILN_LIVE_WINDOW_HOURS,
   loadedKilnBagCodes,
-  parseKilnFeedEvents
+  parseKilnFeedEvents,
+  plantDayKey
 } from "../utils/acKilnLoaderUtils";
 import { isAcKilnFeedOutwardBag } from "../constants/processSteps";
 
@@ -161,6 +161,9 @@ export default function AcExecutionKilnFeedPanel({
   const [workOrderCode, setWorkOrderCode] = useState("");
   const [kilnBalance, setKilnBalance] = useState({ loadedKg: 0, outputKg: 0, remainingKg: 0 });
   const [serverFeed, setServerFeed] = useState([]);
+  const [feedCtc, setFeedCtc] = useState("");
+  const [feedFrom, setFeedFrom] = useState(() => plantDayKey(new Date()));
+  const [feedTo, setFeedTo] = useState(() => plantDayKey(new Date()));
 
   const kilns = [...(masters.kilns || [])].sort((a, b) =>
     kilnPlantLetter(a).localeCompare(kilnPlantLetter(b))
@@ -241,14 +244,9 @@ export default function AcExecutionKilnFeedPanel({
     });
   }, [events, kilnLots]);
 
-  const selectableWorkOrders = useMemo(
-    () => workOrders.filter((row) => !kilnOutputDone(row)),
-    [workOrders]
-  );
-
   const selectedWorkOrder = useMemo(
-    () => selectableWorkOrders.find((row) => row.work_order_code === workOrderCode) || null,
-    [selectableWorkOrders, workOrderCode]
+    () => workOrders.find((row) => row.work_order_code === workOrderCode) || null,
+    [workOrders, workOrderCode]
   );
 
   useEffect(() => {
@@ -311,6 +309,40 @@ export default function AcExecutionKilnFeedPanel({
     () => parseKilnFeedEvents([...serverFeed, ...events]).filter((ev) => ev.bagCode),
     [serverFeed, events]
   );
+  const ctcByWorkOrder = useMemo(() => {
+    const map = {};
+    for (const row of workOrders) {
+      if (row?.work_order_code && row.ctc != null && String(row.ctc).trim()) {
+        map[row.work_order_code] = String(row.ctc).trim();
+      }
+    }
+    return map;
+  }, [workOrders]);
+  const ctcOptions = useMemo(() => {
+    const values = new Set(Object.values(ctcByWorkOrder));
+    return Array.from(values).sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+  }, [ctcByWorkOrder]);
+  const dayFeedRows = useMemo(() => {
+    const raw = [];
+    for (const kiln of kilnStatus || []) {
+      for (const ev of kiln.feed_events || []) {
+        raw.push({ ...ev, kiln_resource_code: ev.kiln_resource_code || kiln.resource_code });
+      }
+    }
+    for (const row of kilnLots || []) {
+      const meta = lotMeta(row);
+      const stored = meta.kiln_feed_events || row.kiln_feed_events || [];
+      if (Array.isArray(stored)) raw.push(...stored);
+    }
+    raw.push(...localEvents);
+    const parsed = parseKilnFeedEvents(raw).filter((ev) => !kilnCode || !ev.kilnCode || ev.kilnCode === kilnCode);
+    return filterKilnFeedDayRows(parsed, {
+      ctc: feedCtc,
+      from: feedFrom,
+      to: feedTo,
+      ctcByWorkOrder
+    }).slice().reverse();
+  }, [kilnStatus, kilnLots, localEvents, kilnCode, feedCtc, feedFrom, feedTo, ctcByWorkOrder]);
 
   const handleLoadBag = (picked, bag) => {
     const code = lotCodeOf(picked);
@@ -395,7 +427,7 @@ export default function AcExecutionKilnFeedPanel({
             }}
           >
             <option value="">Select work order</option>
-            {selectableWorkOrders.map((row) => (
+            {workOrders.map((row) => (
               <option key={row.work_order_code} value={row.work_order_code}>
                 {row.work_order_code} · {row.grade} · CTC {row.ctc} · {Number(row.quantity_kg || 0)} kg
               </option>
@@ -423,18 +455,12 @@ export default function AcExecutionKilnFeedPanel({
             ))}
           </select>
         </label>
-        {selectableWorkOrders.length === 0 ? (
+        {workOrders.length === 0 ? (
           <p className="text-xs" style={{ color: "#b45309" }}>
-            {workOrders.length === 0 ? (
-              <>
-                No work orders.{" "}
-                <Link to="/activated-carbon/admin?tab=work-orders" className="underline">
-                  Create in Admin
-                </Link>
-              </>
-            ) : (
-              "Kiln output is complete for these work orders."
-            )}
+            No work orders.{" "}
+            <Link to="/activated-carbon/admin?tab=work-orders" className="underline">
+              Create in Admin
+            </Link>
           </p>
         ) : null}
       </div>
@@ -497,6 +523,88 @@ export default function AcExecutionKilnFeedPanel({
           onBalance={setKilnBalance}
           onFeed={setServerFeed}
         />
+      </article>
+
+      <article className="rounded-lg border border-slate-200 bg-white px-4 py-3" style={{ color: "#0f172a" }}>
+        <h3 className="text-base font-semibold">Kiln feed for the day</h3>
+        <p className="text-xs mt-1 mb-3" style={{ color: "#475569" }}>
+          Bags loaded{kilnCode ? ` on ${kilnTitle.replace(" — Loader", "")}` : ""}. Choose CTC and the dates to see that period.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+          <label className="text-sm">
+            <span className="block mb-1 font-medium">CTC</span>
+            <select
+              className="w-full rounded border border-slate-300 px-3 py-2 bg-white"
+              value={feedCtc}
+              onChange={(e) => setFeedCtc(e.target.value)}
+            >
+              <option value="">All CTC</option>
+              {ctcOptions.map((ctc) => (
+                <option key={ctc} value={ctc}>
+                  {ctc}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
+            <span className="block mb-1 font-medium">From</span>
+            <input
+              type="date"
+              className="w-full rounded border border-slate-300 px-3 py-2 bg-white"
+              value={feedFrom}
+              onChange={(e) => {
+                setFeedFrom(e.target.value);
+                e.target.blur();
+              }}
+            />
+          </label>
+          <label className="text-sm">
+            <span className="block mb-1 font-medium">To</span>
+            <input
+              type="date"
+              className="w-full rounded border border-slate-300 px-3 py-2 bg-white"
+              value={feedTo}
+              onChange={(e) => {
+                setFeedTo(e.target.value);
+                e.target.blur();
+              }}
+            />
+          </label>
+        </div>
+        {dayFeedRows.length === 0 ? (
+          <p className="text-sm text-slate-500">No kiln feed in this range.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-slate-500">
+                  <th className="py-1 pr-2 font-medium">Loaded</th>
+                  <th className="py-1 pr-2 font-medium">Bag</th>
+                  <th className="py-1 pr-2 font-medium">Work order</th>
+                  <th className="py-1 pr-2 font-medium">CTC</th>
+                  <th className="py-1 pr-2 font-medium">Kiln</th>
+                  <th className="py-1 font-medium">Weight (kg)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dayFeedRows.map((ev) => {
+                  const kilnIndex = kilns.findIndex((k) => k.resource_code === ev.kilnCode);
+                  const kilnLabel = kilnIndex >= 0 ? kilnOptionLabel(kilns[kilnIndex], kilnIndex) : ev.kilnCode || "—";
+                  return (
+                    <tr key={`${ev.bagCode}-${ev.loadedAt?.toISOString() || ""}-${ev.kg}`} className="border-t border-slate-100">
+                      <td className="py-1.5 pr-2">{ev.loadedAt ? ev.loadedAt.toLocaleString() : "—"}</td>
+                      <td className="py-1.5 pr-2 font-mono">{ev.bagCode || "—"}</td>
+                      <td className="py-1.5 pr-2 font-mono">{ev.workOrderCode || "—"}</td>
+                      <td className="py-1.5 pr-2">{ctcByWorkOrder[ev.workOrderCode] || "—"}</td>
+                      <td className="py-1.5 pr-2">{kilnLabel}</td>
+                      <td className="py-1.5 tabular-nums">{Number(ev.kg || 0).toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </article>
 
       {picking

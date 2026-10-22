@@ -1,22 +1,56 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 import {
   createAcUser,
   fetchAcAssignableUserRoles,
   fetchAcUsers,
   formatAcApiError,
-  updateAcUserNickname
+  updateAcUser
 } from "../../../services/activatedCarbonApi";
 import { invalidateAcPersonLabels } from "../hooks/useAcPersonLabel";
 import { useAuth } from "../../../auth/AuthContext";
 import { useAppContext } from "../../../context/AppContext";
 import AcAlert from "../components/AcAlert";
 import AcCreatedIdsDialog from "../components/AcCreatedIdsDialog";
-import AcFormSelect from "../components/AcFormSelect";
 import AcPermissionNotice from "../components/AcPermissionNotice";
 import AcSaveBar from "../components/AcSaveBar";
 import { userCanAccessAcUsers } from "../utils/acPrivileges";
 import { SectionHeader, WfCard, WfCardBody, WfCardHeader } from "../../../workflow/ui";
+
+function roleList(row) {
+  if (Array.isArray(row?.role_labels) && row.role_labels.length) return row.role_labels;
+  if (row?.role_label) return [row.role_label];
+  return [];
+}
+
+function roleCodesOf(row) {
+  if (Array.isArray(row?.role_codes) && row.role_codes.length) return row.role_codes;
+  return row?.role_code ? [row.role_code] : [];
+}
+
+function RoleChecks({ roles, selected, onChange, disabled, compact = false }) {
+  const toggle = (code) => {
+    const next = selected.includes(code)
+      ? selected.filter((item) => item !== code)
+      : [...selected, code];
+    onChange(next);
+  };
+  return (
+    <div className={compact ? "grid gap-1 grid-cols-2 min-w-[16rem]" : "grid gap-2 sm:grid-cols-2"}>
+      {roles.map((role) => (
+        <label key={role.role_code} className="flex items-center gap-2 text-sm text-slate-800">
+          <input
+            type="checkbox"
+            checked={selected.includes(role.role_code)}
+            disabled={disabled}
+            onChange={() => toggle(role.role_code)}
+          />
+          {role.label}
+        </label>
+      ))}
+    </div>
+  );
+}
 
 function previewUserId(raw, suffix) {
   const value = String(raw || "").trim().toLowerCase();
@@ -37,8 +71,9 @@ function AcUsersPage({ embedded = false }) {
   const [nickname, setNickname] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [nicknameDrafts, setNicknameDrafts] = useState({});
-  const [roleCode, setRoleCode] = useState("");
+  const [selectedRoles, setSelectedRoles] = useState([]);
+  const [editingId, setEditingId] = useState("");
+  const [editDraft, setEditDraft] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -59,15 +94,9 @@ function AcUsersPage({ embedded = false }) {
         fetchAcAssignableUserRoles()
       ]);
       setUsers(list);
-      setNicknameDrafts(
-        Object.fromEntries((list || []).map((row) => [row.user_id, row.display_name || ""]))
-      );
       setRoles(rolePayload.items || []);
       if (rolePayload.login_suffix) {
         setLoginSuffix(rolePayload.login_suffix);
-      }
-      if (!roleCode && rolePayload.items?.length) {
-        setRoleCode(rolePayload.items[0].role_code);
       }
     } catch (err) {
       setError(formatAcApiError(err, "Could not load users"));
@@ -101,13 +130,15 @@ function AcUsersPage({ embedded = false }) {
         username,
         email,
         display_name: nickname,
-        role_code: roleCode,
+        role_code: selectedRoles[0],
+        role_codes: selectedRoles,
         password
       });
       setUsername("");
       setEmail("");
       setNickname("");
       setPassword("");
+      setSelectedRoles([]);
       setCreated(result);
       invalidateAcPersonLabels();
       setSuccess(result.cognito_message || "User created.");
@@ -119,20 +150,36 @@ function AcUsersPage({ embedded = false }) {
     }
   };
 
-  const saveNickname = async (row) => {
-    if (!canManage || saving) return;
-    const next = String(nicknameDrafts[row.user_id] || "").trim();
-    if (!next || next === String(row.display_name || "").trim()) return;
+  const startEdit = (row) => {
+    setEditingId(row.user_id);
+    setEditDraft({
+      email: row.email || "",
+      display_name: row.display_name || "",
+      role_codes: roleCodesOf(row),
+      is_active: row.is_active !== false
+    });
+    setError("");
+    setSuccess("");
+  };
+
+  const saveEdit = async () => {
+    if (!canManage || saving || !editDraft) return;
+    if (!editDraft.role_codes.length) {
+      setError("Select at least one role.");
+      return;
+    }
     setSaving(true);
     setError("");
     setSuccess("");
     try {
-      await updateAcUserNickname(row.user_id, next);
+      const result = await updateAcUser(editingId, editDraft);
       invalidateAcPersonLabels();
-      setSuccess(`Nickname for ${row.username || row.email} saved.`);
+      setSuccess(result.cognito_message || "User updated.");
+      setEditingId("");
+      setEditDraft(null);
       await load();
     } catch (err) {
-      setError(formatAcApiError(err, "Could not save nickname"));
+      setError(formatAcApiError(err, "Could not update user"));
     } finally {
       setSaving(false);
     }
@@ -143,7 +190,7 @@ function AcUsersPage({ embedded = false }) {
         { label: "User ID", value: created.username },
         { label: "Nickname", value: created.display_name },
         { label: "Email", value: created.email },
-        { label: "Role", value: created.role_label || created.role_code },
+        { label: "Roles", value: roleList(created).join(", ") },
         created.temporary_password
           ? { label: "Password", value: created.temporary_password }
           : null
@@ -155,7 +202,7 @@ function AcUsersPage({ embedded = false }) {
       {embedded ? null : (
         <SectionHeader
           title="Users"
-          subtitle="Create plant users. User ID is the login; email is their mailbox. Role maps to the MES Cognito group."
+          subtitle="Create plant users. A person can have more than one role. The screens for each selected role are shown together."
         />
       )}
 
@@ -241,25 +288,23 @@ function AcUsersPage({ embedded = false }) {
                   Emailed to the user. They sign in with it once and then choose their own password.
                 </span>
               </label>
-              <AcFormSelect
-                label="Role"
-                value={roleCode}
-                onChange={(e) => setRoleCode(e.target.value)}
-                loading={loading}
-                emptyMessage="No roles available for your account"
-                disabled={saving}
-              >
-                {roles.map((role) => (
-                  <option key={role.role_code} value={role.role_code}>
-                    {role.label}
-                  </option>
-                ))}
-              </AcFormSelect>
+              <div className="text-sm">
+                <span className="block mb-2 font-medium text-slate-700">Roles</span>
+                <RoleChecks
+                  roles={roles}
+                  selected={selectedRoles}
+                  disabled={saving || loading}
+                  onChange={setSelectedRoles}
+                />
+                <span className="mt-1 block text-xs text-slate-600">
+                  Tick every job this person does. Activation and Post Activation together open both screens.
+                </span>
+              </div>
               <AcSaveBar
                 onSave={onCreate}
                 saving={saving}
                 saveLabel="Create user"
-                disabled={!username.trim() || !email.trim() || !nickname.trim() || !roleCode}
+                disabled={!username.trim() || !email.trim() || !nickname.trim() || !selectedRoles.length}
               />
             </div>
           </WfCardBody>
@@ -272,60 +317,130 @@ function AcUsersPage({ embedded = false }) {
           {loading ? (
             <p className="text-sm text-slate-600">Loading users…</p>
           ) : users.length ? (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-slate-500 border-b">
-                  <th className="py-2">User ID</th>
-                  <th className="py-2">Nickname</th>
-                  <th className="py-2">Email</th>
-                  <th className="py-2">Role</th>
-                  <th className="py-2">Status</th>
+                  <th className="py-2 pr-3">User ID</th>
+                  <th className="py-2 pr-3">Nickname</th>
+                  <th className="py-2 pr-3">Email</th>
+                  <th className="py-2 pr-3">Roles</th>
+                  <th className="py-2 pr-3">Status</th>
+                  {canManage ? <th className="py-2"> </th> : null}
                 </tr>
               </thead>
               <tbody>
-                {users.map((row) => (
-                  <tr key={row.user_id} className="border-b border-slate-100">
-                    <td className="py-2 font-mono text-slate-800">{row.username || "—"}</td>
-                    <td className="py-2">
-                      {canManage ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            className="w-40 rounded border border-slate-300 px-2 py-1 text-sm text-slate-900"
-                            value={nicknameDrafts[row.user_id] ?? ""}
-                            maxLength={64}
-                            disabled={saving}
-                            onChange={(e) =>
-                              setNicknameDrafts((prev) => ({
-                                ...prev,
-                                [row.user_id]: e.target.value
-                              }))
-                            }
-                          />
-                          <button
-                            type="button"
-                            className="text-xs text-blue-700 underline disabled:text-slate-400"
-                            disabled={
-                              saving ||
-                              String(nicknameDrafts[row.user_id] || "").trim() ===
-                                String(row.display_name || "").trim()
-                            }
-                            onClick={() => saveNickname(row)}
-                          >
-                            Save
-                          </button>
-                        </div>
+                {users.map((row) => {
+                  const editing = editingId === row.user_id && editDraft;
+                  return (
+                  <Fragment key={row.user_id}>
+                  <tr className="border-b border-slate-100 align-top">
+                    <td className="py-2 pr-3 font-mono text-slate-800 whitespace-nowrap">{row.username || "—"}</td>
+                    <td className="py-2 pr-3 text-slate-800">
+                      {editing ? (
+                        <input
+                          type="text"
+                          className="w-full min-w-[8rem] rounded border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900"
+                          value={editDraft.display_name}
+                          maxLength={64}
+                          disabled={saving}
+                          aria-label="Nickname"
+                          onChange={(e) => setEditDraft((prev) => ({ ...prev, display_name: e.target.value }))}
+                        />
                       ) : (
                         row.display_name || "—"
                       )}
                     </td>
-                    <td className="py-2 text-slate-700">{row.email}</td>
-                    <td className="py-2 text-slate-800">{row.role_label || row.role_code}</td>
-                    <td className="py-2">{row.is_active ? "Active" : "Inactive"}</td>
+                    <td className="py-2 pr-3 text-slate-700">
+                      {editing ? (
+                        <input
+                          type="email"
+                          className="w-full min-w-[14rem] rounded border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900"
+                          value={editDraft.email}
+                          disabled={saving}
+                          aria-label="Email"
+                          onChange={(e) => setEditDraft((prev) => ({ ...prev, email: e.target.value }))}
+                        />
+                      ) : (
+                        row.email
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-slate-800">
+                      {editing ? (
+                        <RoleChecks
+                          compact
+                          roles={roles}
+                          selected={editDraft.role_codes}
+                          disabled={saving}
+                          onChange={(role_codes) => setEditDraft((prev) => ({ ...prev, role_codes }))}
+                        />
+                      ) : (
+                        roleList(row).join(", ") || "—"
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {editing ? (
+                        <label className="flex items-center gap-2 text-sm text-slate-800">
+                          <input
+                            type="checkbox"
+                            checked={editDraft.is_active}
+                            disabled={saving}
+                            onChange={(e) => setEditDraft((prev) => ({ ...prev, is_active: e.target.checked }))}
+                          />
+                          Active
+                        </label>
+                      ) : (
+                        row.is_active ? "Active" : "Inactive"
+                      )}
+                    </td>
+                    {canManage ? (
+                      <td className="py-2 whitespace-nowrap">
+                        {editing ? null : (
+                          <button
+                            type="button"
+                            className="wf-btn wf-btn-primary"
+                            disabled={saving}
+                            onClick={() => startEdit(row)}
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </td>
+                    ) : null}
                   </tr>
-                ))}
+                  {editing ? (
+                    <tr key={`${row.user_id}-actions`} className="border-b border-slate-100">
+                      <td colSpan={canManage ? 6 : 5} className="pb-3 pt-1">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="ac-user-row-btn ac-user-row-btn-save"
+                            disabled={saving || !editDraft.display_name.trim() || !editDraft.email.trim() || !editDraft.role_codes.length}
+                            onClick={saveEdit}
+                          >
+                            {saving ? "Saving…" : "Save"}
+                          </button>
+                          <button
+                            type="button"
+                            className="ac-user-row-btn ac-user-row-btn-cancel"
+                            disabled={saving}
+                            onClick={() => {
+                              setEditingId("");
+                              setEditDraft(null);
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
+            </div>
           ) : (
             <p className="text-sm text-slate-600">No users have been created for this plant yet.</p>
           )}

@@ -14,8 +14,20 @@ export function formatKilnParameters(parameters) {
     .join(" · ");
 }
 
+/** Readings the activation engineer enters every 30 minutes. */
+export const AC_KILN_READING_FIELDS = [
+  { key: "t1", label: "T1", unit: "°C" },
+  { key: "t2", label: "T2", unit: "°C" },
+  { key: "t3", label: "T3", unit: "°C" },
+  { key: "main_damper", label: "Main Damper (MD)", unit: "%" },
+  { key: "boiler_damper", label: "Boiler Damper (BD)", unit: "%" },
+  { key: "induced_draft", label: "Induced Draft (ID)", unit: "%" },
+  { key: "boiler_pressure", label: "Boiler Pressure", unit: "" }
+];
+
 /** Fallback kiln parameter catalog when API is unreachable. */
 export const AC_KILN_PARAMETER_DEFINITIONS = [
+  ...AC_KILN_READING_FIELDS,
   { key: "zone1_temp_c", label: "Zone 1 Temp (°C)", unit: "°C" },
   { key: "zone2_temp_c", label: "Zone 2 Temp (°C)", unit: "°C" },
   { key: "steam_flow_kg_h", label: "Steam Flow (kg/h)", unit: "kg/h" },

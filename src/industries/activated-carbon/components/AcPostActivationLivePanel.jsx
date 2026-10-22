@@ -9,12 +9,8 @@ import {
   loadAcPostActivationBag,
   unloadAcPostActivationBag
 } from "../../../services/activatedCarbonApi";
-import { KILN_LIVE_WINDOW_HOURS, parseKilnFeedEvents } from "../utils/acKilnLoaderUtils";
 import useBusyGuard from "../hooks/useBusyGuard";
 import AcAlert from "./AcAlert";
-import AcKilnCumulativeChart from "./AcKilnCumulativeChart";
-
-const LIVE_TICK_MS = 15_000;
 
 const CRUSHING_GRADES = ["2/3", "3/4", "4/6", "6/10", "10/12", "12/14", "-14"];
 const EXKLIN_GRADE = "Exklin";
@@ -62,7 +58,6 @@ export default function AcPostActivationLivePanel({ processKey, lot = null, canR
   const { busy: saving, run: runBusy } = useBusyGuard();
   const [creatingId, setCreatingId] = useState("");
   const [error, setError] = useState("");
-  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const isScreening = processKey === "screening";
   const isGradeBoard = isScreening || processKey === "crushing";
@@ -73,11 +68,6 @@ export default function AcPostActivationLivePanel({ processKey, lot = null, canR
     return Array.isArray(cfg?.grades) ? cfg.grades : [];
   }, [isScreening, meshConfigs, selectedMesh]);
   const gradeOptions = gradesForProcess(processKey, meshGrades);
-
-  useEffect(() => {
-    const timer = setInterval(() => setNowMs(Date.now()), LIVE_TICK_MS);
-    return () => clearInterval(timer);
-  }, []);
 
   const refreshState = () =>
     fetchAcPostActivationState(processKey).then((row) => {
@@ -158,17 +148,10 @@ export default function AcPostActivationLivePanel({ processKey, lot = null, canR
     (gradeOptional || grade.trim()) &&
     !saving;
 
-  const events = useMemo(() => {
-    const raw = (state?.load_events || []).map((row) => ({
-      lot_code: row.lot_code,
-      bag_code: row.bag_code,
-      kg: row.kg,
-      loaded_at: row.loaded_at
-    }));
-    return parseKilnFeedEvents(raw);
-  }, [state]);
-
-  const cumulativeKg = events.reduce((sum, ev) => sum + (Number(ev.kg) || 0), 0);
+  const cumulativeKg = (state?.load_events || []).reduce(
+    (sum, row) => sum + (Number(row.kg) || 0),
+    0
+  );
 
   const meshLocked = isScreening && loaded.length > 0 && Boolean(selectedMesh);
 
@@ -307,9 +290,6 @@ export default function AcPostActivationLivePanel({ processKey, lot = null, canR
               </span>
             </div>
             {loadedChips}
-            <div className="mb-3">
-              <AcKilnCumulativeChart events={events} nowMs={nowMs} windowHours={KILN_LIVE_WINDOW_HOURS} />
-            </div>
             <div className="mt-auto">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-semibold">Output Grade Settings</p>
@@ -587,10 +567,6 @@ export default function AcPostActivationLivePanel({ processKey, lot = null, canR
           >
             {saving ? "Loading…" : "Load bag"}
           </button>
-        </div>
-
-        <div className="px-4 pb-3">
-          <AcKilnCumulativeChart events={events} nowMs={nowMs} windowHours={KILN_LIVE_WINDOW_HOURS} />
         </div>
 
         {loadedChips ? <div className="px-4 pb-3">{loadedChips}</div> : null}

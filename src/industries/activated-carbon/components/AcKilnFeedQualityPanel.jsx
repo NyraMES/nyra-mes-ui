@@ -183,7 +183,7 @@ export default function AcKilnFeedQualityPanel({
     setLoading(true);
     loadBags()
       .catch((e) => {
-        if (!cancelled) setError(formatApiError(e, "Could not load RM outward bags"));
+        if (!cancelled) setError(formatApiError(e, "Could not load GRN bags"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -284,13 +284,13 @@ export default function AcKilnFeedQualityPanel({
       {error ? <AcAlert variant="error">{error}</AcAlert> : null}
       {savedBag ? (
         <p className="text-xs text-emerald-700">
-          Saved on {savedBag}. Values are captured on the RM outward bag subject.
+          Saved on {savedBag}. Values are captured on the GRN bag.
         </p>
       ) : null}
-      {loading ? <p className="text-sm text-slate-600">Loading RM outward bags…</p> : null}
+      {loading ? <p className="text-sm text-slate-600">Loading GRN bags…</p> : null}
       {!loading && bags.length === 0 ? (
         <div className="space-y-3">
-          <p className="text-sm text-slate-600">No RM outward bags yet. Finish RM outward on Raw Material first.</p>
+          <p className="text-sm text-slate-600">No GRN bags yet. Finish GRN on Raw Material first.</p>
           <p className="text-xs text-slate-500">Fields to enter (optional):</p>
           <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
             {meshParams.map((param) => (
@@ -422,7 +422,7 @@ export default function AcKilnFeedQualityPanel({
                           </>
                         )}
                       </div>
-                      <div className="text-xs text-slate-500">RM outward bag: {bag.bag_code}</div>
+                      <div className="text-xs text-slate-500">GRN bag: {bag.bag_code}</div>
                     </div>
                   ) : null}
                 </div>

@@ -29,7 +29,7 @@ function done(status) {
 function nextStep(order) {
   if (done(order.released_to_production_status)) return "Released";
   if (done(order.rm_outward_status)) return "Release";
-  if (done(order.lab_status)) return "RMS outward";
+  if (done(order.lab_status)) return "GRN";
   if (done(order.rms_inward_status)) return "Lab";
   return "RMS inward";
 }

@@ -142,6 +142,30 @@ export function collectEngineerChecks({
   return rows;
 }
 
+/** Gate receipts and RMS bags for the role lines. Actor is the plant total for that work. */
+export function collectReceiptChecks(orders = [], { area = "rms", mode = "our_weight" } = {}) {
+  const rows = [];
+  for (const order of orders) {
+    const kg =
+      mode === "bags"
+        ? Number(order?.rms_bag_weight_kg || 0)
+        : Number(order?.our_weight_kg ?? order?.inward_quantity_kg ?? 0);
+    const at =
+      mode === "bags"
+        ? order?.rms_inward_at || order?.created_at || order?.order_date || ""
+        : order?.created_at || order?.order_date || "";
+    pushCheck(rows, {
+      actor: "__plant__",
+      kg: Number.isFinite(kg) ? kg : 0,
+      at,
+      bag: order?.order_code || "",
+      process: mode === "bags" ? "RMS bags" : area === "entry" ? "Gate receipt" : "Raw material",
+      area
+    });
+  }
+  return rows;
+}
+
 function sumByActor(rows) {
   const by = new Map();
   for (const row of rows) {

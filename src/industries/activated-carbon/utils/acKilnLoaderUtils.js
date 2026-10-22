@@ -133,6 +133,29 @@ function resolveCycleStatus({ kilnStatus, pendingHours, progress, hasLoad }) {
   return { text: "Loaded — awaiting start", tone: "neutral" };
 }
 
+export function plantDayKey(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** Loads whose plant-local day falls in From–To, and whose work-order CTC matches when one is chosen. */
+export function filterKilnFeedDayRows(events, { ctc = "", from = "", to = "", ctcByWorkOrder = {} } = {}) {
+  const wanted = String(ctc || "").trim();
+  return (events || []).filter((ev) => {
+    const day = plantDayKey(ev.loadedAt);
+    if (!day) return false;
+    if (from && day < from) return false;
+    if (to && day > to) return false;
+    if (!wanted) return true;
+    const rowCtc = String(ctcByWorkOrder[ev.workOrderCode] || ev.ctc || "").trim();
+    return rowCtc === wanted;
+  });
+}
+
 /** Kiln output has covered the work order quantity, so it leaves the kiln dropdown. */
 export function kilnOutputDone(row) {
   if (String(row?.status || "").toUpperCase() === "FULFILLED") return true;
@@ -182,7 +205,8 @@ export function parseKilnFeedEvents(raw = []) {
       bagCode: row.bag_code || row.bagCode || null,
       kg: Number.isFinite(kg) ? kg : 0,
       loadedAt,
-      kilnCode: row.kiln_resource_code || row.kilnCode || null
+      kilnCode: row.kiln_resource_code || row.kilnCode || null,
+      workOrderCode: row.work_order_code || row.workOrderCode || null
     });
   }
   return events

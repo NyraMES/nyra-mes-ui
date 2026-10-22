@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 
 import { useAuth } from "../../../auth/AuthContext";
 import { fetchAcDashboard, formatAcApiError } from "../../../services/activatedCarbonApi";
@@ -11,8 +10,7 @@ import { useAppContext } from "../../../context/AppContext";
 import { isAcContextReady } from "../utils/acContextUtils";
 import AcManagementDashboard from "../components/AcManagementDashboard";
 import AcEngineerPerformanceDashboard from "../components/AcEngineerPerformanceDashboard";
-import AcRmsEngineerDashboard from "../components/AcRmsEngineerDashboard";
-import { userIsAcRmsOnly, userIsAcSecurityOnly, userSeesAcPlantDashboard } from "../utils/acPrivileges";
+import { userSeesAcPlantDashboard } from "../utils/acPrivileges";
 
 const LIVE_FEED_REFRESH_MS = 10 * 60 * 1000;
 
@@ -73,24 +71,6 @@ function ActivatedCarbonDashboard() {
     }, LIVE_FEED_REFRESH_MS);
     return () => clearInterval(timer);
   }, [contextReady, loadDashboard]);
-
-  if (userIsAcRmsOnly(user?.roles || [], user)) {
-    return <AcRmsEngineerDashboard />;
-  }
-
-  if (userIsAcSecurityOnly(user?.roles || [], user)) {
-    return (
-      <div className="space-y-4">
-        <SectionHeader
-          title="Dashboard"
-          subtitle="Gate receipts for this plant"
-        />
-        <Link to="/activated-carbon/raw-material?tab=inward" className="wf-btn wf-btn-primary">
-          Open gate receipt
-        </Link>
-      </div>
-    );
-  }
 
   if (!plantDashboard) {
     return <AcEngineerPerformanceDashboard />;

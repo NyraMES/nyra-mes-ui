@@ -6,6 +6,7 @@ export const AC_TRIPLET_PREDICATES = {
   supplies: "urn:nyra:predicate:supplies",
   testedBy: "urn:nyra:predicate:tested_by",
   captures: "urn:nyra:predicate:captures",
+  usedEquipment: "urn:nyra:predicate:usedEquipment",
   containedIn: "urn:nyra:predicate:contained_in",
   hasStonesKg: "urn:nyra:hasStonesKg",
   hasUnburntKg: "urn:nyra:hasUnburntKg",
@@ -105,7 +106,7 @@ export const AC_ONTOLOGY_TRACE_STEPS = [
     api: "POST /api/activated-carbon/raw-material-inbound-execution (IN-DRYING)"
   },
   {
-    screen: "RMS Outward",
+    screen: "GRN",
     subject: (code) => acInwardSubjectUri(code),
     object: (code) => `urn:nyra:ac:crusherOutput:${code}`,
     predicates: ["captures"],
@@ -126,7 +127,7 @@ export const AC_ONTOLOGY_TRACE_STEPS = [
     api: "POST /api/activated-carbon/raw-material-crushing"
   },
   {
-    screen: "Raw Material QC (auto-passed after RM outward — no separate screen)",
+    screen: "Raw Material QC (auto-passed after GRN — no separate screen)",
     subject: (code) => acInwardSubjectUri(code),
     object: (code) => acRawMaterialQcObjectUri(code),
     predicates: ["testedBy", "captures", "hasStonesKg", "hasUnburntKg", "hasMinus20Kg"],
@@ -152,6 +153,13 @@ export const AC_ONTOLOGY_TRACE_STEPS = [
     object: (code) => `urn:nyra:ac:parameter:${code}`,
     predicates: ["captures"],
     api: "POST /api/activated-carbon/kiln-feed-bag-qc"
+  },
+  {
+    screen: "Execution — Kiln readings",
+    subject: (code) => `urn:nyra:ac:kilnReading:${code}`,
+    object: (code) => `urn:nyra:ac:kiln:${code}`,
+    predicates: ["usedEquipment", "captures"],
+    api: "POST /api/activated-carbon/kiln-parameters"
   },
   {
     screen: "Execution — Kiln output",

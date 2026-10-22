@@ -79,7 +79,7 @@ export function displayInboundStepLabel(stepOrName) {
     if (rawCode === "IN-CRUSHER" || lower.includes("crusher") || lower.includes("rms screen")) return "RMS Screen";
     if (rawCode === "IN-LAB") return "Lab";
     if (rawCode === "IN-RMS-BAG") return "Bag generation";
-    if (isRmsOutwardLabel(code, name)) return "RMS Outward";
+    if (isRmsOutwardLabel(code, name)) return "GRN";
     if (name) return name;
     stepOrName = stepOrName.process_step;
   }
@@ -90,7 +90,7 @@ export function displayInboundStepLabel(stepOrName) {
   if (code === "IN-LAB") return "Lab";
   if (code === "IN-RMS-BAG") return "Bag generation";
   if (isRmsOutwardLabel(code, raw)) {
-    return "RMS Outward";
+    return "GRN";
   }
   const opt =
     AC_INBOUND_PROCESS_STEP_OPTIONS.find((o) => o.value === code) ||

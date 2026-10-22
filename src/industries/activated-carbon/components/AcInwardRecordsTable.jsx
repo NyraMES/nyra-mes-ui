@@ -70,7 +70,7 @@ function materialCode(order) {
 function nextStepLabel(order) {
   if (isDone(order.released_to_production_status)) return "Released";
   if (isDone(order.rm_outward_status)) return "Ready to release";
-  if (isDone(order.lab_status)) return "RMS outward";
+  if (isDone(order.lab_status)) return "GRN";
   if (isDone(order.rms_inward_status)) return "Lab";
   return "RMS inward";
 }
@@ -165,7 +165,7 @@ export default function AcInwardRecordsTable({
     <WfCard className={className}>
       <WfCardHeader
         title="Today's inward records"
-        subtitle={`${dayOrders.length} receipt${dayOrders.length === 1 ? "" : "s"} for ${day === todayKey() ? "today" : day}. Click a row to see Inward, Lab, and Outward.`}
+        subtitle={`${dayOrders.length} receipt${dayOrders.length === 1 ? "" : "s"} for ${day === todayKey() ? "today" : day}. Click a row to see Inward, Lab, and GRN.`}
         right={
           <div className="flex items-center gap-3">
             <label className="text-xs text-slate-600 flex items-center gap-2">
@@ -294,7 +294,7 @@ export default function AcInwardRecordsTable({
                             ]}
                           />
                           <StepRow
-                            step="Outward"
+                            step="GRN"
                             status={statusLabel(o.rm_outward_status)}
                             when={formatTs(o.rm_outward_at)}
                             facts={[

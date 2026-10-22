@@ -346,6 +346,39 @@ button.disabled\:bg-slate-300:disabled {
   color: #ffffff !important;
 }
 
+/* User-row Save/Cancel sit on a navy card, so they stay white and left-aligned */
+.ac-user-row-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wf-shell .wf-card .ac-user-row-btn-save,
+.wf-shell .wf-card td .ac-user-row-btn-save {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #08264a !important;
+  border: 1px solid #ffffff !important;
+}
+.wf-shell .wf-card .ac-user-row-btn-cancel,
+.wf-shell .wf-card td .ac-user-row-btn-cancel {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: #ffffff !important;
+  border: 1px solid #ffffff !important;
+}
+.ac-user-row-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* Management dashboard — white cards must stay black-on-white */
 .wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-card,
 .wf-shell.wf-ac-shell .wf-ac-page-frame .ac-mgmt-card * {

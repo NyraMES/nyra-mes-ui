@@ -69,10 +69,10 @@ function canCaptureInboundStep(step, access) {
 function inboundStepWaitingCopy(orderCode, step) {
   const code = inboundOperationCode(step);
   if (code === "IN-LAB") {
-    return `${orderCode} is waiting on Lab. Quality records that check. After Lab, the RMS engineer records RMS outward here.`;
+    return `${orderCode} is waiting on Lab. Quality records that check. After Lab, the RMS engineer records GRN here.`;
   }
   if (code === "IN-RM-OUT") {
-    return `${orderCode} is waiting on RMS outward. The RMS engineer records the rotary bags.`;
+    return `${orderCode} is waiting on GRN. The RMS engineer records the rotary bags.`;
   }
   if (code === "IN-RMS-BAG") {
     return `${orderCode} is waiting on bag generation. The RMS engineer enters the bags on this screen.`;
@@ -199,7 +199,7 @@ function AcInboundProcessPanel({
       const justSaved = String(nextStepMeta?.operation_code || "").toUpperCase();
       setSuccess(
         justSaved === "IN-LAB"
-          ? `Lab saved for ${saved.order_code}. RMS outward is with the RMS engineer.`
+          ? `Lab saved for ${saved.order_code}. GRN is with the RMS engineer.`
           : `Step recorded for ${saved.order_code} — ${displayInboundStepLabel(
               nextStepMeta?.operation_name || nextStep
             )}`
@@ -228,7 +228,7 @@ function AcInboundProcessPanel({
       <WfCard className="mb-6">
         <WfCardHeader
           title="Inbound prep (3 steps)"
-          subtitle="Bag generation (RMS engineer) → Lab → RMS outward"
+          subtitle="Bag generation (RMS engineer) → Lab → GRN"
         />
         <WfCardBody>
           <div className="wf-light-panel rounded-xl p-4">
@@ -245,7 +245,7 @@ function AcInboundProcessPanel({
     <WfCard className="mb-6">
       <WfCardHeader
         title="Inbound prep (3 steps after gate)"
-        subtitle="Bag generation is entered here by the RMS engineer, then Lab and RMS outward."
+        subtitle="Bag generation is entered here by the RMS engineer, then Lab and GRN."
       />
       <WfCardBody>
         {error ? <AcAlert variant="error">{error}</AcAlert> : null}
@@ -281,7 +281,7 @@ function AcInboundProcessPanel({
                   <p className="text-sm text-slate-700 mt-1">Remarks: {selected.lab_remarks}</p>
                 ) : null}
                 <p className="text-xs text-slate-600 mt-1">
-                  RMS Outward and Release stay locked for this record only.
+                  GRN and Release stay locked for this record only.
                 </p>
               </div>
             ) : null}
@@ -343,7 +343,7 @@ function AcInboundProcessPanel({
             {selected?.inbound_prep_complete ? (
               <div className="wf-light-panel rounded-lg px-4 py-3 space-y-2">
                 <p className="text-sm text-emerald-800 m-0">
-                  RMS outward complete for {selected.order_code}.
+                  GRN complete for {selected.order_code}.
                 </p>
                 <Link
                   to="/activated-carbon/raw-material?tab=release"
@@ -417,8 +417,8 @@ function AcInboundProcessPanel({
                     <div>
                       <div className="font-medium text-slate-900">
                         {selected.inbound_prep_complete
-                          ? "RMS outward complete"
-                          : "RMS outward complete"}
+                          ? "GRN complete"
+                          : "GRN complete"}
                       </div>
                       <div className="text-xs text-slate-600">
                         {selected.lab_denied
@@ -431,7 +431,7 @@ function AcInboundProcessPanel({
                             Open Release to production
                           </Link>
                         ) : (
-                          "Finish RMS Outward, then move to the Release to production tab."
+                          "Finish GRN, then move to the Release to production tab."
                         )}
                       </div>
                     </div>

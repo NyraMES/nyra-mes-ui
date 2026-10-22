@@ -7,11 +7,13 @@ import {
   buildEngineerWeek,
   checksOnDay,
   collectEngineerChecks,
+  collectReceiptChecks,
   currentWeekDays
 } from "./acEngineerPerformance.js";
 import { canAccessAcMenuItem } from "./acMenuAccess.js";
 import { acOperationVisibleForRoles } from "./acPrivileges.js";
 import {
+  acPerformanceAreas,
   acRawMaterialTabsForRoles,
   userCanEnterAcInboundBags,
   userCanRaiseAcDebitNote,
@@ -233,6 +235,24 @@ test("admin, supervisor, and viewer keep the plant dashboard", () => {
     userSeesAcPlantDashboard([MES_ROLES.MANAGER, MES_ROLES.ACTIVATION], { username: "lead" }),
     true
   );
+});
+
+test("two shop roles draw one performance line each", () => {
+  assert.deepEqual(acPerformanceAreas([MES_ROLES.ACTIVATION, MES_ROLES.POST_ACTIVATION]), [
+    "activation",
+    "post"
+  ]);
+  assert.deepEqual(acPerformanceAreas([MES_ROLES.RMS, MES_ROLES.QUALITY]), ["rms", "quality"]);
+  assert.deepEqual(acPerformanceAreas([MES_ROLES.SECURITY, MES_ROLES.ACTIVATION]), ["entry", "activation"]);
+  assert.deepEqual(acPerformanceAreas([MES_ROLES.OPERATOR]), ["activation", "post"]);
+  assert.deepEqual(acPerformanceAreas([MES_ROLES.ADMIN, MES_ROLES.ACTIVATION]), ["activation"]);
+  const checks = collectReceiptChecks(
+    [{ order_code: "ORD-1", our_weight_kg: 25, created_at: "2026-10-14T04:00:00Z", rms_bag_weight_kg: 20 }],
+    { area: "entry", mode: "our_weight" }
+  );
+  assert.equal(checks[0].area, "entry");
+  assert.equal(checks[0].kg, 25);
+  assert.equal(checks[0].actor, "__plant__");
 });
 
 test("an RMS engineer sees raw material only", () => {

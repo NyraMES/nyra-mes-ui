@@ -16,7 +16,7 @@ import "../styles/acMasters.css";
 
 const TABS = [
   { id: "inward", label: "1 · Gate receipt", hint: "DC and weight" },
-  { id: "prep", label: "2 · Inbound prep", hint: "Bag generation · Lab · RMS outward" },
+  { id: "prep", label: "2 · Inbound prep", hint: "Bag generation · Lab · GRN" },
   { id: "release", label: "3 · Release to production", hint: "Release inward order" },
   { id: "reports", label: "4 · Reports", hint: "Summary · details · Excel" }
 ];
@@ -66,7 +66,7 @@ function RawMaterialPage() {
       <SectionHeader
         eyebrow="Inbound"
         title="Raw Material"
-        subtitle="Gate receipt, then Inbound prep. The RMS engineer generates bags there. Lab and RMS outward follow, then Release to production."
+        subtitle="Gate receipt, then Inbound prep. The RMS engineer generates bags there. Lab and GRN follow, then Release to production."
       />
 
       <div className="ac-masters-tabs flex flex-wrap gap-2 mb-6 border-b border-white/15">

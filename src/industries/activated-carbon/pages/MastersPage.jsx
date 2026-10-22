@@ -188,7 +188,7 @@ function MastersPage() {
       { id: "plant-resources", label: "Machines & kilns", hint: "Plant equipment" },
       { id: "routing", label: "Routing reference", hint: "Read-only summary" },
       { id: "kiln-parameters", label: "Kiln readings", hint: "Shift data fields" },
-      { id: "inbound-settings", label: "Inbound settings", hint: "Rotaries & RMS outward" },
+      { id: "inbound-settings", label: "Inbound settings", hint: "Rotaries & GRN" },
       { id: "process-rules", label: "Process rules", hint: "Bags, moisture, CTC" },
       { id: "mesh-grades", label: "Mesh configuration", hint: "A–E destoning grades" },
       { id: "ontology-ui", label: "Advanced settings", hint: "Super Admin" }
@@ -1251,7 +1251,7 @@ function MastersPage() {
         ) : (
           <AcPermissionNotice
             title="Inbound settings"
-            message="Rotary inventory and RM outward splits can be changed by a Plant Administrator or Super Administrator."
+            message="Rotary inventory and GRN splits can be changed by a Plant Administrator or Super Administrator."
           />
         ))}
 

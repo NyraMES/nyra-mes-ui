@@ -527,7 +527,7 @@ function RawMaterialProcessFlowEditor({
       {hasSelection && !draft.isNew ? (
         <p className="text-xs text-slate-500 mb-3 max-w-3xl">
           Plant story: <strong>Gate receipt</strong> (Raw Material Inward tab) →{" "}
-          <strong>inbound prep</strong> (Lab / RMS bags / crusher / RM outward) →{" "}
+          <strong>inbound prep</strong> (Lab / RMS bags / crusher / GRN) →{" "}
           <strong>Release to Production</strong> → <strong>Activation</strong> (pre-kiln + kiln shop
           steps) → <strong>Post-activation</strong> → <strong>In Stock</strong>.
         </p>

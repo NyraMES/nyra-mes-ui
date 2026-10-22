@@ -9,12 +9,8 @@ import {
   loadAcDestoningBag,
   unloadAcDestoningBag
 } from "../../../services/activatedCarbonApi";
-import { KILN_LIVE_WINDOW_HOURS, parseKilnFeedEvents } from "../utils/acKilnLoaderUtils";
 import useBusyGuard from "../hooks/useBusyGuard";
 import AcAlert from "./AcAlert";
-import AcKilnCumulativeChart from "./AcKilnCumulativeChart";
-
-const LIVE_TICK_MS = 15_000;
 
 function formatKg(value) {
   const num = Number(value);
@@ -55,16 +51,10 @@ export default function AcDestoningPanel({ lot = null }) {
   const [destonerCode, setDestonerCode] = useState("");
   const { busy: saving, run: runBusy } = useBusyGuard();
   const [error, setError] = useState("");
-  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const applyState = (next) => {
     setState(next);
   };
-
-  useEffect(() => {
-    const timer = setInterval(() => setNowMs(Date.now()), LIVE_TICK_MS);
-    return () => clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,18 +129,10 @@ export default function AcDestoningPanel({ lot = null }) {
     Number(outputKg) > 0 && remainingKg > 0 && Number(outputKg) <= remainingKg + 0.001 && !saving;
   const canLoad = Boolean(assignedKey) && loaded.length < capacity && !saving;
 
-  const events = useMemo(() => {
-    const raw = (selectedDestoner?.load_events || state?.load_events || []).map((row) => ({
-      lot_code: row.lot_code,
-      bag_code: row.bag_code,
-      kg: row.kg,
-      loaded_at: row.loaded_at,
-      kiln_resource_code: row.kiln_resource_code
-    }));
-    return parseKilnFeedEvents(raw);
-  }, [state, selectedDestoner]);
-
-  const cumulativeKg = events.reduce((sum, ev) => sum + (Number(ev.kg) || 0), 0);
+  const cumulativeKg = (selectedDestoner?.load_events || state?.load_events || []).reduce(
+    (sum, row) => sum + (Number(row.kg) || 0),
+    0
+  );
 
   const handleLoadBag = async (bag) => {
     await run(() => loadAcDestoningBag(bag.bag_code, selectedDestoner?.resource_code));
@@ -236,10 +218,6 @@ export default function AcDestoningPanel({ lot = null }) {
           >
             {saving ? "Loading…" : "Load bag"}
           </button>
-        </div>
-
-        <div className="px-4 pb-3">
-          <AcKilnCumulativeChart events={events} nowMs={nowMs} windowHours={KILN_LIVE_WINDOW_HOURS} />
         </div>
 
         {loaded.length > 0 ? (

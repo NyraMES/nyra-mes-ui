@@ -772,7 +772,7 @@ function OutwardStep({ selected, nextStepMeta, onCompleted }) {
   };
 
   useEffect(() => {
-    reload().catch((e) => setError(formatAcApiError(e, "Could not load RMS outward")));
+    reload().catch((e) => setError(formatAcApiError(e, "Could not load GRN")));
   }, [selected.customer_order_id]);
 
   const addBag = async (gradeLabel) => {
@@ -832,11 +832,11 @@ function OutwardStep({ selected, nextStepMeta, onCompleted }) {
 
   const complete = async () => {
     if (!bags.length) {
-      setError("Enter at least one RMS outward bag.");
+      setError("Enter at least one GRN bag.");
       return;
     }
     if (ourKg > 0 && bagTotal > ourKg + 0.001) {
-      setError(`RMS outward total ${bagTotal} KG cannot exceed inward weight ${ourKg} KG.`);
+      setError(`GRN total ${bagTotal} KG cannot exceed inward weight ${ourKg} KG.`);
       return;
     }
     if (savingRef.current) return;
@@ -858,7 +858,7 @@ function OutwardStep({ selected, nextStepMeta, onCompleted }) {
       });
       await onCompleted(saved);
     } catch (e) {
-      setError(formatAcApiError(e, "Could not finish RMS outward"));
+      setError(formatAcApiError(e, "Could not finish GRN"));
       savingRef.current = false;
       setSaving(false);
     }
@@ -868,7 +868,7 @@ function OutwardStep({ selected, nextStepMeta, onCompleted }) {
     <div className="wf-light-panel rounded-xl p-4 max-w-2xl border border-blue-200 space-y-3">
       {error ? <AcAlert variant="error">{error}</AcAlert> : null}
       <p className="text-sm text-slate-700">
-        RMS Outward — choose Rotary A or Rotary B and add at least one bag. A grade, Unburnt, or
+        GRN — choose Rotary A or Rotary B and add at least one bag. A grade, Unburnt, or
         Stones is enough. The total stays within the inward weight.
       </p>
       <AcWeightSummaryTable
@@ -962,7 +962,7 @@ function OutwardStep({ selected, nextStepMeta, onCompleted }) {
       <AcSaveBar
         onSave={complete}
         saving={saving}
-        saveLabel="RMS outward complete"
+        saveLabel="GRN complete"
         disabled={overrun}
       />
     </div>

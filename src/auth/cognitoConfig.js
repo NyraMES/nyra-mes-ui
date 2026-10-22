@@ -29,10 +29,14 @@ function defaultRedirectSignOut() {
   );
 }
 
-const redirectSignIn =
-  import.meta.env.VITE_COGNITO_REDIRECT_SIGN_IN || defaultRedirectSignIn();
-const redirectSignOut =
-  import.meta.env.VITE_COGNITO_REDIRECT_SIGN_OUT || defaultRedirectSignOut();
+// Without a hosted-UI domain the SPA signs in on whichever host opened it,
+// so gr.nyraservices-testbed.net returns to itself.
+const redirectSignIn = domain
+  ? import.meta.env.VITE_COGNITO_REDIRECT_SIGN_IN || defaultRedirectSignIn()
+  : defaultRedirectSignIn();
+const redirectSignOut = domain
+  ? import.meta.env.VITE_COGNITO_REDIRECT_SIGN_OUT || defaultRedirectSignOut()
+  : defaultRedirectSignOut();
 
 export const authEnabled =
   (import.meta.env.VITE_AUTH_ENABLED || "false").toLowerCase() === "true";

@@ -57,7 +57,7 @@ export default function AcInboundAdminPanel() {
       });
       setRotaries(saved.rotaries);
       setSplits(saved.outward_splits);
-      setSuccess("Inbound settings saved — crusher rotary list and RM outward splits updated.");
+      setSuccess("Inbound settings saved — crusher rotary list and GRN splits updated.");
     } catch (e) {
       setError(formatAcApiError(e, "Could not save inbound settings"));
     } finally {
@@ -116,8 +116,8 @@ export default function AcInboundAdminPanel() {
       </WfCard>
       <WfCard>
         <WfCardHeader
-          title="RMS outward splits"
-          subtitle="Grade lines used with the Rotary A / Rotary B dropdown on RMS outward (crusher output bags). Default: -20 1st Stage, Grade 1st Stage, Unburnt, Stones."
+          title="GRN splits"
+          subtitle="Grade lines used with the Rotary A / Rotary B dropdown on GRN. Default: -20 1st Stage, Grade 1st Stage, Unburnt, Stones."
         />
         <WfCardBody>
           {loading ? null : (
@@ -136,7 +136,7 @@ export default function AcInboundAdminPanel() {
                   />
                   <input
                     className="rounded border border-slate-300 px-3 py-2 text-sm"
-                    placeholder="Label shown on RM outward"
+                    placeholder="Label shown on GRN"
                     value={row.label}
                     onChange={(e) =>
                       setSplits((prev) =>
